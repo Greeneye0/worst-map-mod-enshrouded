@@ -17,7 +17,7 @@ It's the best map mod. The name is the joke.
 - **HUD minimap** with a compass and the time of day: hold Shift + Alt to drag it, resize it from the bottom-right corner and zoom with the wheel. `[` and `]` zoom any time.
 - Client only. Works in single player, hosted games and on any server, with nothing installed on the server.
 
-Download and install instructions: see the Nexus Mods page. The player-facing readme is [dist/README.txt](dist/README.txt).
+Download and install instructions: [Nexus Mods page](https://www.nexusmods.com/enshrouded/mods/220). The player-facing readme is [dist/README.txt](dist/README.txt).
 
 ## Building
 
