@@ -1,0 +1,10 @@
+{
+    "id": "unlock-map-markers",
+    "name": "The Worst Map Mod",
+    "version": "1.0.0",
+    "dll": "unlock-map-markers.dll",
+    "side": "client",
+    "api": 2,
+    "description": "In game map markers and a minimap: every marker on the world map, a Map Key & Filters panel, Find on the map, fog modes and a HUD minimap.",
+    "author": "GreeneyeDS"
+}

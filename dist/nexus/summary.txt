@@ -1,0 +1,1 @@
+Every map marker on the world map, a Map Key & Filters panel styled like the game, Find on the map (Shift+F), three fog modes and a HUD minimap you can move, resize and zoom. Client only: works in single player, hosted games and on any server.

@@ -1,0 +1,32 @@
+# In Game Map Markers and Mini Map — The Worst Map Mod (Enshrouded)
+
+It's the best map mod. The name is the joke.
+
+- **Every marker on the world map**: spires, altars, sanctums, vaults, lairs, towns, camps, mines, caves, garrisons, quests, lore rumors, graves, and all 448 gold and 1032 silver chests.
+- **Map Key & Filters panel** drawn with the game's own UI pieces: icon, count and ON/OFF per marker type, whole categories, SHOW ALL / HIDE ALL, custom pin filters. Tab folds it away.
+- **Find on the map** (Shift+F): type a name or a kind of place and the map moves to show the matches.
+- **Fog modes**: EXPLORED (vanilla), HYBRID (map drawn under a light fog), REVEAL ALL.
+- **HUD minimap**: hold Shift + Alt to drag it, resize it from the bottom-right corner and zoom with the wheel. `[` and `]` zoom any time.
+- Client only. Works in single player, hosted games and on any server, with nothing installed on the server.
+
+Download and install instructions: see the Nexus Mods page. The player-facing readme is [dist/README.txt](dist/README.txt).
+
+## Building
+
+Needs Visual Studio 2022 Build Tools (x64).
+
+```
+build.bat   -> bin\loader\unlock-map-markers.dll and mod.json, then runs tests\test_patches.cpp
+               (checks every byte patch site against the installed game and server executables)
+deploy.py   -> installs the build into the game's greeneye\unlock-map-markers\ (game closed)
+```
+
+The mod runs through the Greeneye Loader (API 2, `src/greeneye.h`). All hooks go through the loader, which chains onto other mods' hooks instead of overwriting them (`src/jumppatch.h`). Every detour holds a `greeneye::Lease`, so the mod can be hot reloaded while idle. Code sites are found by unique signature. A site that doesn't match is skipped and logged instead of patched.
+
+- `src/main.cpp`: start-up, byte patches (`src/patches.h`) that send every marker to the map UI.
+- `src/map_key_panel.cpp`: the panel, Find, fog modes and the minimap.
+- `src/chest_spawns.h`, `src/minimap_frame_spans.h`: chest spawn table and the minimap frame art.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Made with the help of AI (Claude by Anthropic, and Google Antigravity).

@@ -1,0 +1,15 @@
+# build output
+build/
+bin/
+*.obj
+*.pdb
+*.exp
+*.lib
+*.ilk
+__pycache__/
+
+# release archives are attached to GitHub releases / Nexus, not committed
+dist/*.zip
+
+# reverse engineering notes, AI session transcripts and dev-only tools
+tools/
