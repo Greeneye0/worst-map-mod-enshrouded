@@ -35,7 +35,8 @@ On the right of the world map.
 - SHOW ALL / HIDE ALL switch everything at once.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
 - Tab or the - button at the top folds the whole panel away.
-- Gold and silver chests are on the map too (448 gold, 1032 silver).
+- Every gold and silver chest in the world is included: all 448 gold and 1032 silver
+  chests have their own filter rows.
 
 
 FIND ON THE MAP (Shift+F)

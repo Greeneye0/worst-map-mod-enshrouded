@@ -2,7 +2,9 @@
 
 It's the best map mod. The name is the joke.
 
-![The world map with every marker and the Map Key & Filters panel](dist/nexus/images/01-full-map-hybrid.jpg)
+![The Worst Map Mod](dist/nexus/images/00-header.jpg)
+
+![The world map with every marker and the Map Key & Filters panel](dist/nexus/images/01-full-map.jpg)
 
 ![Fog modes](dist/nexus/images/05-fog-modes.jpg)
 
