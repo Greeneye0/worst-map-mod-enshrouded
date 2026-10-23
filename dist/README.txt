@@ -41,10 +41,12 @@ On the right of the world map.
 FIND ON THE MAP (Shift+F)
 -------------------------
 On the world map, press Shift+F or click FIND. Type a name or a kind of place ("gold",
-"spire", "garrison"). The list shows what matches; click a result twice, double-click it, or
-press Enter, and the map moves to show those places. Enter with nothing selected shows all
-matches. Matches hidden by your filters are offered on a separate line at the bottom of the
-list. Esc or Shift+F closes it.
+"spire", "garrison"). The list shows every match with its region, its distance from you,
+and [Locked] if you haven't unlocked it yet. Click a result twice, double-click it, or press
+Enter, and the map moves to show it. "All Matching Places - Zoom to fit" (or Enter with
+nothing selected) shows every match at once.
+- F2 (or Ctrl+F) switches whether Find skips marker types you've hidden with the filters.
+- Esc or Shift+F closes it.
 
 
 FOG
@@ -58,7 +60,8 @@ The mode is remembered.
 
 MINIMAP
 -------
-A round minimap on your HUD, under the Journal [J] tab at first.
+A minimap with a compass, the time of day and its zoom level on your HUD, under the
+Journal [J] tab at first.
 - Hold Shift + Alt: the mouse cursor appears and the camera stops turning, so you can use
   the minimap without swinging your view or attacking.
     drag the minimap                 move it anywhere on screen
