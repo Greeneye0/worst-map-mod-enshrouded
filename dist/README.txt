@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.0.0
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.1.0
 =========================================================================================
 
 Every marker on the world map, a Map Key & Filters panel, Find on the map, three fog modes
@@ -73,6 +73,19 @@ Journal [J] tab at first.
 - Position, size and zoom are saved in greeneye\unlock-map-markers\minimap_config.ini.
 
 
+LANGUAGES
+---------
+The mod's text follows the game's language: English, German, French, Italian, Spanish,
+Portuguese (Brazil), Polish, Russian, Ukrainian, Turkish, Japanese, Korean, Simplified Chinese,
+Traditional Chinese and Thai. Marker and region names come from the game itself.
+To use another language, set it in greeneye\unlock-map-markers\minimap_config.ini:
+    [General]
+    Language=auto          auto follows the game; or english, german, french, italian,
+                           spanish, brazilian, polish, russian, ukrainian, turkish, japanese,
+                           koreana, schinese, tchinese, thai
+Restart the game after changing it. Translations are the author's own: corrections welcome.
+
+
 UNINSTALL
 ---------
 Delete greeneye\unlock-map-markers. If no other mod is left in the greeneye folder, delete
@@ -100,5 +113,12 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.1.0
+- The mod's text in all 15 languages the game supports, following the game's language
+  (or Language= in minimap_config.ini). The map key widens to fit longer labels.
+- Find ignores upper and lower case in every script, finds places by their English type name
+  in any language, and no longer cuts names in the middle of a character.
+- Reported bugs fixed: none.
+
 1.0.0
 - First release.

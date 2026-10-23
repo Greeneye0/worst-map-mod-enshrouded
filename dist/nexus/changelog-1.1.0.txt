@@ -1,0 +1,4 @@
+1.1.0
+- The mod's text in all 15 languages the game supports, following the game's language (or Language= in minimap_config.ini). The map key widens to fit longer labels.
+- Find ignores upper and lower case in every script, finds places by their English type name in any language, and no longer cuts names in the middle of a character.
+- Reported bugs fixed: none.

@@ -21,6 +21,7 @@
 #include "minimap_frame_spans.h"
 #include "scan.h"
 #include "greeneye.h"
+#include "lang.h"
 
 namespace unlock_map_markers {
 namespace {
@@ -395,47 +396,48 @@ struct MarkerRowSpec {
     uint32_t typeHash;
     uint32_t pairedHash;
     uint8_t category;
-    const char* label;
+    const char* label;       // English: logs and English searches
+    umm_lang::Str text;      // what the panel shows
 };
 
 constexpr MarkerRowSpec kCategory1Rows[] = {
-    {0xa17072beu, 0u, 1, "Ancient Spire"},
-    {0xa447cba3u, 0x6a56c5b3u, 1, "Flame Altar (Home)"},
-    {0x7b4c9e16u, 0u, 1, "Flame Sanctum"},
-    {0x6df85109u, 0u, 1, "Night Sanctum"},
-    {0xf455a765u, 0u, 1, "Gem Forge"},
-    {0xad6a9d9fu, 0u, 1, "Ancient Obelisk"},
-    {0x4293eae5u, 0u, 1, "Water Source"},
-    {0x1095684eu, 0u, 1, "Fast Travel Point"},
+    {0xa17072beu, 0u, 1, "Ancient Spire", umm_lang::Str::AncientSpire},
+    {0xa447cba3u, 0x6a56c5b3u, 1, "Flame Altar (Home)", umm_lang::Str::FlameAltarHome},
+    {0x7b4c9e16u, 0u, 1, "Flame Sanctum", umm_lang::Str::FlameSanctum},
+    {0x6df85109u, 0u, 1, "Night Sanctum", umm_lang::Str::NightSanctum},
+    {0xf455a765u, 0u, 1, "Gem Forge", umm_lang::Str::GemForge},
+    {0xad6a9d9fu, 0u, 1, "Ancient Obelisk", umm_lang::Str::AncientObelisk},
+    {0x4293eae5u, 0u, 1, "Water Source", umm_lang::Str::WaterSource},
+    {0x1095684eu, 0u, 1, "Fast Travel Point", umm_lang::Str::FastTravelPoint},
 };
 
 constexpr MarkerRowSpec kCategory2Rows[] = {
-    {0xffe5e444u, 0u, 2, "Elixir Well / Root"},
-    {0xb824ea45u, 0u, 2, "Catacombs / Tomb"},
-    {0x549e3dbau, 0u, 2, "Ancient Vault"},
-    {0x2756cf65u, 0u, 2, "Shroud Lair"},
-    {0x4ece72ccu, 0u, 2, "Hollow Halls"},
-    {0x41a86870u, 0u, 2, "Hidden Tomb"},
+    {0xffe5e444u, 0u, 2, "Elixir Well / Root", umm_lang::Str::ElixirWell},
+    {0xb824ea45u, 0u, 2, "Catacombs / Tomb", umm_lang::Str::CatacombsTomb},
+    {0x549e3dbau, 0u, 2, "Ancient Vault", umm_lang::Str::AncientVault},
+    {0x2756cf65u, 0u, 2, "Shroud Lair", umm_lang::Str::ShroudLair},
+    {0x4ece72ccu, 0u, 2, "Hollow Halls", umm_lang::Str::HollowHalls},
+    {0x41a86870u, 0u, 2, "Hidden Tomb", umm_lang::Str::HiddenTomb},
 };
 
 constexpr MarkerRowSpec kCategory3Rows[] = {
-    {kGoldChestTypeHash, 0u, 3, "Gold Chest"},
-    {kSilverChestTypeHash, 0u, 3, "Silver Chest"},
-    {0xb5d01766u, 0u, 3, "Town / Settlement"},
-    {0x5104e8d1u, 0u, 3, "Farmstead"},
-    {0x6aaf002cu, 0u, 3, "Survivor Camp"},
-    {0x689e3a29u, 0u, 3, "Mine / Quarry"},
-    {0xdb17bf33u, 0u, 3, "Cave Passage"},
-    {0xa13a918cu, 0u, 3, "Enemy Encampment"},
-    {0x9f3c320eu, 0u, 3, "Balefire Garrison"},
+    {kGoldChestTypeHash, 0u, 3, "Gold Chest", umm_lang::Str::GoldChest},
+    {kSilverChestTypeHash, 0u, 3, "Silver Chest", umm_lang::Str::SilverChest},
+    {0xb5d01766u, 0u, 3, "Town / Settlement", umm_lang::Str::TownSettlement},
+    {0x5104e8d1u, 0u, 3, "Farmstead", umm_lang::Str::Farmstead},
+    {0x6aaf002cu, 0u, 3, "Survivor Camp", umm_lang::Str::SurvivorCamp},
+    {0x689e3a29u, 0u, 3, "Mine / Quarry", umm_lang::Str::MineQuarry},
+    {0xdb17bf33u, 0u, 3, "Cave Passage", umm_lang::Str::CavePassage},
+    {0xa13a918cu, 0u, 3, "Enemy Encampment", umm_lang::Str::EnemyEncampment},
+    {0x9f3c320eu, 0u, 3, "Balefire Garrison", umm_lang::Str::BalefireGarrison},
 };
 
 constexpr MarkerRowSpec kCategory0Rows[] = {
-    {0xa7cadc08u, 0u, 0, "Main Quest"},
-    {0xc52e92e5u, 0u, 0, "Side Quest"},
-    {0x8ba7c122u, 0u, 0, "Lore Rumor (?)"},
-    {0x1ad8f96eu, 0u, 0, "Player Grave"},
-    {kOtherPlayerTypeHash, 0u, 0, "Other Players"},
+    {0xa7cadc08u, 0u, 0, "Main Quest", umm_lang::Str::MainQuest},
+    {0xc52e92e5u, 0u, 0, "Side Quest", umm_lang::Str::SideQuest},
+    {0x8ba7c122u, 0u, 0, "Lore Rumor (?)", umm_lang::Str::LoreRumor},
+    {0x1ad8f96eu, 0u, 0, "Player Grave", umm_lang::Str::PlayerGrave},
+    {kOtherPlayerTypeHash, 0u, 0, "Other Players", umm_lang::Str::OtherPlayers},
 };
 
 constexpr uint32_t kCustomPinHashes[10] = {
@@ -445,17 +447,17 @@ constexpr uint32_t kCustomPinHashes[10] = {
 
 struct CategoryGroupSpec {
     uint8_t category;
-    const char* title;
+    umm_lang::Str title;
     const MarkerRowSpec* rows;
     size_t rowCount;
 };
 
 constexpr CategoryGroupSpec kCategoryGroups[5] = {
-    {1, "FAST TRAVEL & ALTARS", kCategory1Rows, sizeof(kCategory1Rows) / sizeof(kCategory1Rows[0])},
-    {2, "SHROUD & VAULTS",      kCategory2Rows, sizeof(kCategory2Rows) / sizeof(kCategory2Rows[0])},
-    {3, "WORLD & RESOURCES",    kCategory3Rows, sizeof(kCategory3Rows) / sizeof(kCategory3Rows[0])},
-    {0, "QUESTS & RUMORS",      kCategory0Rows, sizeof(kCategory0Rows) / sizeof(kCategory0Rows[0])},
-    {4, "CUSTOM PINS",          nullptr,        0},
+    {1, umm_lang::Str::CatFastTravel, kCategory1Rows, sizeof(kCategory1Rows) / sizeof(kCategory1Rows[0])},
+    {2, umm_lang::Str::CatShroud, kCategory2Rows, sizeof(kCategory2Rows) / sizeof(kCategory2Rows[0])},
+    {3, umm_lang::Str::CatWorld, kCategory3Rows, sizeof(kCategory3Rows) / sizeof(kCategory3Rows[0])},
+    {0, umm_lang::Str::CatQuests, kCategory0Rows, sizeof(kCategory0Rows) / sizeof(kCategory0Rows[0])},
+    {4, umm_lang::Str::CatCustomPins, nullptr,        0},
 };
 
 bool g_panelCollapsed = false;
@@ -683,10 +685,18 @@ void DrawKeyButtonAbs(void* parentWidgetRaw, float absX, float absY, float w, fl
     }
 }
 
+// Width of the ON / OFF badge: fits the longer of the two words in the current language, so every
+// row's badge lines up (50 in English, where "OFF" is ~38 at the game's text size).
+float OnOffBadgeWidth() {
+    const float longer = std::max(umm_lang::TextWidth(umm_lang::T(umm_lang::Str::On)),
+                                  umm_lang::TextWidth(umm_lang::T(umm_lang::Str::Off)));
+    return std::max(50.0f, longer + 14.0f);
+}
+
 // The ON / OFF badge of rows and category headers, right-aligned in the box ending at rightX.
 void DrawOnOffBadgeAbs(void* parentWidgetRaw, float rightX, float absY, float rowH, bool on, float alpha = 1.0f) {
     using namespace key_style;
-    const float bw = 50.0f; // fits "OFF" at the game's text size; ON and OFF line up
+    const float bw = OnOffBadgeWidth();
     const float bh = std::min(18.0f, rowH - 3.0f);
     const float bx = rightX - bw;
     const float by = absY + (rowH - bh) * 0.5f;
@@ -695,7 +705,8 @@ void DrawOnOffBadgeAbs(void* parentWidgetRaw, float rightX, float absY, float ro
     } else {
         DrawFramedBoxAbs(parentWidgetRaw, bx, by, bw, bh, kPanelFill, 0.6f * alpha, kOffFrame, 0.9f * alpha, 3.0f);
     }
-    DrawLabelAbs(bx, by, bw, bh, on ? "ON" : "OFF", on ? kOnText : kOffText, (on ? 0.98f : 0.8f) * alpha,
+    DrawLabelAbs(bx, by, bw, bh, umm_lang::T(on ? umm_lang::Str::On : umm_lang::Str::Off),
+                 on ? kOnText : kOffText, (on ? 0.98f : 0.8f) * alpha,
                  TextAlignH::Center, TextAlignV::Center);
 }
 
@@ -822,16 +833,28 @@ const void* GetIconRefForType(uint8_t* client, uint32_t typeHash) {
     return markerType + 0x1c;
 }
 
+// The chest titles shown on the map, in the current language. Marker slots keep pointers to these
+// texts, so they live in fixed buffers that are rewritten in place when the language is decided.
 const UiText& GetChestSubtypeTitle(uint16_t subtype) {
-    static const UiText kTitles[6] = {
-        MakeUiText("Gold Chest"),
-        MakeUiText("Gold Sarcophagus"),
-        MakeUiText("Gold Chest (Locked)"),
-        MakeUiText("Silver Chest"),
-        MakeUiText("Silver Sarcophagus"),
-        MakeUiText("Silver Chest (Locked)")
-    };
-    return kTitles[subtype < 6 ? subtype : 0];
+    using umm_lang::Str;
+    static char buffers[6][128]{};
+    static UiText titles[6]{};
+    static int builtFor = -1;
+    const int lang = static_cast<int>(umm_lang::Current());
+    if (builtFor != lang) {
+        const char* const gold = umm_lang::T(Str::GoldChest);
+        const char* const silver = umm_lang::T(Str::SilverChest);
+        const char* const locked = umm_lang::T(Str::ChestLocked);
+        std::snprintf(buffers[0], sizeof(buffers[0]), "%s", gold);
+        std::snprintf(buffers[1], sizeof(buffers[1]), "%s", umm_lang::T(Str::GoldSarcophagus));
+        std::snprintf(buffers[2], sizeof(buffers[2]), "%s%s", gold, locked);
+        std::snprintf(buffers[3], sizeof(buffers[3]), "%s", silver);
+        std::snprintf(buffers[4], sizeof(buffers[4]), "%s", umm_lang::T(Str::SilverSarcophagus));
+        std::snprintf(buffers[5], sizeof(buffers[5]), "%s%s", silver, locked);
+        for (int i = 0; i < 6; ++i) titles[i] = MakeUiText(buffers[i]);
+        builtFor = lang;
+    }
+    return titles[subtype < 6 ? subtype : 0];
 }
 
 void WriteChestMarkerSlot(uint8_t* m, size_t chestIdx) {
@@ -1590,7 +1613,7 @@ uint8_t* CreateNativeFindDialogFallback(const char* title, const char* okLabel) 
     *reinterpret_cast<float*>(cancelBtn + 0x50) = 5.0f;
     *reinterpret_cast<float*>(cancelBtn + 0x54) = 1.0f;
     cancelBtn[0x58] = 1;
-    *reinterpret_cast<UiText*>(cancelBtn + 0x78) = MakeRuntimeUiText("Cancel");
+    *reinterpret_cast<UiText*>(cancelBtn + 0x78) = MakeRuntimeUiText(umm_lang::T(umm_lang::Str::Cancel));
 
     void** btnArr = *reinterpret_cast<void***>(dlg + 0x20);
     size_t btnCap = *reinterpret_cast<size_t*>(dlg + 0x30);
@@ -1702,9 +1725,11 @@ void SyncNativeFindDialogState() {
         *reinterpret_cast<int32_t*>(g_mapFindDialog + 0x8a0) = -1;
         *reinterpret_cast<int32_t*>(g_mapFindDialog + 0x8a4) = 0;
 
-        std::snprintf(g_hintLineBuf, sizeof(g_hintLineBuf),
-                      "Type to search  |  F2: Filters [%s]",
-                      g_findRespectFilters ? "ON" : "OFF");
+        char filters[96]{};
+        std::snprintf(filters, sizeof(filters), umm_lang::T(umm_lang::Str::FiltersFmt),
+                      umm_lang::T(g_findRespectFilters ? umm_lang::Str::On : umm_lang::Str::Off));
+        std::snprintf(g_hintLineBuf, sizeof(g_hintLineBuf), "%s  |  %s",
+                      umm_lang::T(umm_lang::Str::TypeToSearch), filters);
         *reinterpret_cast<UiText*>(g_mapFindDialog + 0x878) = MakeRuntimeUiText(g_hintLineBuf);
         return;
     }
@@ -1734,34 +1759,21 @@ void SyncNativeFindDialogState() {
     *reinterpret_cast<int32_t*>(g_mapFindDialog + 0x894) = visCount;
     *reinterpret_cast<int32_t*>(g_mapFindDialog + 0x898) = totalRows;
 
-    if (g_findRespectFilters) {
-        if (g_findFilteredOutCount > 0) {
-            std::snprintf(g_hintLineBuf, sizeof(g_hintLineBuf),
-                          "%zu match%s (%d hidden)  |  F2: Filters [ON]",
-                          g_findMatchedPlaces.size(),
-                          (g_findMatchedPlaces.size() == 1) ? "" : "es",
-                          g_findFilteredOutCount);
-        } else {
-            std::snprintf(g_hintLineBuf, sizeof(g_hintLineBuf),
-                          "%zu match%s  |  F2: Filters [ON]",
-                          g_findMatchedPlaces.size(),
-                          (g_findMatchedPlaces.size() == 1) ? "" : "es");
-        }
-    } else {
-        std::snprintf(g_hintLineBuf, sizeof(g_hintLineBuf),
-                      "%zu match%s  |  F2: Filters [OFF]",
-                      g_findMatchedPlaces.size(),
-                      (g_findMatchedPlaces.size() == 1) ? "" : "es");
+    // "12 matches (3 hidden)  |  F2: Filters [ON]", in the current language
+    char hidden[64]{};
+    if (g_findRespectFilters && g_findFilteredOutCount > 0) {
+        std::snprintf(hidden, sizeof(hidden), umm_lang::T(umm_lang::Str::HiddenFmt), g_findFilteredOutCount);
     }
+    char filters[96]{};
+    std::snprintf(filters, sizeof(filters), umm_lang::T(umm_lang::Str::FiltersFmt),
+                  umm_lang::T(g_findRespectFilters ? umm_lang::Str::On : umm_lang::Str::Off));
+    std::snprintf(g_hintLineBuf, sizeof(g_hintLineBuf), "%s%s  |  %s",
+                  umm_lang::FormatMatches(g_findMatchedPlaces.size()).c_str(), hidden, filters);
     *reinterpret_cast<UiText*>(g_mapFindDialog + 0x878) = MakeRuntimeUiText(g_hintLineBuf);
 }
 
 std::string ToLowerAscii(const std::string& s) {
-    std::string out = s;
-    for (char& c : out) {
-        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-    }
-    return out;
+    return umm_lang::ToLowerUtf8(s); // any script, not only A-Z, so non-English searches match
 }
 
 uint32_t NormalizeFilterTypeHash(uint32_t rawHash) {
@@ -1779,16 +1791,16 @@ const char* GetTypeLabelForHash(uint32_t filterHash) {
     for (const auto& grp : kCategoryGroups) {
         for (size_t r = 0; r < grp.rowCount; ++r) {
             if (grp.rows[r].typeHash == filterHash) {
-                return grp.rows[r].label;
+                return umm_lang::T(grp.rows[r].text);
             }
         }
     }
     for (size_t p = 0; p < 10; ++p) {
         if (kCustomPinHashes[p] == filterHash) {
-            return "Custom Pin";
+            return umm_lang::T(umm_lang::Str::CustomPin);
         }
     }
-    return "Map Location";
+    return umm_lang::T(umm_lang::Str::MapLocation);
 }
 
 bool GetHudPlayerWorldPos(uint8_t* client, float& outX, float& outZ);
@@ -1814,7 +1826,7 @@ void GetPlayerOrMapCenterWorldPos(uint8_t* mapState, float& outX, float& outZ) {
 }
 
 std::string CleanMarkerTitle(const char* rawUtf8, size_t rawLen, const char* fallbackLabel) {
-    if (!rawUtf8 || rawLen == 0) return fallbackLabel ? fallbackLabel : "Map Location";
+    if (!rawUtf8 || rawLen == 0) return fallbackLabel ? fallbackLabel : umm_lang::T(umm_lang::Str::MapLocation);
     std::string s(rawUtf8, std::min<size_t>(rawLen, 160));
     // Strip trailing " is Ready" if present on Ancient Spire titles
     const std::string kReadySuffix = " is Ready";
@@ -1825,7 +1837,17 @@ std::string CleanMarkerTitle(const char* rawUtf8, size_t rawLen, const char* fal
     while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r' || s.back() == '\n')) {
         s.pop_back();
     }
-    return s.empty() ? (fallbackLabel ? fallbackLabel : "Map Location") : s;
+    return s.empty() ? (fallbackLabel ? fallbackLabel : umm_lang::T(umm_lang::Str::MapLocation)) : s;
+}
+
+// The English row label for a filter type (the panel shows the translated one).
+const char* GetEnglishTypeLabelForHash(uint32_t filterHash) {
+    for (const auto& grp : kCategoryGroups) {
+        for (size_t r = 0; r < grp.rowCount; ++r) {
+            if (grp.rows[r].typeHash == filterHash) return grp.rows[r].label;
+        }
+    }
+    return nullptr;
 }
 
 int ComputeNameMatchTier(const std::string& queryLower, const std::string& titleLower, const std::string& typeLower) {
@@ -1888,7 +1910,11 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
     auto processCandidate = [&](float wx, float wz, uint32_t iconHash, uint32_t filterHash,
                                 bool isFilterOn, bool isLocked, const std::string& title, const char* typeLabel) {
         std::string titleLower = ToLowerAscii(title);
+        // The type in the current language, plus its English name so English searches work in any language
         std::string typeLower = ToLowerAscii(typeLabel ? typeLabel : "");
+        if (const char* english = GetEnglishTypeLabelForHash(filterHash)) {
+            if (umm_lang::Current() != umm_lang::Lang::English) typeLower += " | " + ToLowerAscii(english);
+        }
         int tier = ComputeNameMatchTier(queryLower, titleLower, typeLower);
         if (tier < 0) return;
 
@@ -1911,7 +1937,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
         entry.isLocked = isLocked;
         entry.matchTier = tier;
         entry.title = title;
-        entry.typeLabel = typeLabel ? typeLabel : "Map Location";
+        entry.typeLabel = typeLabel ? typeLabel : umm_lang::T(umm_lang::Str::MapLocation);
         g_findMatchedPlaces.push_back(std::move(entry));
     };
 
@@ -1985,7 +2011,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
         bool isGold = (c < kGoldChestCount);
         uint32_t chestHash = isGold ? kGoldChestTypeHash : kSilverChestTypeHash;
         bool isFilterOn = isGold ? g_goldChestEnabled : g_silverChestEnabled;
-        const char* typeLabel = isGold ? "Gold Chest" : "Silver Chest";
+        const char* typeLabel = umm_lang::T(isGold ? umm_lang::Str::GoldChest : umm_lang::Str::SilverChest);
         const UiText& subTitle = GetChestSubtypeTitle(sp.subtype);
         float wx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
         float wz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
@@ -2022,9 +2048,10 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
                 }
                 std::string playerName = (namePtr && nameLen > 0 && nameLen <= 48)
                     ? std::string(namePtr, nameLen)
-                    : "Other Player";
+                    : std::string(umm_lang::T(umm_lang::Str::OtherPlayer));
                 processCandidate(ox, oz, kOtherPlayerTypeHash, kOtherPlayerTypeHash,
-                                  g_otherPlayersEnabled, false, playerName, "Other Players");
+                                  g_otherPlayersEnabled, false, playerName,
+                                  umm_lang::T(umm_lang::Str::OtherPlayers));
             }
         }
     }
@@ -2046,7 +2073,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
         allRow.isGroupRow = true;
         allRow.isToggleFilterRow = false;
         char buf[192]{};
-        std::snprintf(buf, sizeof(buf), "All Matching Places (%zu) - Zoom to fit", g_findMatchedPlaces.size());
+        std::snprintf(buf, sizeof(buf), umm_lang::T(umm_lang::Str::AllMatchingFmt), g_findMatchedPlaces.size());
         allRow.displayLine = buf;
         allRow.matchIndices.resize(g_findMatchedPlaces.size());
         for (size_t i = 0; i < g_findMatchedPlaces.size(); ++i) allRow.matchIndices[i] = i;
@@ -2064,11 +2091,8 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
             FindDisplayRow grpRow{};
             grpRow.isGroupRow = true;
             grpRow.isToggleFilterRow = false;
-            std::string shortTitle = topTitle;
-            if (shortTitle.size() > 24) {
-                shortTitle = shortTitle.substr(0, 22) + "..";
-            }
-            std::snprintf(buf, sizeof(buf), "All \"%s\" (%zu) - Zoom to fit",
+            const std::string shortTitle = umm_lang::TruncateColumns(topTitle, 24);
+            std::snprintf(buf, sizeof(buf), umm_lang::T(umm_lang::Str::AllNamedFmt),
                           shortTitle.c_str(), sameTitleIndices.size());
             grpRow.displayLine = buf;
             grpRow.matchIndices = std::move(sameTitleIndices);
@@ -2081,8 +2105,8 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
         FindDisplayRow row{};
         row.isGroupRow = false;
         row.isToggleFilterRow = false;
-        const char* lockTag = p.isLocked ? " [Locked]" : "";
-        const char* filtTag = !p.isFilterOn ? " [Hidden]" : "";
+        const char* lockTag = p.isLocked ? umm_lang::T(umm_lang::Str::LockedTag) : "";
+        const char* filtTag = !p.isFilterOn ? umm_lang::T(umm_lang::Str::HiddenTag) : "";
 
         char distBuf[32]{};
         std::snprintf(distBuf, sizeof(distBuf), " (%.0fm)", p.distMeters);
@@ -2092,17 +2116,12 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
         if (p.title != p.typeLabel && !p.typeLabel.empty()) {
             body += " - " + p.typeLabel;
         }
-        if (body.size() + distStr.size() > kMaxSingleLineChars) {
-            size_t maxBody = (kMaxSingleLineChars > distStr.size() + 2)
-                ? (kMaxSingleLineChars - distStr.size() - 2)
-                : 12;
-            if (body.size() > maxBody) {
-                body.resize(maxBody);
-                while (!body.empty() && (body.back() == ' ' || body.back() == '-')) {
-                    body.pop_back();
-                }
-                body += "..";
-            }
+        // Counted in columns, not bytes (a CJK character is two columns and up to four bytes)
+        if (umm_lang::Columns(body) + distStr.size() > kMaxSingleLineChars) {
+            const size_t maxBody = (kMaxSingleLineChars > distStr.size() + 2)
+                ? (kMaxSingleLineChars - distStr.size())
+                : 14;
+            body = umm_lang::TruncateColumns(body, maxBody);
         }
         row.displayLine = body + distStr;
         row.matchIndices.push_back(i);
@@ -2114,8 +2133,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
         toggleRow.isGroupRow = false;
         toggleRow.isToggleFilterRow = true;
         char buf[192]{};
-        std::snprintf(buf, sizeof(buf), "0 visible (%d hidden) - F2/Enter to show",
-                      g_findFilteredOutCount);
+        std::snprintf(buf, sizeof(buf), umm_lang::T(umm_lang::Str::ZeroVisibleFmt), g_findFilteredOutCount);
         toggleRow.displayLine = buf;
         g_findDisplayRows.push_back(std::move(toggleRow));
     }
@@ -2402,6 +2420,124 @@ void DrawPulsingMapHighlights(void* widgetRaw, const float* rootRect, uint8_t* m
 
 void LoadMinimapConfig();
 
+// The game's own name for a marker type, in the game's language (its name GUID at +0 -> loca id ->
+// text). Only a few types have one (Ancient Spire, Flame Altar, Water Source, Fast Travel Point).
+bool ReadGameMarkerTypeNameInner(uint32_t typeHash, char* out, size_t cap) {
+    uint8_t* client = GetUiClient();
+    if (!client || !g_getMarkerType || !g_locaIdToText) return false;
+    void* mgr = *reinterpret_cast<void**>(client + 0x4667f0);
+    if (!mgr) return false;
+    const uint8_t* type = g_getMarkerType(typeHash, mgr);
+    if (!type) return false;
+    static const uint8_t kNoGuid[16]{};
+    if (std::memcmp(type, kNoGuid, 16) == 0) return false;
+    UiText text{};
+    g_locaIdToText(&text, GuidToLocaId(type));
+    if (!text.utf8 || text.len == 0 || text.len >= cap) return false;
+    std::memcpy(out, text.utf8, text.len);
+    out[text.len] = '\0';
+    return true;
+}
+
+bool ReadGameMarkerTypeName(uint32_t typeHash, char* out, size_t cap) {
+    __try {
+        return ReadGameMarkerTypeNameInner(typeHash, out, cap);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
+// What a marker row is called in the panel. Rows whose game name is exactly the row's meaning use
+// the game's official translation while the mod follows the game's language; every other row (and
+// a language set in the ini, which the game's text would not match) uses the mod's translation.
+const char* RowText(const MarkerRowSpec& row) {
+    struct GameName {
+        uint32_t typeHash;
+        char text[96];
+        int state; // 0 not tried, 1 have it, 2 none
+    };
+    static GameName names[] = {{0xa17072beu, {}, 0}, {0x4293eae5u, {}, 0}, {0x1095684eu, {}, 0}};
+    if (umm_lang::FollowsGame() && umm_lang::Current() != umm_lang::Lang::English) {
+        for (auto& name : names) {
+            if (name.typeHash != row.typeHash) continue;
+            if (name.state == 0 && GetUiClient()) {
+                name.state = ReadGameMarkerTypeName(name.typeHash, name.text, sizeof(name.text)) ? 1 : 2;
+            }
+            if (name.state == 1) return name.text;
+        }
+    }
+    return umm_lang::T(row.text);
+}
+
+// The map key's widths for the current language. English keeps the values measured in game; other
+// languages size each part from its text (umm_lang::TextWidth) and widen the panel to fit, up to
+// kMaxPanelW, so a long German or Russian label does not run out of its button.
+struct PanelLayout {
+    float panelW = 432.0f;
+    float findBtnW = 150.0f;
+    float findTextW = 56.0f; // the "FIND" part of the find button
+    bool showShortcut = true; // "Shift+F" inside the find button
+    float fogLabelW = 56.0f; // "FOG:" plus its gap; the buttons start after it
+    float fogBtnW[3] = {121.0f, 93.0f, 136.0f};
+};
+
+const PanelLayout& CurrentPanelLayout() {
+    using umm_lang::Str;
+    using umm_lang::TextWidth;
+    using umm_lang::T;
+    static PanelLayout layout;
+    static int builtFor = -1;
+    const int lang = static_cast<int>(umm_lang::Current());
+    if (builtFor == lang) return layout;
+    builtFor = lang;
+    layout = PanelLayout{};
+    if (umm_lang::Current() == umm_lang::Lang::English) return layout;
+
+    constexpr float kMinPanelW = 432.0f;
+    constexpr float kMaxPanelW = 600.0f;
+    constexpr float kShortcutW = 72.0f; // "Shift+F"
+    const float badgeW = OnOffBadgeWidth();
+
+    layout.findTextW = TextWidth(T(Str::Find)) + 8.0f;
+    layout.findBtnW = 10.0f + layout.findTextW + 4.0f + kShortcutW + 10.0f;
+    const float titleW = TextWidth(T(Str::MapKeyTitle));
+    float need = 12.0f + titleW + 12.0f + layout.findBtnW + 6.0f + 36.0f + 8.0f;
+
+    const float showHideW = std::max(TextWidth(T(Str::ShowAll)), TextWidth(T(Str::HideAll))) + 28.0f;
+    need = std::max(need, 2.0f * showHideW + 22.0f);
+
+    layout.fogLabelW = TextWidth(T(Str::Fog)) + 14.0f;
+    const Str fogStr[3] = {Str::FogExplored, Str::FogHybrid, Str::FogRevealAll};
+    float fogW = 10.0f + layout.fogLabelW;
+    for (int i = 0; i < 3; ++i) {
+        layout.fogBtnW[i] = TextWidth(T(fogStr[i])) + 18.0f;
+        fogW += layout.fogBtnW[i] + 4.0f;
+    }
+    need = std::max(need, fogW + 4.0f);
+
+    for (const auto& grp : kCategoryGroups) {
+        need = std::max(need, 36.0f + TextWidth(T(grp.title)) + badgeW + 30.0f);
+        for (size_t r = 0; r < grp.rowCount; ++r) {
+            // the row's label plus a count like " (1032)"
+            need = std::max(need, 52.0f + TextWidth(RowText(grp.rows[r])) + 55.0f + badgeW + 22.0f);
+        }
+    }
+    layout.panelW = std::min(kMaxPanelW, std::max(kMinPanelW, need));
+
+    // Still too narrow for the title and the whole find button: drop "Shift+F" from the button.
+    if (12.0f + titleW + 12.0f + layout.findBtnW + 50.0f > layout.panelW) {
+        layout.showShortcut = false;
+        layout.findBtnW = layout.findTextW + 20.0f;
+    }
+    // The fog buttons share any room the panel cannot give them.
+    const float fogRoom = layout.panelW - 8.0f - (10.0f + layout.fogLabelW) - 8.0f;
+    const float fogSum = layout.fogBtnW[0] + layout.fogBtnW[1] + layout.fogBtnW[2];
+    if (fogSum > fogRoom) {
+        for (float& w : layout.fogBtnW) w *= fogRoom / fogSum;
+    }
+    return layout;
+}
+
 void DrawMapKeyOverlay(void* mapStateVoid) {
     auto* client = GetUiClient();
     auto* mapState = static_cast<uint8_t*>(mapStateVoid);
@@ -2440,9 +2576,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         EnsureFindDialogResolved();
         if (!g_mapFindDialog) {
             if (g_findCreateDialog) {
-                g_mapFindDialog = g_findCreateDialog("Find", "Find");
+                g_mapFindDialog = g_findCreateDialog(umm_lang::T(umm_lang::Str::FindTitle), umm_lang::T(umm_lang::Str::FindTitle));
             } else {
-                g_mapFindDialog = CreateNativeFindDialogFallback("Find", "Find");
+                g_mapFindDialog = CreateNativeFindDialogFallback(umm_lang::T(umm_lang::Str::FindTitle), umm_lang::T(umm_lang::Str::FindTitle));
             }
         }
         if (!g_mapFindDialog) return;
@@ -2522,31 +2658,43 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             return haveCursor && mx >= absX && mx <= absX + rw && my >= absY && my <= absY + rh;
         };
 
-        constexpr float kPanelW = 432.0f;
+        const PanelLayout& lay = CurrentPanelLayout();
+        const float kPanelW = lay.panelW;
         constexpr float kTitleBarH = 30.0f;
         constexpr float kActionBarH = 25.0f;
         constexpr float kFogBarH = 25.0f;
-        constexpr float kCatRowH = 23.0f;
-        constexpr float kItemRowH = 20.0f;
+        const float kCatRowH = umm_lang::TallScript() ? 24.0f : 23.0f;
         constexpr float kPinRowH = 28.0f;
         const float panelX = rootRect[0] + rootW - kPanelW - 24.0f;
         const float panelY = rootRect[1] + 104.0f;
 
-        float totalH = kTitleBarH + 6.0f;
-        if (!g_panelCollapsed) {
-            totalH += kActionBarH + kFogBarH + 12.0f;
-            for (size_t c = 0; c < 5; ++c) {
-                totalH += kCatRowH + 2.0f;
-                if (!g_categoryCollapsed[c]) {
-                    if (kCategoryGroups[c].category == 4) {
-                        totalH += kPinRowH + 4.0f;
-                    } else {
-                        totalH += kCategoryGroups[c].rowCount * kItemRowH + 4.0f;
+        auto panelHeight = [&](float itemRowH) {
+            float h = kTitleBarH + 6.0f;
+            if (!g_panelCollapsed) {
+                h += kActionBarH + kFogBarH + 12.0f;
+                for (size_t c = 0; c < 5; ++c) {
+                    h += kCatRowH + 2.0f;
+                    if (!g_categoryCollapsed[c]) {
+                        if (kCategoryGroups[c].category == 4) {
+                            h += kPinRowH + 4.0f;
+                        } else {
+                            h += kCategoryGroups[c].rowCount * itemRowH + 4.0f;
+                        }
                     }
                 }
+                h += 6.0f;
             }
-            totalH += 6.0f;
+            return h;
+        };
+        // Japanese, Korean, Chinese and Thai rows get a little more height, but never so much that the
+        // panel reaches the game's key hints along the bottom of the map.
+        float kItemRowH = 20.0f;
+        if (umm_lang::TallScript()) {
+            const float maxH = rootH - 104.0f - 72.0f;
+            kItemRowH = 22.0f;
+            while (kItemRowH > 20.0f && panelHeight(kItemRowH) > maxH) kItemRowH -= 0.5f;
         }
+        const float totalH = panelHeight(kItemRowH);
 
         // Block map & map marker hover/click interaction behind the panel or when Find dialog is open
         const bool panelHovered = !g_findDialogOpen && isHovered(panelX, panelY, kPanelW, totalH);
@@ -2597,11 +2745,12 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 kGold, 0.22f, 10.0f);
 
             // Row 1: Title + [FIND (Shift+F)] Button + Collapse Button [ - / + ]
-            DrawLabelAbs(panelX + 12.0f, panelY, kPanelW - 196.0f, kTitleBarH,
-                "MAP KEY & FILTERS", kTitle, 1.0f, TextAlignH::Left, TextAlignV::Center);
+            // Wide enough for "FIND  Shift+F" at the game's text size (in English 150, 50 from the
+            // right edge to leave room for the collapse button)
+            const float btnFindW = lay.findBtnW, btnFindX = kPanelW - 50.0f - btnFindW, btnFindY = 4.0f, btnFindH = 22.0f;
+            DrawLabelAbs(panelX + 12.0f, panelY, btnFindX - 16.0f, kTitleBarH,
+                umm_lang::T(umm_lang::Str::MapKeyTitle), kTitle, 1.0f, TextAlignH::Left, TextAlignV::Center);
 
-            // Wide enough for "FIND  Shift+F" at the game's text size
-            const float btnFindX = kPanelW - 200.0f, btnFindY = 4.0f, btnFindW = 150.0f, btnFindH = 22.0f;
             bool hovFindBtn = !g_findDialogOpen && isHovered(panelX + btnFindX, panelY + btnFindY, btnFindW, btnFindH);
             DrawKeyButtonAbs(anchor.raw, panelX + btnFindX, panelY + btnFindY, btnFindW, btnFindH, hovFindBtn, g_findDialogOpen);
             {
@@ -2610,10 +2759,14 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 const bool lit = g_findDialogOpen || hovFindBtn;
                 const float bx = panelX + btnFindX, by = panelY + btnFindY;
                 // At the game's text size "FIND" is ~47 units wide and "Shift+F" ~72: one at each end
-                DrawLabelAbs(bx + 10.0f, by, 56.0f, btnFindH,
-                    "FIND", lit ? kActiveText : kText, 0.96f, TextAlignH::Left, TextAlignV::Center);
-                DrawLabelAbs(bx + 66.0f, by, btnFindW - 76.0f, btnFindH,
-                    "Shift+F", lit ? kTitle : 0xff6fa9c2u, lit ? 0.98f : 0.9f, TextAlignH::Right, TextAlignV::Center); // #c2a96f
+                DrawLabelAbs(bx + 10.0f, by, lay.showShortcut ? lay.findTextW : btnFindW - 20.0f, btnFindH,
+                    umm_lang::T(umm_lang::Str::Find), lit ? kActiveText : kText, 0.96f,
+                    lay.showShortcut ? TextAlignH::Left : TextAlignH::Center, TextAlignV::Center);
+                if (lay.showShortcut) {
+                    const float sx = bx + 10.0f + lay.findTextW;
+                    DrawLabelAbs(sx, by, bx + btnFindW - 10.0f - sx, btnFindH,
+                        "Shift+F", lit ? kTitle : 0xff6fa9c2u, lit ? 0.98f : 0.9f, TextAlignH::Right, TextAlignV::Center); // #c2a96f
+                }
             }
             if (clicked && hovFindBtn) {
                 openFindDialog();
@@ -2639,7 +2792,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 bool hovAllOn = isHovered(panelX + btnOnX, panelY + actionY, btnW, actionBtnH);
                 DrawKeyButtonAbs(anchor.raw, panelX + btnOnX, panelY + actionY, btnW, actionBtnH, hovAllOn, false);
                 DrawLabelAbs(panelX + btnOnX, panelY + actionY, btnW, actionBtnH,
-                    "SHOW ALL", hovAllOn ? kActiveText : kText, hovAllOn ? 1.0f : 0.92f,
+                    umm_lang::T(umm_lang::Str::ShowAll), hovAllOn ? kActiveText : kText, hovAllOn ? 1.0f : 0.92f,
                     TextAlignH::Center, TextAlignV::Center);
                 if (clicked && hovAllOn) {
                     SetAllFiltersState(client, mapState, true);
@@ -2649,7 +2802,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 bool hovAllOff = isHovered(panelX + btnOffX, panelY + actionY, btnW, actionBtnH);
                 DrawKeyButtonAbs(anchor.raw, panelX + btnOffX, panelY + actionY, btnW, actionBtnH, hovAllOff, false);
                 DrawLabelAbs(panelX + btnOffX, panelY + actionY, btnW, actionBtnH,
-                    "HIDE ALL", hovAllOff ? kActiveText : kText, hovAllOff ? 1.0f : 0.92f,
+                    umm_lang::T(umm_lang::Str::HideAll), hovAllOff ? kActiveText : kText, hovAllOff ? 1.0f : 0.92f,
                     TextAlignH::Center, TextAlignV::Center);
                 if (clicked && hovAllOff) {
                     SetAllFiltersState(client, mapState, false);
@@ -2658,32 +2811,31 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 // Row 2b: Fog of War / Map Reveal Mode Selector (EXPLORED | HYBRID | REVEAL ALL)
                 const float fogY = actionY + kActionBarH + 2.0f;
                 const float fogBtnH = kFogBarH - 2.0f;
-                DrawLabelAbs(panelX + 10.0f, panelY + fogY, 50.0f, fogBtnH,
-                    "FOG:", kTextMuted, 0.95f, TextAlignH::Left, TextAlignV::Center);
+                DrawLabelAbs(panelX + 10.0f, panelY + fogY, lay.fogLabelW - 6.0f, fogBtnH,
+                    umm_lang::T(umm_lang::Str::Fog), kTextMuted, 0.95f, TextAlignH::Left, TextAlignV::Center);
 
-                // Each button as wide as its label needs at the game's text size ("FOG:" ~49 units,
-                // EXPLORED ~107, HYBRID ~79, REVEAL ALL ~123), with the spare room shared out.
+                // Each button as wide as its label needs at the game's text size (in English "FOG:" ~49
+                // units, EXPLORED ~107, HYBRID ~79, REVEAL ALL ~123, with the spare room shared out).
                 struct FogModeButton {
                     FogRevealMode mode;
-                    const char* label;
-                    float width;
+                    umm_lang::Str label;
                 };
                 constexpr FogModeButton kFogBtns[3] = {
-                    { FogRevealMode::ExploredOnly, "EXPLORED",   121.0f },
-                    { FogRevealMode::Hybrid,       "HYBRID",      93.0f },
-                    { FogRevealMode::RevealAll,    "REVEAL ALL", 136.0f },
+                    { FogRevealMode::ExploredOnly, umm_lang::Str::FogExplored },
+                    { FogRevealMode::Hybrid,       umm_lang::Str::FogHybrid },
+                    { FogRevealMode::RevealAll,    umm_lang::Str::FogRevealAll },
                 };
-                const float fogBtnStartX = 66.0f;
+                const float fogBtnStartX = 10.0f + lay.fogLabelW;
                 const float fogBtnGap = 4.0f;
                 float fbx = fogBtnStartX;
                 for (int fm = 0; fm < 3; ++fm) {
-                    const float fogBtnW = kFogBtns[fm].width;
+                    const float fogBtnW = lay.fogBtnW[fm];
                     bool active = (g_fogRevealMode == kFogBtns[fm].mode);
                     bool hovFm = isHovered(panelX + fbx, panelY + fogY, fogBtnW, fogBtnH);
                     DrawKeyButtonAbs(anchor.raw, panelX + fbx, panelY + fogY, fogBtnW, fogBtnH, hovFm, active);
                     uint32_t txtCol = active ? kActiveText : (hovFm ? kText : kTextMuted);
                     DrawLabelAbs(panelX + fbx, panelY + fogY, fogBtnW, fogBtnH - 1.0f,
-                        kFogBtns[fm].label, txtCol, active ? 1.0f : 0.85f,
+                        umm_lang::T(kFogBtns[fm].label), txtCol, active ? 1.0f : 0.85f,
                         TextAlignH::Center, TextAlignV::Center);
                     if (clicked && hovFm) {
                         ApplyFogRevealMode(kFogBtns[fm].mode);
@@ -2712,8 +2864,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     DrawLabelAbs(panelX + 12.0f, panelY + curY, 22.0f, kCatRowH,
                         g_categoryCollapsed[c] ? "+" : "-", hovCatCollapse ? kActiveText : kGold, 1.0f,
                         TextAlignH::Center, TextAlignV::Center);
-                    DrawLabelAbs(panelX + 36.0f, panelY + curY, kPanelW - 114.0f, kCatRowH,
-                        grp.title, catOn ? kTitle : 0xff948c88u, 1.0f,
+                    DrawLabelAbs(panelX + 36.0f, panelY + curY, kPanelW - 64.0f - OnOffBadgeWidth(), kCatRowH,
+                        umm_lang::T(grp.title), catOn ? kTitle : 0xff948c88u, 1.0f,
                         TextAlignH::Left, TextAlignV::Center);
 
                     DrawOnOffBadgeAbs(anchor.raw, panelX + kPanelW - 14.0f, panelY + curY, kCatRowH, catOn);
@@ -2803,17 +2955,17 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                     iconTint, rowOn ? 1.0f : 0.40f, rowOn ? 1.15f : 0.7f);
                             }
 
-                            char rowText[96]{};
+                            char rowText[192]{};
                             if (count > 0) {
-                                std::snprintf(rowText, sizeof(rowText), "%s (%d)", rowSpec.label, count);
+                                std::snprintf(rowText, sizeof(rowText), "%s (%d)", RowText(rowSpec), count);
                             } else {
-                                std::snprintf(rowText, sizeof(rowText), "%s", rowSpec.label);
+                                std::snprintf(rowText, sizeof(rowText), "%s", RowText(rowSpec));
                             }
                             uint32_t textCol = rowOn ? 0xffd6e6eeu : kOffText; // #eee6d6 parchment
                             if (rowOn && rowSpec.typeHash == kGoldChestTypeHash) {
                                 textCol = 0xff78dcffu;
                             }
-                            DrawLabelAbs(panelX + 52.0f, panelY + curY, kPanelW - 110.0f, kItemRowH,
+                            DrawLabelAbs(panelX + 52.0f, panelY + curY, kPanelW - 60.0f - OnOffBadgeWidth(), kItemRowH,
                                 rowText, textCol, rowOn ? 0.96f : 0.75f,
                                 TextAlignH::Left, TextAlignV::Center);
 
@@ -3278,9 +3430,24 @@ std::string GetMinimapConfigPath() {
 }
 
 void LoadMinimapConfig() {
+    // The text language: decided once Steam is up (every frame until then), then logged once.
+    static bool languageLogged = false;
+    if (!languageLogged) {
+        const std::string cfgPath = GetMinimapConfigPath();
+        umm_lang::EnsureLanguage(cfgPath.c_str());
+        if (umm_lang::Decided()) {
+            languageLogged = true;
+            if (g_log) g_log("Language: %s", umm_lang::SteamCode(umm_lang::Current()));
+        }
+    }
     if (g_minimapConfigLoaded) return;
     g_minimapConfigLoaded = true;
     std::string cfg = GetMinimapConfigPath();
+    // Show the setting in the file: Language=auto follows the game, or a Steam code such as german
+    char language[32]{};
+    if (GetPrivateProfileStringA("General", "Language", "", language, sizeof(language), cfg.c_str()) == 0) {
+        WritePrivateProfileStringA("General", "Language", "auto", cfg.c_str());
+    }
     int customPos = GetPrivateProfileIntA("MinimapV2", "CustomPos", 0, cfg.c_str());
     int posX = GetPrivateProfileIntA("MinimapV2", "PosX", -1, cfg.c_str());
     int posY = GetPrivateProfileIntA("MinimapV2", "PosY", -1, cfg.c_str());
@@ -3484,32 +3651,36 @@ void FormatInGameTimeOfDay(uint8_t* client, char* outText, size_t outCap, bool& 
     if (sunsetNs <= 0 || sunsetNs >= kDayNanoseconds) sunsetNs = 20LL * 3600LL * 1000000000LL;
 
     constexpr int64_t kTwilightHalfWindowNs = 45LL * 60LL * 1000000000LL; // +/- 45 in-game mins
-    const char* phaseStr = "Day";
+    const char* phaseStr = umm_lang::T(umm_lang::Str::Day);
     if (std::abs(curNs - sunriseNs) <= kTwilightHalfWindowNs) {
-        phaseStr = "Dawn";
+        phaseStr = umm_lang::T(umm_lang::Str::Dawn);
         outIsDay = true;
         outPhase = 0;
     } else if (std::abs(curNs - sunsetNs) <= kTwilightHalfWindowNs) {
-        phaseStr = "Dusk";
+        phaseStr = umm_lang::T(umm_lang::Str::Dusk);
         outIsDay = true;
         outPhase = 2;
     } else if ((curNs >= sunriseNs && curNs < sunsetNs) || isDayFlag != 0) {
         if (curNs >= sunriseNs && curNs < sunsetNs) {
-            phaseStr = "Day";
+            phaseStr = umm_lang::T(umm_lang::Str::Day);
             outIsDay = true;
             outPhase = 1;
         } else {
-            phaseStr = "Night";
+            phaseStr = umm_lang::T(umm_lang::Str::Night);
             outIsDay = false;
             outPhase = 3;
         }
     } else {
-        phaseStr = "Night";
+        phaseStr = umm_lang::T(umm_lang::Str::Night);
         outIsDay = false;
         outPhase = 3;
     }
 
-    std::snprintf(outText, outCap, "%d:%02d %s  |  %s", hour12, minute, isPm ? "PM" : "AM", phaseStr);
+    if (umm_lang::Uses12HourClock()) {
+        std::snprintf(outText, outCap, "%d:%02d %s  |  %s", hour12, minute, isPm ? "PM" : "AM", phaseStr);
+    } else {
+        std::snprintf(outText, outCap, "%d:%02d  |  %s", hour24, minute, phaseStr);
+    }
 }
 
 struct MinimapMarkerDraw {
@@ -4237,10 +4408,14 @@ void DrawHudMinimapOverlay() {
     // ------------------------------------------------------------------------
     // 4. Draw Cardinal Directions (N, E, S, W) Inside Viewport
     // ------------------------------------------------------------------------
-    DrawLabelAbs(vcx - 12.0f, vy + 1.0f, 24.0f, 16.0f, "N", 0xFFA2EBEFu, 0.98f, TextAlignH::Center, TextAlignV::Center);
-    DrawLabelAbs(vcx - 12.0f, vy + vh - 16.0f, 24.0f, 15.0f, "S", 0xFFC8D6DFu, 0.82f, TextAlignH::Center, TextAlignV::Center);
-    DrawLabelAbs(vx + 3.0f, vcy - 8.0f, 16.0f, 16.0f, "W", 0xFFC8D6DFu, 0.82f, TextAlignH::Center, TextAlignV::Center);
-    DrawLabelAbs(vx + vw - 18.0f, vcy - 8.0f, 16.0f, 16.0f, "E", 0xFFC8D6DFu, 0.82f, TextAlignH::Center, TextAlignV::Center);
+    DrawLabelAbs(vcx - 12.0f, vy + 1.0f, 24.0f, 16.0f, umm_lang::T(umm_lang::Str::CompassN), 0xFFA2EBEFu, 0.98f, TextAlignH::Center, TextAlignV::Center);
+    DrawLabelAbs(vcx - 12.0f, vy + vh - 16.0f, 24.0f, 15.0f, umm_lang::T(umm_lang::Str::CompassS), 0xFFC8D6DFu, 0.82f, TextAlignH::Center, TextAlignV::Center);
+    // One-letter W / E in their 16-unit boxes inside the frame; two-letter ones (Ukrainian) get 24.
+    const bool wideWestEast = umm_lang::TextWidth(umm_lang::T(umm_lang::Str::CompassW)) > 18.0f;
+    DrawLabelAbs(wideWestEast ? vx - 1.0f : vx + 3.0f, vcy - 8.0f, wideWestEast ? 24.0f : 16.0f, 16.0f,
+                 umm_lang::T(umm_lang::Str::CompassW), 0xFFC8D6DFu, 0.82f, TextAlignH::Center, TextAlignV::Center);
+    DrawLabelAbs(wideWestEast ? vx + vw - 22.0f : vx + vw - 18.0f, vcy - 8.0f, wideWestEast ? 24.0f : 16.0f, 16.0f,
+                 umm_lang::T(umm_lang::Str::CompassE), 0xFFC8D6DFu, 0.82f, TextAlignH::Center, TextAlignV::Center);
 
     // Highlight resize grip when hovered or actively resizing
     if (hoverResize || g_minimapDraggingResize || shiftAltHeld) {
@@ -4296,7 +4471,8 @@ void DrawHudMinimapOverlay() {
 
     // Center Zoom Scale Badge ("Zoom: 1.0x")
     char zoomLabelBuf[48]{};
-    std::snprintf(zoomLabelBuf, sizeof(zoomLabelBuf), "Zoom: %s", kMinimapZoomLevels[g_minimapZoomIdx].label);
+    std::snprintf(zoomLabelBuf, sizeof(zoomLabelBuf), umm_lang::T(umm_lang::Str::ZoomFmt),
+                  kMinimapZoomLevels[g_minimapZoomIdx].label);
     DrawSolidRectAbs(anchor.raw, zoomBadgeX, zoomBadgeY, zoomBadgeW, btnSz, 0xFF14181Bu, 0.92f);
     DrawSolidRectAbs(anchor.raw, zoomBadgeX, zoomBadgeY, zoomBadgeW, 1.0f, 0xFF7EBEC2u, 0.78f);
     DrawSolidRectAbs(anchor.raw, zoomBadgeX, zoomBadgeY + btnSz - 1.0f, zoomBadgeW, 1.0f, 0xFF7EBEC2u, 0.78f);

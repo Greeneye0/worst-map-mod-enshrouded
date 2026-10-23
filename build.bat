@@ -23,8 +23,8 @@ if not exist bin\loader mkdir bin\loader
 if not exist build mkdir build
 
 echo Compiling unlock-map-markers.dll...
-cl /nologo /std:c++20 /O2 /EHsc /MT /LD /W4 /I "%GREENEYE_COMMON%" ^
-    src\main.cpp src\map_key_panel.cpp src\scan.cpp ^
+cl /nologo /std:c++20 /O2 /EHsc /MT /LD /W4 /utf-8 /I "%GREENEYE_COMMON%" ^
+    src\main.cpp src\map_key_panel.cpp src\scan.cpp src\lang.cpp ^
     /Fo:build\ ^
     /Fe:bin\loader\unlock-map-markers.dll ^
     /link /INCREMENTAL:NO /IMPLIB:build\unlock-map-markers.lib user32.lib psapi.lib

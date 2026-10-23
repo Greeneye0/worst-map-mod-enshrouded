@@ -13,6 +13,7 @@
 - **Find on the map** (Shift+F): type a name or a kind of place and the map moves to show the matches.
 - **Fog modes**: EXPLORED (vanilla), HYBRID (map drawn under a light fog), REVEAL ALL.
 - **HUD minimap** with a compass and the time of day: hold Shift + Alt to drag it, resize it from the bottom-right corner and zoom with the wheel. `[` and `]` zoom any time.
+- **All 15 game languages**: the mod's text follows the game's language (or `Language=` in `minimap_config.ini`). Translations are my own; corrections welcome.
 - Client only. Works in single player, hosted games and on any server, with nothing installed on the server.
 
 Download and install instructions: [Nexus Mods page](https://www.nexusmods.com/enshrouded/mods/220). The player-facing readme is [dist/README.txt](dist/README.txt).
@@ -31,6 +32,7 @@ The mod runs through the Greeneye Loader (API 2, `src/greeneye.h`). All hooks go
 
 - `src/main.cpp`: start-up, byte patches (`src/patches.h`) that send every marker to the map UI.
 - `src/map_key_panel.cpp`: the panel, Find, fog modes and the minimap.
+- `src/lang.cpp`: the mod's text in every language, language detection (Steam's game language) and text widths.
 - `src/chest_spawns.h`, `src/minimap_frame_spans.h`: chest spawn table and the minimap frame art.
 
 ## License
