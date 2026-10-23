@@ -1,7 +1,5 @@
 # In Game Map Markers and Mini Map — The Worst Map Mod (Enshrouded)
 
-It's the best map mod. The name is the joke.
-
 ![The Worst Map Mod](dist/nexus/images/00-header.jpg)
 
 ![The world map with every marker and the Map Key & Filters panel](dist/nexus/images/01-full-map.jpg)

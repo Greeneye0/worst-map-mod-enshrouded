@@ -1,8 +1,6 @@
 IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.0.0
 =========================================================================================
 
-(It's the best map mod. The name is the joke.)
-
 Every marker on the world map, a Map Key & Filters panel, Find on the map, three fog modes
 and a minimap on your HUD.
 
