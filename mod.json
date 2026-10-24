@@ -1,7 +1,7 @@
 {
     "id": "unlock-map-markers",
     "name": "The Worst Map Mod",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "dll": "unlock-map-markers.dll",
     "side": "client",
     "api": 2,

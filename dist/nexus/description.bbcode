@@ -6,10 +6,12 @@
 
 [list]
 [*][b]Every marker on the world map[/b]: spires, altars, sanctums, vaults, lairs, towns, camps, mines, caves, garrisons, quests, lore rumors, graves, and all 448 gold and 1032 silver chests.
-[*][b]A Map Key & Filters panel[/b] built from the game's own UI art: an icon, a count and an ON/OFF switch for every marker type, whole categories at a click, SHOW ALL / HIDE ALL and filters for your custom pins.
+[*][b]A Map Key & Filters panel[/b] built from the game's own UI art: an icon, a count and an ON/OFF switch for every marker type, whole categories at a click, completed quests and filters for your custom pins.
 [*][b]Find on the map[/b]: press [b]Shift+F[/b], type a name or a kind of place, and the map moves to show it.
-[*][b]Three fog modes[/b]: the game's own fog, a light fog over a fully drawn map, or no fog at all.
-[*][b]A minimap on your HUD[/b] that you can move, resize and zoom.
+[*][b]Fog and pin modes[/b]: the game's own fog, a light fog over a fully drawn map, or no fog; and pins only where you've been, grayed out in unexplored land, or all of them.
+[*][b]Looted chests[/b]: open a chest and it's hidden or grayed out with a check mark, until it comes back.
+
+[*][b]A minimap on your HUD[/b] with the map's terrain, the time of day or the weather, and other players, that you can move, resize and zoom.
 [*][b]All 15 game languages[/b]: the mod's text follows the game's language.
 [*][b]Client only[/b]: works in single player, hosted games and on any dedicated server. Nothing goes on the server, and other players don't need it.
 [/list]
@@ -26,9 +28,9 @@
 [*][b]Every gold and silver chest in the world is included[/b]: all 448 gold chests and 1032 silver chests have their own rows in the filter, so you can show just the chests you're hunting.
 [*]Click a row to show or hide that marker type.
 [*]Click a category header to switch the whole category; [b]+ / -[/b] folds it.
-[*][b]SHOW ALL / HIDE ALL[/b] switch everything at once.
+[*][b]COMPLETED QUESTS[/b] (off at first) shows the quests you've finished; Main Quest and Side Quest show the ones you're on.
 [*][b]CUSTOM PINS[/b]: click a pin icon to show or hide your own pins of that kind.
-[*][b]Tab[/b] (or the - button at the top) folds the panel away.
+[*][b]Tab[/b] (or the - button at the top) folds the panel away. The [b]cog[/b] opens Settings.
 [/list]
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792777143-1153363650.jpg[/img][/center]
@@ -51,17 +53,30 @@ On the world map, press [b]Shift+F[/b] or click [b]FIND[/b]. Type a name or a ki
 
 [line]
 
-[size=4][b]Fog[/b][/size]
+[size=4][b]Settings[/b][/size]
 
-[center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792776530-1879058298.jpg[/img][/center]
+[center][img]UPLOAD:05-settings.jpg[/img][/center]
 
-The [b]FOG:[/b] row on the panel:
+The [b]cog[/b] on the Map Key (and the one under the minimap) opens Settings:
 [list]
-[*][b]EXPLORED[/b]: the game's own fog. You only see where you've been.
-[*][b]HYBRID[/b]: the whole map is drawn, and unexplored land sits under a light fog.
-[*][b]REVEAL ALL[/b]: no fog at all.
+[*][b]SHOW ALL / HIDE ALL[/b] switch every marker type at once.
+[*][b]FOG:[/b] [b]EXPLORED[/b] is the game's own fog, [b]HYBRID[/b] draws the whole map with unexplored land under a light fog, [b]REVEAL ALL[/b] has no fog.
+[*][b]PINS:[/b] [b]EXPLORED[/b] shows pins only where you've been, [b]HYBRID[/b] grays out pins in unexplored land, [b]REVEAL ALL[/b] shows every pin.
+[*][b]Custom Marker Size[/b]: the size of your own pins.
+[*][b]Show Minimap[/b], [b]Minimap Terrain[/b] and [b]Minimap Icon[/b] (sun/moon or weather).
+[*][b]Looted Chests[/b]: hide them or gray them out.
 [/list]
-The mode is remembered.
+Everything is remembered.
+
+[line]
+
+[size=4][b]Looted chests[/b][/size]
+
+[center][img]UPLOAD:11-looted-chests.jpg[/img][/center]
+
+Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check mark. On the world map, [b]Ctrl + left click[/b] a chest to mark it or clear the mark. A looted chest comes back after 30 minutes of play unless it's in a Flame Altar's build zone. Looted chests are saved per world.
+
+If you open chests with another key than E, set [i]InteractKey=[/i] under [i][Chests][/i] in [i]minimap_config.ini[/i]; [i]RespawnMinutes=[/i] is there too.
 
 [line]
 
@@ -69,7 +84,7 @@ The mode is remembered.
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792776532-1239715886.jpg[/img][/center]
 
-A minimap on your HUD with a compass, the time of day and its zoom level, placed under the Journal [J] tab at first.
+A minimap on your HUD with the World Map's terrain, a compass, the time of day (or the weather) and its zoom level, placed under the Journal [J] tab at first. Cleared places and looted chests show a check mark.
 
 [b]Hold Shift + Alt[/b] to set it up. The mouse cursor appears and the camera stops turning, so you won't swing your view or attack. While you hold them:
 [list]
@@ -78,7 +93,7 @@ A minimap on your HUD with a compass, the time of day and its zoom level, placed
 [*][b]Mouse wheel[/b] zooms.
 [*][b]Double-click the star at the top[/b] to put it back in its default place.
 [/list]
-Zoom any time with [b][[/b] and [b]][/b] (or numpad - and +), or with the - / + buttons under the minimap. [b]Other Players[/b] in the panel shows other players on the map and the minimap. Position, size and zoom are saved for next time.
+Zoom any time with [b][[/b] and [b]][/b] (or numpad - and +), or with the - / + buttons under the minimap; the [b]cog[/b] next to them opens Settings. [b]Other Players[/b] in the panel shows other players on the map, and on the minimap as colored arrows that point where they're heading. Position, size and zoom are saved for next time.
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792776534-363048547.jpg[/img][/center]
 
@@ -136,6 +151,18 @@ If something doesn't work, please post these files with your report. Both are in
 [line]
 
 [size=4][b]Changelog[/b][/size]
+
+[b]1.2.0[/b]
+[list]
+[*][b]Settings[/b] (the cog on the Map Key, and under the minimap): Show All / Hide All, fog, the new pin modes, custom marker size, minimap on or off, minimap terrain, sun/moon or weather, and looted chests hidden or grayed out.
+[*][b]Pin modes[/b]: EXPLORED shows pins only where you've been, HYBRID grays out pins in unexplored land, REVEAL ALL shows them all. Requested by dremen and KazarusKain.
+[*][b]Completed quests[/b] have their own filter (off at first), so Main Quest and Side Quest show only the quests you're on. Requested by inShaneity, KazarusKain and Deadcow67.
+[*][b]Looted chests[/b]: open a gold or silver chest and it's marked looted, hidden or grayed out with a check mark. Ctrl + left click a chest on the map to mark it or clear the mark. Chests come back after 30 minutes of play unless they're in a Flame Altar's build zone. Saved per world. Requested by inShaneity and FWSWBN.
+[*][b]Minimap[/b]: the World Map's terrain under it and check marks on cleared places (requested by inShaneity), weather in place of the sun or moon (requested by Loling91), an option to hide it (requested by FWSWBN), and other players as colored arrows that show where they're heading.
+[*][b]Custom Marker Size[/b] for your own pins. Requested by dremen.
+[*]The map's hint bar shows the mod's keys: Ctrl+click, Shift+F and Tab.
+[*]Reported bugs fixed: none.
+[/list]
 
 [b]1.1.0[/b]
 [list]

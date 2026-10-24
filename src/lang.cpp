@@ -314,7 +314,7 @@ const Row kTable[] = {
     {"Hide", "Ausblenden", "Masquer", "Nascondi", "Ocultar", "Ocultar", "Ukryj", "Скрыть", "Сховати", "Gizle",
      "非表示", "숨김", "隐藏", "隱藏", "ซ่อน"},
     // GreyedOut
-    {"Greyed Out", "Ausgegraut", "Grisé", "Oscurato", "Atenuado", "Acinzentado", "Wyszarzone", "Серый", "Сірий",
+    {"Grayed Out", "Ausgegraut", "Grisé", "Oscurato", "Atenuado", "Acinzentado", "Wyszarzone", "Серый", "Сірий",
      "Soluk", "グレー表示", "회색 표시", "变灰", "變灰", "สีเทา"},
     // WeatherClear
     {"Clear", "Klar", "Dégagé", "Sereno", "Despejado", "Limpo", "Pogodnie", "Ясно", "Ясно", "Açık",

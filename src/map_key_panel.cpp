@@ -3012,7 +3012,7 @@ const char* RowText(const MarkerRowSpec& row) {
 // languages size each part from its text (umm_lang::TextWidth) and widen the panel to fit, up to
 // kMaxPanelW, so a long German or Russian label does not run out of its button.
 struct PanelLayout {
-    float panelW = 452.0f;
+    float panelW = 470.0f; // room for the title, FIND, the cog and the fold button
     float findBtnW = 160.0f;
     float findTextW = 58.0f; // the "FIND" part of the find button
     bool showShortcut = true; // "Shift+F" inside the find button
@@ -3055,14 +3055,14 @@ void DrawGearIconAbs(void* widgetRaw, float cx, float cy, float r, uint32_t col,
 
 const PanelLayout& CurrentPanelLayout();
 
-constexpr float kSettingsCardH = 290.0f;
+constexpr float kSettingsCardH = 298.0f;
 
 float SettingsSegWidth() {
     using umm_lang::Str;
     using umm_lang::T;
     using umm_lang::TextWidth;
-    float w0 = std::max(TextWidth(T(Str::SunMoon)), TextWidth(T(Str::Weather))) + 24.0f;
-    float w1 = std::max(TextWidth(T(Str::Hide)), TextWidth(T(Str::GreyedOut))) + 24.0f;
+    float w0 = std::max(TextWidth(T(Str::SunMoon)), TextWidth(T(Str::Weather))) + 36.0f;
+    float w1 = std::max(TextWidth(T(Str::Hide)), TextWidth(T(Str::GreyedOut))) + 36.0f;
     return std::max(118.0f, std::max(w0, w1));
 }
 
@@ -3385,7 +3385,7 @@ const PanelLayout& CurrentPanelLayout() {
     layout = PanelLayout{};
     if (umm_lang::Current() == umm_lang::Lang::English) return layout;
 
-    constexpr float kMinPanelW = 452.0f;
+    constexpr float kMinPanelW = 470.0f;
     constexpr float kMaxPanelW = 600.0f;
     constexpr float kShortcutW = 84.0f; // "Shift+F"
     const float badgeW = OnOffBadgeWidth();

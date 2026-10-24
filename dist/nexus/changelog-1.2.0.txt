@@ -1,0 +1,9 @@
+1.2.0
+- Settings (the cog on the Map Key, and under the minimap): Show All / Hide All, fog, the new pin modes, custom marker size, minimap on or off, minimap terrain, sun/moon or weather, and looted chests hidden or grayed out.
+- Pin modes: EXPLORED shows pins only where you've been, HYBRID grays out pins in unexplored land, REVEAL ALL shows them all. Requested by dremen and KazarusKain.
+- Completed quests have their own filter (off at first), so Main Quest and Side Quest show only the quests you're on. Requested by inShaneity, KazarusKain and Deadcow67.
+- Looted chests: open a gold or silver chest and it's marked looted, hidden or grayed out with a check mark. Ctrl + left click a chest on the map to mark it or clear the mark. Chests come back after 30 minutes of play unless they're in a Flame Altar's build zone. Saved per world. Requested by inShaneity and FWSWBN.
+- Minimap: the World Map's terrain under it and check marks on cleared places (requested by inShaneity), weather in place of the sun or moon (requested by Loling91), an option to hide it (requested by FWSWBN), and other players as colored arrows that show where they're heading.
+- Custom Marker Size for your own pins. Requested by dremen.
+- The map's hint bar shows the mod's keys: Ctrl+click, Shift+F and Tab.
+- Reported bugs fixed: none.
