@@ -1836,6 +1836,39 @@ uint32_t GetQuestFilterHashForMarkerId(uint32_t id08, bool activeObjectiveOnly) 
     return (questCat >= 0x64ULL) ? 0xa7cadc08u : 0xc52e92e5u;
 }
 
+// The lore list FUN_140d50dd0 (IsLoreRumorMarkerId) walks: client + 0xb3d40 groups (count at +0xb3d48, 0x22f00
+// bytes each, items at +0x18 / count +0x20), items of 0x1748 bytes whose entries (0xb8 bytes, count at item +0x171c)
+// start at item +0x58 and list marker ids (16 bytes apart, count at entry +0x78). FUN_140d1fd90 reads the byte
+// 0x34 before an entry as "found": a rumor whose entry is found points at something already discovered.
+// Returns 1 found, 0 not found yet, -1 not a lore rumor id.
+int LoreRumorFound(uint8_t* client, uint32_t id08) {
+    if (!client || id08 == 0u) return -1;
+    __try {
+        const uint64_t groups = *reinterpret_cast<uint64_t*>(client + 0xb3d48);
+        uint8_t* g = *reinterpret_cast<uint8_t**>(client + 0xb3d40);
+        if (!g || groups > 64) return -1;
+        for (uint64_t gi = 0; gi < groups; ++gi) {
+            uint8_t* grp = g + gi * 0x22f00;
+            uint8_t* items = *reinterpret_cast<uint8_t**>(grp + 0x18);
+            const uint64_t nItems = *reinterpret_cast<uint64_t*>(grp + 0x20);
+            if (!items || nItems > 4096) continue;
+            for (uint64_t ii = 0; ii < nItems; ++ii) {
+                uint8_t* item = items + ii * 0x1748;
+                const uint8_t nEntries = item[0x171c];
+                for (uint8_t ei = 0; ei < nEntries; ++ei) {
+                    uint8_t* entry = item + 0x58 + static_cast<size_t>(ei) * 0xb8;
+                    const uint8_t nIds = entry[0x78];
+                    for (uint8_t k = 0; k < nIds; ++k) {
+                        if (*reinterpret_cast<uint32_t*>(entry + static_cast<size_t>(k) * 16) == id08) return entry[-0x34] != 0 ? 1 : 0;
+                    }
+                }
+            }
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    return -1;
+}
+
 // Classifies a 0xafce0c5f marker into active Main Quest (0xa7cadc08u), active Side Quest (0xc52e92e5u),
 // Completed Quests (kCompletedQuestTypeHash), Lore Rumor (0x8ba7c122u), or 0u (inactive NPC / hidden).
 uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t state34) {
@@ -1845,7 +1878,9 @@ uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t state34) {
         if (activeQ != 0u) return activeQ;
     }
     if (g_isLoreRumorMarkerId && g_isLoreRumorMarkerId(id08)) {
-        return 0x8ba7c122u;
+        // A rumor about something already found (its lore entry is found) is done: it shows with Completed Quests,
+        // as the game drops it (a found Cosmetic Item Location kept its "?")
+        return LoreRumorFound(GetUiClient(), id08) == 1 ? kCompletedQuestTypeHash : 0x8ba7c122u;
     }
     uint32_t anyQ = GetQuestFilterHashForMarkerId(id08, false);
     if (anyQ != 0u) {
@@ -2185,7 +2220,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 const bool explored = IsMarkerExplored(client, m, origHash);
                 // (Pins: EXPLORED hides those too: only what you have been near.)
                 const bool subpinRumor = !exploredOnly && !subpinQuestHash && rumorFilterOn && !explored && m[0x34] != 3 &&
-                                         g_isLoreRumorMarkerId && savedId08 != 0u && g_isLoreRumorMarkerId(savedId08);
+                                         g_isLoreRumorMarkerId && savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) &&
+                                         LoreRumorFound(client, savedId08) != 1;
                 if (subpinQuestOn || subpinRumor) {
                     applyMarkerVisibility(m, origHash, savedId08, false, true, true);
                     if (subpinRumor) addCountForHash(0x8ba7c122u);
