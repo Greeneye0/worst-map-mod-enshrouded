@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.1
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.2
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, a
@@ -80,6 +80,9 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
     REVEAL ALL   every pin.
 - Custom Marker Size   the size of your own pins.
 - Show Minimap, Minimap Terrain, Minimap Icon (sun/moon or weather).
+- Minimap Border: ORNATE or THIN (a fine line, so the map takes less room).
+- Minimap Info Bar: off hides the bar under the minimap; the cog moves to the map's
+  bottom-left corner, and [ and ] still zoom.
 - Looted Chests        hide them or gray them out.
 Everything is remembered.
 
@@ -156,6 +159,13 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.2
+- Minimap Border: Thin swaps the ornate frame for a fine line, so the map takes less room.
+  Requested by fraidnot, HadToRegister and fostot.
+- Minimap Info Bar: turn off the bar under the minimap (time, weather, zoom buttons); the cog
+  moves to the map's bottom-left corner. Requested by fostot.
+- Reported bugs fixed: none.
+
 1.3.1
 - Minimap: nearby chests above or below you get a green up or orange down arrow. Requested
   by Lomack.

@@ -362,6 +362,21 @@ const Row kTable[] = {
     // CatTrees
     {"TREES", "BÄUME", "ARBRES", "ALBERI", "ÁRBOLES", "ÁRVORES", "DRZEWA", "ДЕРЕВЬЯ", "ДЕРЕВА", "AĞAÇLAR", "木",
      "나무", "树木", "樹木", "ต้นไม้"},
+    // MinimapBorder
+    {"Minimap Border", "Minikarte Rahmen", "Bordure minicarte", "Bordo minimappa", "Borde del minimapa",
+     "Borda do minimapa", "Ramka minimapy", "Рамка миникарты", "Рамка мінімапи", "Mini Harita Çerçevesi",
+     "ミニマップの枠", "미니맵 테두리", "小地图边框", "小地圖邊框", "ขอบแผนที่ย่อ"},
+    // BorderOrnate
+    {"Ornate", "Verziert", "Ornée", "Decorato", "Ornamentado", "Ornamentada", "Ozdobna", "Узорная", "Візерункова",
+     "Süslü", "装飾", "장식", "华丽", "華麗", "ลวดลาย"},
+    // BorderThin
+    {"Thin", "Schmal", "Fine", "Sottile", "Fino", "Fina", "Cienka", "Тонкая", "Тонка", "İnce", "細い", "얇게", "细",
+     "細", "บาง"},
+    // MinimapInfoBar
+    {"Minimap Info Bar", "Minikarte Infoleiste", "Barre d'infos minicarte", "Barra info minimappa",
+     "Barra de info del minimapa", "Barra de info do minimapa", "Pasek info minimapy", "Инфопанель миникарты",
+     "Інфопанель мінімапи", "Mini Harita Bilgi Çubuğu", "ミニマップ情報バー", "미니맵 정보 표시줄", "小地图信息栏",
+     "小地圖資訊列", "แถบข้อมูลแผนที่ย่อ"},
 };
 // clang-format on
 

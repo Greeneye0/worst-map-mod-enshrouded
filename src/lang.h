@@ -29,6 +29,7 @@ enum class Str : int {
     Pins, SettingsTitle, PinSize, ShowMinimap, MinimapTerrain, ClockIcon, SunMoon, Weather,
     LootedChests, Hide, GreyedOut, WeatherClear, WeatherRain, WeatherStorm, WeatherSnow, WeatherFog,
     HintClearChest, HintToggleKey, HintFind, CtrlClick, CatMining, CatMaterials, CatPlants, CatBait, CatTrees,
+    MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar,
     Count
 };
 

@@ -17,7 +17,7 @@
 - **Map Key & Filters panel** drawn with the game's own UI pieces: icon, count and ON/OFF per marker type, whole categories, custom pin filters, completed quests, SHOW ALL / HIDE ALL. It scrolls; Tab folds it away.
 - **Two more zoom steps out** on the world map.
 - **Find on the map** (Shift+F): type a name or a kind of place and the map moves to show the matches.
-- **Settings** (the cog): fog modes (EXPLORED, HYBRID, REVEAL ALL), pin modes (pins only where you've been, grayed in unexplored land, or all), custom marker size and minimap options.
+- **Settings** (the cog): fog modes (EXPLORED, HYBRID, REVEAL ALL), pin modes (pins only where you've been, grayed in unexplored land, or all), custom marker size and minimap options (a thin border, and hiding the info bar under it).
 - **Looted chests**: opening a chest marks it (hidden or grayed with a check mark); chests come back after 30 minutes of play outside build zones. Saved per world, and shared with other players who have the mod.
 - **HUD minimap** with the World Map's terrain, a compass, the time of day or the weather, other players as colored arrows, and up/down arrows on nearby chests above or below you: hold Shift + Alt to drag it, resize it from the bottom-right corner and zoom with the wheel. `[` and `]` zoom any time.
 - **All 15 game languages**: the mod's text follows the game's language (or `Language=` in `minimap_config.ini`). Translations are my own; corrections welcome.

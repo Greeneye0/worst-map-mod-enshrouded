@@ -1,0 +1,4 @@
+1.3.2
+- Minimap Border: Thin swaps the ornate frame for a fine line, so the map takes less room. Requested by fraidnot, HadToRegister and fostot.
+- Minimap Info Bar: turn off the bar under the minimap (time, weather, zoom buttons); the cog moves to the map's bottom-left corner. Requested by fostot.
+- Reported bugs fixed: none.
