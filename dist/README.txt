@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.2
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.3
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, a
@@ -46,7 +46,7 @@ MINING, MATERIALS, PLANTS, BAIT AND TREES
 Read from the game's own world files, so every spot is where the game put it.
 - MINING: every ore deposit, 21 kinds (copper, iron, silver, gold, sulfur, salt...), 7,452 in
   all.
-- MATERIALS: farm soil, flower soil, twigs, bones, tar, toxic slime, luminous growth, ice,
+- MATERIALS: farm soil, fertilised farm soil, flower soil, twigs, bones, tar, toxic slime, luminous growth, ice,
   gold coins, archaic essence.
 - PLANTS: 30 harvestable plants, as patches.
 - BAIT: fireflies, grasshoppers, pillbugs, frogs and more.
@@ -159,6 +159,14 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.3
+- Fertilised Farm Soil has its own row under Materials (it was counted as Farm Soil).
+- Zoomed out, forests draw as merged strips and share one budget with the deposit icons, so the
+  map keeps drawing with everything on.
+- Reported bugs fixed:
+  - The game could freeze or crash on the World Map with tree types on, when forest names
+    landed on each other (reported by fostot).
+
 1.3.2
 - Minimap Border: Thin swaps the ornate frame for a fine line, so the map takes less room.
   Requested by fraidnot, HadToRegister and fostot.

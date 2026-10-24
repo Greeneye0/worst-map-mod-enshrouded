@@ -3370,16 +3370,17 @@ const char* OreName(size_t ore) {
 }
 
 // The enabled tree areas on the World Map: each forest as one filled shape, named in the bigger ones.
-void DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
+// Returns how many shapes it drew, so the deposit icons can share one budget with it.
+int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
     bool any = false;
     for (size_t o = kTreesFirst; o < kTreesFirst + kTreesCount; ++o) any = any || g_oreEnabled[o];
-    if (!widgetRaw || !mapState || !any) return;
+    if (!widgetRaw || !mapState || !any) return 0;
     uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
-    if (!mapView) return;
+    if (!mapView) return 0;
     const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
-    if (!(zoom > 0.0f)) return;
+    if (!(zoom > 0.0f)) return 0;
     const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) +
                           *reinterpret_cast<float*>(mapView + 0x17c) -
                           *reinterpret_cast<float*>(mapView + 0x1e8);
@@ -3391,20 +3392,59 @@ void DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapStat
     const float bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
     // Each forest is one filled shape in its type's colour (rectangles of 32 m cells that together trace the outline),
     // and the bigger forests carry their type's name in the map's own location-name style, like its region labels.
-    constexpr int kMaxTreeRectsPerFrame = 3000;
+    // Zoomed out, the 2,120 rectangles are each a few pixels: thousands of draws that overflow the game's UI
+    // renderer with everything else on (the map stops drawing, then the game can crash). There they are painted
+    // into a grid of kTreeGridPx screen cells and drawn as one strip per run of same-type cells in a row.
+    constexpr int kMaxTreeRectsPerFrame = 1500;
+    constexpr float kTreeGridPx = 6.0f;
     const float cellPx = static_cast<float>(kTreeShapeCellMeters) * zoom;
     int drawn = 0;
-    for (size_t i = 0; i < kTreeShapeRectCount && drawn < kMaxTreeRectsPerFrame; ++i) {
-        const TreeShapeRect& t = kTreeShapeRects[i];
-        if (!g_oreEnabled[t.ore]) continue;
-        const float x0 = originX + t.x0 * cellPx, x1 = originX + (t.x1 + 1) * cellPx;
-        const float y1 = originY + (mapWorldH - t.z0 * static_cast<float>(kTreeShapeCellMeters)) * zoom;
-        float y0 = originY + (mapWorldH - (t.z1 + 1) * static_cast<float>(kTreeShapeCellMeters)) * zoom;
-        if (x1 < left || x0 > right || y1 < top || y0 > bottom) continue;
-        y0 = std::max(y0, top);
-        if (y1 - y0 < 0.5f) continue;
-        DrawSolidRectAbs(widgetRaw, x0, y0, x1 - x0, y1 - y0, kOreAreaColors[t.ore], 0.34f);
-        ++drawn;
+    if (cellPx < kTreeGridPx) {
+        const int gw = static_cast<int>((right - left) / kTreeGridPx) + 1;
+        const int gh = static_cast<int>((bottom - top) / kTreeGridPx) + 1;
+        static std::vector<uint8_t> grid; // ore index + 1, 0 = no forest
+        grid.assign(static_cast<size_t>(gw) * gh, 0);
+        for (size_t i = 0; i < kTreeShapeRectCount; ++i) {
+            const TreeShapeRect& t = kTreeShapeRects[i];
+            if (!g_oreEnabled[t.ore]) continue;
+            const float x0 = originX + t.x0 * cellPx, x1 = originX + (t.x1 + 1) * cellPx;
+            const float y1 = originY + (mapWorldH - t.z0 * static_cast<float>(kTreeShapeCellMeters)) * zoom;
+            const float y0 = originY + (mapWorldH - (t.z1 + 1) * static_cast<float>(kTreeShapeCellMeters)) * zoom;
+            if (x1 < left || x0 > right || y1 < top || y0 > bottom) continue;
+            const int gx0 = std::max(0, static_cast<int>((x0 - left) / kTreeGridPx));
+            const int gx1 = std::min(gw - 1, static_cast<int>((x1 - left) / kTreeGridPx));
+            const int gy0 = std::max(0, static_cast<int>((y0 - top) / kTreeGridPx));
+            const int gy1 = std::min(gh - 1, static_cast<int>((y1 - top) / kTreeGridPx));
+            for (int gy = gy0; gy <= gy1; ++gy)
+                std::memset(&grid[static_cast<size_t>(gy) * gw + gx0], t.ore + 1, static_cast<size_t>(gx1 - gx0 + 1));
+        }
+        for (int gy = 0; gy < gh && drawn < kMaxTreeRectsPerFrame; ++gy) {
+            const uint8_t* row = &grid[static_cast<size_t>(gy) * gw];
+            for (int gx = 0; gx < gw && drawn < kMaxTreeRectsPerFrame;) {
+                const uint8_t v = row[gx];
+                int end = gx + 1;
+                while (end < gw && row[end] == v) ++end;
+                if (v) {
+                    DrawSolidRectAbs(widgetRaw, left + gx * kTreeGridPx, top + gy * kTreeGridPx,
+                                     (end - gx) * kTreeGridPx, kTreeGridPx, kOreAreaColors[v - 1], 0.34f);
+                    ++drawn;
+                }
+                gx = end;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < kTreeShapeRectCount && drawn < kMaxTreeRectsPerFrame; ++i) {
+            const TreeShapeRect& t = kTreeShapeRects[i];
+            if (!g_oreEnabled[t.ore]) continue;
+            const float x0 = originX + t.x0 * cellPx, x1 = originX + (t.x1 + 1) * cellPx;
+            const float y1 = originY + (mapWorldH - t.z0 * static_cast<float>(kTreeShapeCellMeters)) * zoom;
+            float y0 = originY + (mapWorldH - (t.z1 + 1) * static_cast<float>(kTreeShapeCellMeters)) * zoom;
+            if (x1 < left || x0 > right || y1 < top || y0 > bottom) continue;
+            y0 = std::max(y0, top);
+            if (y1 - y0 < 0.5f) continue;
+            DrawSolidRectAbs(widgetRaw, x0, y0, x1 - x0, y1 - y0, kOreAreaColors[t.ore], 0.34f);
+            ++drawn;
+        }
     }
     // Forests of different types can share a centre (mixed woods), so a label that would land on one already drawn
     // is stacked below it instead.
@@ -3418,13 +3458,16 @@ void DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapStat
         if (cx < left || cx > right || cy < top || cy > bottom) continue;
         const char* name = OreName(t.ore);
         const float w = umm_lang::TextWidth(name) * 1.6f + 24.0f, h = 28.0f;
-        for (bool moved = true; moved;) {
+        // The 1 px gap keeps float rounding from leaving it overlapping by a hair (that looped forever), and the
+        // pass limit is a second guard.
+        bool moved = true;
+        for (size_t pass = 0; moved && pass <= kTreeLabelCount; ++pass) {
             moved = false;
             for (size_t p = 0; p < placedCount; ++p) {
                 const float* r = placed[p];
                 if (cx - w * 0.5f < r[0] + r[2] && cx + w * 0.5f > r[0] && cy - h * 0.5f < r[1] + r[3] &&
                     cy + h * 0.5f > r[1]) {
-                    cy = r[1] + r[3] + h * 0.5f;
+                    cy = r[1] + r[3] + h * 0.5f + 1.0f;
                     moved = true;
                 }
             }
@@ -3437,12 +3480,13 @@ void DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapStat
         DrawLabelAbs(cx - w * 0.5f, cy - h * 0.5f, w, h, name, 0xffffffffu, 0.9f, TextAlignH::Center, TextAlignV::Center,
                      GetUiAssets() ? GetUiAssets() + kMapLocationNameStyleOffset : nullptr);
     }
+    return drawn;
 }
 
 // The enabled ore deposits on the world map, drawn by the mod (the game's marker arrays are far too small for
 // them). Same world -> screen mapping as the Find pulses. Hovering one names it.
 void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState,
-                          bool haveCursor, float mx, float my) {
+                          bool haveCursor, float mx, float my, int maxIcons) {
     if (!widgetRaw || !mapState || !AnyOreEnabled()) return;
     uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
     if (!mapView) return;
@@ -3467,10 +3511,9 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     size_t hovered = kOreDepositCount;
     float hoveredSx = 0.0f, hoveredSy = 0.0f;
     // Thousands of icons in one frame overflow the game's UI renderer (the map's own tiles stop drawing), so:
-    // one icon per screen cell (where they would overlap anyway), no backing disc at small sizes, and a cap.
-    // The deposits are stored ore by ore; they are visited in a scattered order (i * 7919 mod N, a permutation
+    // one icon per screen cell (where they would overlap anyway), no backing disc at small sizes, and a cap
+    // (shared with the forests). The deposits are stored ore by ore; they are visited in a scattered order (i * 7919 mod N, a permutation
     // since 7919 is prime and does not divide N) so the cap and the shared cells thin every ore alike.
-    constexpr int kMaxOreIconsPerFrame = 1500;
     const float cell = std::max(8.0f, size * 0.9f);
     const int gridW = std::max(1, static_cast<int>((right - left) / cell) + 1);
     const int gridH = std::max(1, static_cast<int>((bottom - top) / cell) + 1);
@@ -3479,7 +3522,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     const bool backing = size > 14.0f;
     int drawn = 0;
     static_assert(kOreDepositCount % 7919 != 0, "7919 must not divide the deposit count");
-    for (size_t i = 0; i < kOreDepositCount && drawn < kMaxOreIconsPerFrame; ++i) {
+    for (size_t i = 0; i < kOreDepositCount && drawn < maxIcons; ++i) {
         const size_t d = (i * 7919) % kOreDepositCount;
         const OreDeposit& dep = kOreDeposits[d];
         if (!g_oreEnabled[dep.ore] || kOreAreaColors[dep.ore] != 0) continue;
@@ -4196,8 +4239,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             return haveCursor && mx >= absX && mx <= absX + rw && my >= absY && my <= absY + rh;
         };
 
-        DrawTreeAreasOnMap(root.raw, rootRect, mapState);
-        DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my);
+        // Forests and deposits share one budget of extra draws a frame (see DrawTreeAreasOnMap)
+        const int treeDraws = DrawTreeAreasOnMap(root.raw, rootRect, mapState);
+        DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my,
+                             std::max(500, std::min(1500, 2000 - treeDraws)));
 
         const PanelLayout& lay = CurrentPanelLayout();
         const float kPanelW = lay.panelW;
@@ -5101,6 +5146,14 @@ void LoadMinimapConfig() {
     // [Mining] Ores = one 0/1 per ore, in the Map Key's order
     char ores[512]{};
     GetPrivateProfileStringA("Mining", "Ores", "", ores, sizeof(ores), cfg.c_str());
+    // 1.3.3 split Fertilised Farm Soil off Farm Soil, one row after it: an older 86-row string gets that row's bit
+    // copied from Farm Soil so every later row keeps its setting.
+    if (std::strlen(ores) == kOreCount - 1) {
+        constexpr size_t kFertilised = static_cast<size_t>(Ore::FertilisedFarmSoil);
+        static_assert(kFertilised == static_cast<size_t>(Ore::FarmSoil) + 1, "Fertilised follows Farm Soil");
+        std::memmove(ores + kFertilised + 1, ores + kFertilised, kOreCount - 1 - kFertilised + 1);
+        ores[kFertilised] = ores[kFertilised - 1];
+    }
     for (size_t o = 0; o < kOreCount; ++o) g_oreEnabled[o] = ores[o] == '1';
     char interactKey[8]{};
     GetPrivateProfileStringA("Chests", "InteractKey", "", interactKey, sizeof(interactKey), cfg.c_str());

@@ -1,0 +1,4 @@
+1.3.3
+- Fertilised Farm Soil has its own row under Materials (it was counted as Farm Soil).
+- Zoomed out, forests draw as merged strips and share one budget with the deposit icons, so the map keeps drawing with everything on.
+- Reported bugs fixed: the game could freeze or crash on the World Map with tree types on, when forest names landed on each other (reported by fostot).
