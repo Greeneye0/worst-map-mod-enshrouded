@@ -4,15 +4,21 @@
 
 ![The world map with every marker and the Map Key & Filters panel](dist/nexus/images/01-full-map.jpg)
 
+![Mining: every ore deposit](dist/nexus/images/12-mining.jpg)
+
+![Trees: forests by type](dist/nexus/images/15-trees.jpg)
+
 ![Fog modes](dist/nexus/images/05-fog-modes.jpg)
 
 ![Minimap](dist/nexus/images/06-minimap-setup.jpg)
 
 - **Every marker on the world map**: spires, altars, sanctums, vaults, lairs, towns, camps, mines, caves, garrisons, quests, lore rumors, graves, and all 448 gold and 1032 silver chests.
-- **Map Key & Filters panel** drawn with the game's own UI pieces: icon, count and ON/OFF per marker type, whole categories, custom pin filters, completed quests. Tab folds it away.
+- **Mining, Materials, Plants, Bait and Trees**: every ore deposit (21 kinds), material, plant patch and bait spot, read from the game's own world files, on the world map, the minimap and in Find; every forest drawn as a shape in its tree type's colour.
+- **Map Key & Filters panel** drawn with the game's own UI pieces: icon, count and ON/OFF per marker type, whole categories, custom pin filters, completed quests, SHOW ALL / HIDE ALL. It scrolls; Tab folds it away.
+- **Two more zoom steps out** on the world map.
 - **Find on the map** (Shift+F): type a name or a kind of place and the map moves to show the matches.
-- **Settings** (the cog): SHOW ALL / HIDE ALL, fog modes (EXPLORED, HYBRID, REVEAL ALL), pin modes (pins only where you've been, grayed in unexplored land, or all), custom marker size and minimap options.
-- **Looted chests**: opening a chest marks it (hidden or grayed with a check mark); chests come back after 30 minutes of play outside build zones. Saved per world.
+- **Settings** (the cog): fog modes (EXPLORED, HYBRID, REVEAL ALL), pin modes (pins only where you've been, grayed in unexplored land, or all), custom marker size and minimap options.
+- **Looted chests**: opening a chest marks it (hidden or grayed with a check mark); chests come back after 30 minutes of play outside build zones. Saved per world, and shared with other players who have the mod.
 - **HUD minimap** with the World Map's terrain, a compass, the time of day or the weather, and other players as colored arrows: hold Shift + Alt to drag it, resize it from the bottom-right corner and zoom with the wheel. `[` and `]` zoom any time.
 - **All 15 game languages**: the mod's text follows the game's language (or `Language=` in `minimap_config.ini`). Translations are my own; corrections welcome.
 - Client only. Works in single player, hosted games and on any server, with nothing installed on the server.

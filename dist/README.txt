@@ -1,8 +1,9 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.2.0
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.0
 =========================================================================================
 
-Every marker on the world map, a Map Key & Filters panel, Find on the map, fog and pin
-modes, looted chests and a minimap on your HUD.
+Every marker on the world map, every ore deposit, material, plant, bait spot and forest, a
+Map Key & Filters panel, Find on the map, fog and pin modes, looted chests and a minimap on
+your HUD.
 
 
 INSTALL
@@ -28,13 +29,31 @@ THE MAP KEY & FILTERS PANEL
 On the right of the world map.
 - Every marker type has a row with its icon, how many there are, and an ON/OFF switch.
   Click a row to show or hide that type.
-- Click a category header (FAST TRAVEL & ALTARS, SHROUD & VAULTS, WORLD & RESOURCES,
-  QUESTS & RUMORS) to switch the whole category, or + / - to fold it.
+- SHOW ALL / HIDE ALL at the top switch every marker type at once.
+- Click a category header (FAST TRAVEL & ALTARS, SHROUD & VAULTS, WORLD & RESOURCES, MINING,
+  MATERIALS, PLANTS, BAIT, TREES, QUESTS & RUMORS) to switch the whole category, or + / - to
+  fold it.
+- The mouse wheel or the scroll bar scrolls the list.
 - COMPLETED QUESTS (off at first) shows the quests you've finished.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
 - Every gold and silver chest in the world is included: all 448 gold and 1032 silver
   chests have their own filter rows.
+
+
+MINING, MATERIALS, PLANTS, BAIT AND TREES
+-----------------------------------------
+Read from the game's own world files, so every spot is where the game put it.
+- MINING: every ore deposit, 21 kinds (copper, iron, silver, gold, sulfur, salt...), 7,452 in
+  all.
+- MATERIALS: farm soil, flower soil, twigs, bones, tar, toxic slime, luminous growth, ice,
+  gold coins, archaic essence.
+- PLANTS: 30 harvestable plants, as patches.
+- BAIT: fireflies, grasshoppers, pillbugs, frogs and more.
+- TREES: each forest drawn as one shape in its tree type's colour, 18 types; the big ones
+  carry their name.
+Each kind has its own row, all off at first. Hover an icon on the world map for its name.
+Deposits, materials, plants and bait also show on the minimap and in Find.
 
 
 FIND ON THE MAP (Shift+F)
@@ -51,7 +70,6 @@ nothing selected) shows every match at once.
 SETTINGS
 --------
 The cog on the Map Key (and the one under the minimap) opens SETTINGS:
-- SHOW ALL / HIDE ALL switch every marker type at once.
 - FOG:
     EXPLORED     the game's own fog: you only see where you've been.
     HYBRID       the whole map is drawn, unexplored land under a light fog.
@@ -70,7 +88,8 @@ LOOTED CHESTS
 -------------
 Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check
 mark (Settings > Looted Chests). On the world map, Ctrl + left click a chest to mark it or
-clear the mark. A looted chest comes back after 30 minutes of play unless it's in a Flame
+clear the mark. Players who have the mod share their looted chests: open one and it's marked
+on their maps too. A looted chest comes back after 30 minutes of play unless it's in a Flame
 Altar's build zone. Looted chests are saved per world in
 greeneye\unlock-map-markers\looted_chests.ini. In minimap_config.ini:
     [Chests]
@@ -136,6 +155,24 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.0
+- Mining: every ore deposit in the world, 21 kinds, on the world map, the minimap and in Find,
+  each with its own row in the Map Key.
+- Materials, Plants and Bait: farm soil, twigs, tar, ice, 30 plants, fireflies, frogs and
+  more, the same way.
+- Trees: every forest drawn as a shape in its tree type's colour, with the big ones named.
+- Two more zoom steps out on the world map. Requested by HadToRegister.
+- The Map Key scrolls (mouse wheel or scroll bar), SHOW ALL / HIDE ALL are back at its top,
+  and the category bars look like the game's own.
+- Looted chests are shared: players who have the mod see the chests the others open.
+- Reported bugs fixed:
+  - Some quests and lore rumors hid under other icons (reported by Deadcow67 and
+    KazarusKain).
+  - Show on Map (F) in the Journal opened the map on the player instead of the quest
+    (reported by sandesign, Loling91 and KazarusKain).
+  - With a gamepad, the map cursor didn't move after tabbing to the map (reported by
+    Chocobostew).
+
 1.2.0
 - Settings (the cog on the Map Key, and under the minimap): Show All / Hide All, fog, the new
   pin modes, custom marker size, minimap on or off, minimap terrain, sun/moon or weather, and

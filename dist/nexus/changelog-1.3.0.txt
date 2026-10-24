@@ -1,0 +1,8 @@
+1.3.0
+- Mining: every ore deposit in the world, 21 kinds, on the world map, the minimap and in Find, each with its own row in the Map Key.
+- Materials, Plants and Bait: farm soil, twigs, tar, ice, 30 plants, fireflies, frogs and more, the same way.
+- Trees: every forest drawn as a shape in its tree type's colour, with the big ones named.
+- Two more zoom steps out on the world map. Requested by HadToRegister.
+- The Map Key scrolls (mouse wheel or scroll bar), SHOW ALL / HIDE ALL are back at its top, and the category bars look like the game's own.
+- Looted chests are shared: players who have the mod see the chests the others open.
+- Reported bugs fixed: some quests and lore rumors hid under other icons (Deadcow67, KazarusKain); Show on Map (F) in the Journal opened the map on the player (sandesign, Loling91, KazarusKain); with a gamepad, the map cursor didn't move after tabbing to the map (Chocobostew).

@@ -3404,14 +3404,34 @@ void DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapStat
         DrawSolidRectAbs(widgetRaw, x0, y0, x1 - x0, y1 - y0, kOreAreaColors[t.ore], 0.34f);
         ++drawn;
     }
+    // Forests of different types can share a centre (mixed woods), so a label that would land on one already drawn
+    // is stacked below it instead.
+    float placed[kTreeLabelCount][4];
+    size_t placedCount = 0;
     for (size_t i = 0; i < kTreeLabelCount; ++i) {
         const TreeLabel& t = kTreeLabels[i];
         if (!g_oreEnabled[t.ore]) continue;
         const float cx = originX + t.x * zoom;
-        const float cy = originY + (mapWorldH - t.z) * zoom;
+        float cy = originY + (mapWorldH - t.z) * zoom;
         if (cx < left || cx > right || cy < top || cy > bottom) continue;
         const char* name = OreName(t.ore);
         const float w = umm_lang::TextWidth(name) * 1.6f + 24.0f, h = 28.0f;
+        for (bool moved = true; moved;) {
+            moved = false;
+            for (size_t p = 0; p < placedCount; ++p) {
+                const float* r = placed[p];
+                if (cx - w * 0.5f < r[0] + r[2] && cx + w * 0.5f > r[0] && cy - h * 0.5f < r[1] + r[3] &&
+                    cy + h * 0.5f > r[1]) {
+                    cy = r[1] + r[3] + h * 0.5f;
+                    moved = true;
+                }
+            }
+        }
+        placed[placedCount][0] = cx - w * 0.5f;
+        placed[placedCount][1] = cy - h * 0.5f;
+        placed[placedCount][2] = w;
+        placed[placedCount][3] = h;
+        ++placedCount;
         DrawLabelAbs(cx - w * 0.5f, cy - h * 0.5f, w, h, name, 0xffffffffu, 0.9f, TextAlignH::Center, TextAlignV::Center,
                      GetUiAssets() ? GetUiAssets() + kMapLocationNameStyleOffset : nullptr);
     }

@@ -6,10 +6,12 @@
 
 [list]
 [*][b]Every marker on the world map[/b]: spires, altars, sanctums, vaults, lairs, towns, camps, mines, caves, garrisons, quests, lore rumors, graves, and all 448 gold and 1032 silver chests.
+[*][b]Mining, Materials, Plants, Bait and Trees[/b]: every ore deposit, material, plant patch and bait spot, read from the game's own world files, and every forest drawn in its tree type's colour.
 [*][b]A Map Key & Filters panel[/b] built from the game's own UI art: an icon, a count and an ON/OFF switch for every marker type, whole categories at a click, completed quests and filters for your custom pins.
+[*][b]Two more zoom steps out[/b] on the world map.
 [*][b]Find on the map[/b]: press [b]Shift+F[/b], type a name or a kind of place, and the map moves to show it.
 [*][b]Fog and pin modes[/b]: the game's own fog, a light fog over a fully drawn map, or no fog; and pins only where you've been, grayed out in unexplored land, or all of them.
-[*][b]Looted chests[/b]: open a chest and it's hidden or grayed out with a check mark, until it comes back.
+[*][b]Looted chests[/b]: open a chest and it's hidden or grayed out with a check mark, until it comes back. Shared with other players who have the mod.
 [*][b]A minimap on your HUD[/b] with the map's terrain, the time of day or the weather, and other players, that you can move, resize and zoom.
 [*][b]All 15 game languages[/b]: the mod's text follows the game's language.
 [*][b]Client only[/b]: works in single player, hosted games and on any dedicated server. Nothing goes on the server, and other players don't need it.
@@ -26,13 +28,37 @@
 [list]
 [*][b]Every gold and silver chest in the world is included[/b]: all 448 gold chests and 1032 silver chests have their own rows in the filter, so you can show just the chests you're hunting.
 [*]Click a row to show or hide that marker type.
+[*][b]SHOW ALL / HIDE ALL[/b] at the top switch every marker type at once.
 [*]Click a category header to switch the whole category; [b]+ / -[/b] folds it.
+[*]The mouse wheel or the scroll bar scrolls the list.
 [*][b]COMPLETED QUESTS[/b] (off at first) shows the quests you've finished; Main Quest and Side Quest show the ones you're on.
 [*][b]CUSTOM PINS[/b]: click a pin icon to show or hide your own pins of that kind.
 [*][b]Tab[/b] (or the - button at the top) folds the panel away. The [b]cog[/b] opens Settings.
 [/list]
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792845219-1053091644.jpg[/img][/center]
+
+[line]
+
+[size=4][b]Mining, Materials, Plants, Bait and Trees[/b][/size]
+
+[center][img]IMG12[/img][/center]
+
+Read from the game's own world files, so every spot is where the game put it. Each kind has its own row in the Map Key (all off at first), and hovering an icon on the world map names it.
+[list]
+[*][b]MINING[/b]: every ore deposit, 21 kinds (copper, iron, silver, gold, sulfur, salt...), 7,452 in all.
+[*][b]MATERIALS[/b]: farm soil, flower soil, twigs, bones, tar, toxic slime, luminous growth, ice, gold coins, archaic essence.
+[*][b]PLANTS[/b]: 30 harvestable plants, as patches.
+[*][b]BAIT[/b]: fireflies, grasshoppers, pillbugs, frogs and more.
+[*][b]TREES[/b]: each forest drawn as one shape in its tree type's colour, 18 types; the big ones carry their name.
+[/list]
+Deposits, materials, plants and bait also show on the minimap and in Find.
+
+[center][img]IMG13[/img][/center]
+
+[center][img]IMG14[/img][/center]
+
+[center][img]IMG15[/img][/center]
 
 [line]
 
@@ -58,7 +84,6 @@ On the world map, press [b]Shift+F[/b] or click [b]FIND[/b]. Type a name or a ki
 
 The [b]cog[/b] on the Map Key (and the one under the minimap) opens Settings:
 [list]
-[*][b]SHOW ALL / HIDE ALL[/b] switch every marker type at once.
 [*][b]FOG:[/b] [b]EXPLORED[/b] is the game's own fog, [b]HYBRID[/b] draws the whole map with unexplored land under a light fog, [b]REVEAL ALL[/b] has no fog.
 [*][b]PINS:[/b] [b]EXPLORED[/b] shows pins only where you've been, [b]HYBRID[/b] grays out pins in unexplored land, [b]REVEAL ALL[/b] shows every pin.
 [*][b]Custom Marker Size[/b]: the size of your own pins.
@@ -73,7 +98,7 @@ Everything is remembered.
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792845223-927762810.jpg[/img][/center]
 
-Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check mark. On the world map, [b]Ctrl + left click[/b] a chest to mark it or clear the mark. A looted chest comes back after 30 minutes of play unless it's in a Flame Altar's build zone. Looted chests are saved per world.
+Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check mark. On the world map, [b]Ctrl + left click[/b] a chest to mark it or clear the mark. A looted chest comes back after 30 minutes of play unless it's in a Flame Altar's build zone. Looted chests are saved per world. Players who have the mod share them: open a chest and it's marked on their maps too.
 
 If you open chests with another key than E, set [i]InteractKey=[/i] under [i][Chests][/i] in [i]minimap_config.ini[/i]; [i]RespawnMinutes=[/i] is there too.
 
@@ -150,6 +175,22 @@ If something doesn't work, please post these files with your report. Both are in
 [line]
 
 [size=4][b]Changelog[/b][/size]
+
+[b]1.3.0[/b]
+[list]
+[*][b]Mining[/b]: every ore deposit in the world, 21 kinds, on the world map, the minimap and in Find, each with its own row in the Map Key.
+[*][b]Materials, Plants and Bait[/b]: farm soil, twigs, tar, ice, 30 plants, fireflies, frogs and more, the same way.
+[*][b]Trees[/b]: every forest drawn as a shape in its tree type's colour, with the big ones named.
+[*]Two more zoom steps out on the world map. Requested by HadToRegister.
+[*]The Map Key scrolls (mouse wheel or scroll bar), SHOW ALL / HIDE ALL are back at its top, and the category bars look like the game's own.
+[*]Looted chests are shared: players who have the mod see the chests the others open.
+[*]Reported bugs fixed:
+[list]
+[*]Some quests and lore rumors hid under other icons (reported by Deadcow67 and KazarusKain).
+[*]Show on Map (F) in the Journal opened the map on the player instead of the quest (reported by sandesign, Loling91 and KazarusKain).
+[*]With a gamepad, the map cursor didn't move after tabbing to the map (reported by Chocobostew).
+[/list]
+[/list]
 
 [b]1.2.0[/b]
 [list]
