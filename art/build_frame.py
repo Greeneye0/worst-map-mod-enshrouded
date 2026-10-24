@@ -86,10 +86,13 @@ quad['rings'] += [
     arc(*C, 12.0, 9.6, -100, 100),                          # inner arc on the rail side
     ring(25.5, 64.5, 4.3, 1.9),                             # small ring on the outer rail
 ]
-quad['shafts'] += [
-    rect(30.6, 21, 33.4, 60),                               # spike shaft, laid over the rings
+# Spike shaft laid over the rosette rings. The top corners keep their arrow tips; the bottom ones
+# stop at the ring so nothing hangs over the control tray.
+top['shafts'] += [
+    rect(30.6, 21, 33.4, 60),
     poly((32, 15.2), (34.9, 19.3), (33.4, 21.6), (30.6, 21.6), (29.1, 19.3)),   # arrow tip
 ]
+bottom['shafts'] += [rect(30.6, 235, 33.4, 269)]
 quad['hubs'] += [ring(*C, 5.3, 3.7), circle(*C, 2.7)]
 
 # left side ornaments
@@ -129,12 +132,13 @@ GOLD = {  # diffuse light 0..1 -> colour, per channel
     'G': [57, 104, 145, 178, 198, 216],
     'B': [28, 54, 80, 108, 128, 150],
 }
-# Vanilla-matched gold: shadows lean orange-amber, highlights go pale cream, and the flat face sits
-# where the game's own gold does.
+# Vanilla-matched gold (measured on the game's dialog frame): a muted, slightly olive gold whose
+# flat face sits mid-tone, with pale cream only at the brightest spots. The sheen pass below then
+# darkens it in slow patches.
 GOLD_SOFT = {
-    'R': [70, 124, 172, 204, 228, 250],
-    'G': [40, 82, 128, 168, 202, 236],
-    'B': [12, 28, 54, 92, 132, 186],
+    'R': [60, 100, 140, 172, 192, 222],
+    'G': [48, 82, 118, 150, 172, 210],
+    'B': [20, 36, 56, 80, 100, 146],
 }
 SOFT = True   # softer bevel, warm glow and the wider ramp; False gives the earlier, harder metal
 RECESS = {k: [round(v * 0.5) for v in vals] for k, vals in GOLD.items()}
@@ -149,6 +153,13 @@ def metal_filter(fid, ramp, dil=0.5, blur=0.55, scale=1.8, aged=True, soft=None)
         ramp = GOLD_SOFT if ramp is GOLD else {k: [round(v * 0.5) for v in vals] for k, vals in GOLD_SOFT.items()}
         blur, scale = blur + 0.3, scale * 0.6
     tv = lambda ch: ' '.join(f'{v / 255:.3f}' for v in ramp[ch])
+    # Like the game's gold, the metal is not evenly bright: slow, large patches run from worn,
+    # darker stretches to bright ones along every line.
+    sheen = '''
+  <feTurbulence type="fractalNoise" baseFrequency="0.085" numOctaves="2" seed="41" result="sheenNoise"/>
+  <feColorMatrix in="sheenNoise" type="matrix" values="1.5 0 0 0 0.08  1.5 0 0 0 0.08  1.5 0 0 0 0.08  0 0 0 0 1" result="sheenGain"/>
+  <feComposite in="lit" in2="sheenGain" operator="arithmetic" k1="1" result="litSheen"/>''' if soft else ''
+    lit = 'litSheen' if soft else 'lit'
     if aged:
         shape = f'''
   <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="2" seed="11" result="wobbleNoise"/>
@@ -186,11 +197,11 @@ def metal_filter(fid, ramp, dil=0.5, blur=0.55, scale=1.8, aged=True, soft=None)
     <feFuncG type="table" tableValues="{tv('G')}"/>
     <feFuncB type="table" tableValues="{tv('B')}"/>
   </feComponentTransfer>
-  <feSpecularLighting in="bump" surfaceScale="{scale}" specularConstant="{0.2 if soft else 0.3}" specularExponent="{11 if soft else 20}" lighting-color="#f6e7bd" result="spec">
+  <feSpecularLighting in="bump" surfaceScale="{scale}" specularConstant="{0.14 if soft else 0.3}" specularExponent="{11 if soft else 20}" lighting-color="#f6e7bd" result="spec">
     <feDistantLight azimuth="225" elevation="50"/>
   </feSpecularLighting>
-  <feComposite in="tint" in2="spec" operator="arithmetic" k2="1" k3="1" result="lit"/>
-  <feComposite in="lit" in2="{body}" operator="in" result="metal"/>{grime}
+  <feComposite in="tint" in2="spec" operator="arithmetic" k2="1" k3="1" result="lit"/>{sheen}
+  <feComposite in="{lit}" in2="{body}" operator="in" result="metal"/>{grime}
   <feMerge><feMergeNode in="glow"/><feMergeNode in="outline"/>{final}</feMerge>
 </filter>'''
 

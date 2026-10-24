@@ -88,8 +88,7 @@ def tray_parts(time_text='10:42', ampm='PM', weather='Clear', icon='moon', layou
 
 def moon(cx, cy, s):
     return (f'<g transform="translate({cx} {cy}) scale({s})">'
-            f'<path d="M2.6,-5.6 A6,6 0 1 0 5.9,2.2 A4.6,4.6 0 1 1 2.6,-5.6Z" fill="url(#goldIcon)" stroke="#1a140b" stroke-width="0.7"/>'
-            f'<path d="M5.3,-6.2 l0.9,1.4 l-0.9,1.4 l-0.9,-1.4Z" fill="#e9dca6"/></g>')
+            f'<path d="M2.6,-5.6 A6,6 0 1 0 5.9,2.2 A4.6,4.6 0 1 1 2.6,-5.6Z" fill="url(#goldIcon)" stroke="#1a140b" stroke-width="0.7"/></g>')
 
 def sun(cx, cy, s):
     rays = ''.join(f'<polygon points="0,-7.4 1.2,-4.6 -1.2,-4.6" transform="rotate({a})"/>' for a in range(0, 360, 45))

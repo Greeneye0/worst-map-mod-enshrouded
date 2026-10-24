@@ -22,15 +22,18 @@
     <feDistantLight azimuth="225" elevation="58"/>
   </feDiffuseLighting>
   <feComponentTransfer in="diff" result="tint">
-    <feFuncR type="table" tableValues="0.275 0.486 0.675 0.800 0.894 0.980"/>
-    <feFuncG type="table" tableValues="0.157 0.322 0.502 0.659 0.792 0.925"/>
-    <feFuncB type="table" tableValues="0.047 0.110 0.212 0.361 0.518 0.729"/>
+    <feFuncR type="table" tableValues="0.235 0.392 0.549 0.675 0.753 0.871"/>
+    <feFuncG type="table" tableValues="0.188 0.322 0.463 0.588 0.675 0.824"/>
+    <feFuncB type="table" tableValues="0.078 0.141 0.220 0.314 0.392 0.573"/>
   </feComponentTransfer>
-  <feSpecularLighting in="bump" surfaceScale="1.08" specularConstant="0.2" specularExponent="11" lighting-color="#f6e7bd" result="spec">
+  <feSpecularLighting in="bump" surfaceScale="1.08" specularConstant="0.14" specularExponent="11" lighting-color="#f6e7bd" result="spec">
     <feDistantLight azimuth="225" elevation="50"/>
   </feSpecularLighting>
   <feComposite in="tint" in2="spec" operator="arithmetic" k2="1" k3="1" result="lit"/>
-  <feComposite in="lit" in2="body" operator="in" result="metal"/>
+  <feTurbulence type="fractalNoise" baseFrequency="0.085" numOctaves="2" seed="41" result="sheenNoise"/>
+  <feColorMatrix in="sheenNoise" type="matrix" values="1.5 0 0 0 0.08  1.5 0 0 0 0.08  1.5 0 0 0 0.08  0 0 0 0 1" result="sheenGain"/>
+  <feComposite in="lit" in2="sheenGain" operator="arithmetic" k1="1" result="litSheen"/>
+  <feComposite in="litSheen" in2="body" operator="in" result="metal"/>
   <feTurbulence type="fractalNoise" baseFrequency="0.16" numOctaves="3" seed="23" result="grimeNoise"/>
   <feColorMatrix in="grimeNoise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1.5 0 0 0 0.62" result="grimeA"/>
   <feFlood flood-color="#3a2a12" result="grimeCol"/>
@@ -60,15 +63,18 @@
     <feDistantLight azimuth="225" elevation="58"/>
   </feDiffuseLighting>
   <feComponentTransfer in="diff" result="tint">
-    <feFuncR type="table" tableValues="0.137 0.243 0.337 0.400 0.447 0.490"/>
-    <feFuncG type="table" tableValues="0.078 0.161 0.251 0.329 0.396 0.463"/>
-    <feFuncB type="table" tableValues="0.024 0.055 0.106 0.180 0.259 0.365"/>
+    <feFuncR type="table" tableValues="0.118 0.196 0.275 0.337 0.376 0.435"/>
+    <feFuncG type="table" tableValues="0.094 0.161 0.231 0.294 0.337 0.412"/>
+    <feFuncB type="table" tableValues="0.039 0.071 0.110 0.157 0.196 0.286"/>
   </feComponentTransfer>
-  <feSpecularLighting in="bump" surfaceScale="0.84" specularConstant="0.2" specularExponent="11" lighting-color="#f6e7bd" result="spec">
+  <feSpecularLighting in="bump" surfaceScale="0.84" specularConstant="0.14" specularExponent="11" lighting-color="#f6e7bd" result="spec">
     <feDistantLight azimuth="225" elevation="50"/>
   </feSpecularLighting>
   <feComposite in="tint" in2="spec" operator="arithmetic" k2="1" k3="1" result="lit"/>
-  <feComposite in="lit" in2="body" operator="in" result="metal"/>
+  <feTurbulence type="fractalNoise" baseFrequency="0.085" numOctaves="2" seed="41" result="sheenNoise"/>
+  <feColorMatrix in="sheenNoise" type="matrix" values="1.5 0 0 0 0.08  1.5 0 0 0 0.08  1.5 0 0 0 0.08  0 0 0 0 1" result="sheenGain"/>
+  <feComposite in="lit" in2="sheenGain" operator="arithmetic" k1="1" result="litSheen"/>
+  <feComposite in="litSheen" in2="body" operator="in" result="metal"/>
   <feTurbulence type="fractalNoise" baseFrequency="0.16" numOctaves="3" seed="23" result="grimeNoise"/>
   <feColorMatrix in="grimeNoise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1.5 0 0 0 0.62" result="grimeA"/>
   <feFlood flood-color="#3a2a12" result="grimeCol"/>
@@ -85,7 +91,8 @@
 <g id="left-rings"><path fill-rule="evenodd" d="M38.2,124A3.7,3.7 0 1 1 30.8,124A3.7,3.7 0 1 1 38.2,124ZM36.1,124A1.6,1.6 0 1 1 32.9,124A1.6,1.6 0 1 1 36.1,124Z"/><path fill-rule="evenodd" d="M29.3,154.5A3.8,3.8 0 1 1 21.7,154.5A3.8,3.8 0 1 1 29.3,154.5ZM27.1,154.5A1.6,1.6 0 1 1 23.9,154.5A1.6,1.6 0 1 1 27.1,154.5Z"/></g>
 <g id="top-rings"><path fill-rule="evenodd" d="M167,30.5A17,17 0 1 1 133,30.5A17,17 0 1 1 167,30.5ZM163.7,30.5A13.7,13.7 0 1 1 136.3,30.5A13.7,13.7 0 1 1 163.7,30.5Z"/><polygon points="150,0.8 152.3,9 152.3,14.5 147.7,14.5 147.7,9"/><polygon points="148.4,46 151.6,46 151.6,48 154.4,52.6 150,60.8 145.6,52.6 148.4,48"/><rect x="148.5" y="14" width="3" height="33"/><polygon points="150,44.1 147,34.3 150,30 153,34.3"/><polygon points="150,16.9 153,26.7 150,31 147,26.7"/><polygon points="173,30.5 154.4,33.5 149.5,30.5 154.4,27.5"/><polygon points="127,30.5 145.6,27.5 150.5,30.5 145.6,33.5"/><polygon points="159.19,39.69 150.99,34.32 149.65,30.15 153.82,31.49"/><polygon points="140.81,39.69 146.18,31.49 150.35,30.15 149.01,34.32"/><polygon points="140.81,21.31 149.01,26.68 150.35,30.85 146.18,29.51"/><polygon points="159.19,21.31 153.82,29.51 149.65,30.85 150.99,26.68"/><path fill-rule="evenodd" d="M124,30.5A5,5 0 1 1 114,30.5A5,5 0 1 1 124,30.5ZM121.2,30.5A2.2,2.2 0 1 1 116.8,30.5A2.2,2.2 0 1 1 121.2,30.5Z"/></g>
 <g id="bottom-rings"><polygon points="150,246.7 159.6,259.5 150,272.3 140.4,259.5"/><path fill-rule="evenodd" d="M132,263.5A4.5,4.5 0 1 1 123,263.5A4.5,4.5 0 1 1 132,263.5ZM129.4,263.5A1.9,1.9 0 1 1 125.6,263.5A1.9,1.9 0 1 1 129.4,263.5Z"/></g>
-<g id="quad-shafts"><rect x="30.6" y="21" width="2.8" height="39"/><polygon points="32,15.2 34.9,19.3 33.4,21.6 30.6,21.6 29.1,19.3"/></g>
+<g id="top-shafts"><rect x="30.6" y="21" width="2.8" height="39"/><polygon points="32,15.2 34.9,19.3 33.4,21.6 30.6,21.6 29.1,19.3"/></g>
+<g id="bottom-shafts"><rect x="30.6" y="235" width="2.8" height="34"/></g>
 <g id="quad-hubs"><path fill-rule="evenodd" d="M38.8,41.5A5.3,5.3 0 1 1 28.2,41.5A5.3,5.3 0 1 1 38.8,41.5ZM37.2,41.5A3.7,3.7 0 1 1 29.8,41.5A3.7,3.7 0 1 1 37.2,41.5Z"/><circle cx="33.5" cy="41.5" r="2.7"/></g>
 <g id="top-hubs"><circle cx="150" cy="30.5" r="3.3"/><polygon points="150,50.2 152.2,52.8 150,56.6 147.8,52.8"/></g>
 <g id="bottom-hubs"><polygon points="150,252.3 155.2,259.5 150,266.7 144.8,259.5"/></g>
@@ -94,6 +101,6 @@
 <g id="deco" filter="url(#metal)" fill="#fff"><use href="#quad-deco"/><use href="#quad-deco" transform="matrix(-1 0 0 1 300 0)"/><use href="#quad-deco" transform="matrix(1 0 0 -1 0 295)"/><use href="#quad-deco" transform="matrix(-1 0 0 -1 300 295)"/><use href="#left-deco"/><use href="#left-deco" transform="matrix(-1 0 0 1 300 0)"/><use href="#bottom-deco"/><use href="#bottom-deco" transform="matrix(-1 0 0 1 300 0)"/></g>
 <g id="recess" filter="url(#metalRecess)" fill="#fff"><use href="#quad-recess"/><use href="#quad-recess" transform="matrix(-1 0 0 1 300 0)"/><use href="#quad-recess" transform="matrix(1 0 0 -1 0 295)"/><use href="#quad-recess" transform="matrix(-1 0 0 -1 300 295)"/></g>
 <g id="rings" filter="url(#metal)" fill="#fff"><use href="#quad-rings"/><use href="#quad-rings" transform="matrix(-1 0 0 1 300 0)"/><use href="#quad-rings" transform="matrix(1 0 0 -1 0 295)"/><use href="#quad-rings" transform="matrix(-1 0 0 -1 300 295)"/><use href="#left-rings"/><use href="#left-rings" transform="matrix(-1 0 0 1 300 0)"/><use href="#top-rings"/><use href="#top-rings" transform="matrix(-1 0 0 1 300 0)"/><use href="#bottom-rings"/><use href="#bottom-rings" transform="matrix(-1 0 0 1 300 0)"/></g>
-<g id="shafts" filter="url(#metal)" fill="#fff"><use href="#quad-shafts"/><use href="#quad-shafts" transform="matrix(-1 0 0 1 300 0)"/><use href="#quad-shafts" transform="matrix(1 0 0 -1 0 295)"/><use href="#quad-shafts" transform="matrix(-1 0 0 -1 300 295)"/></g>
+<g id="shafts" filter="url(#metal)" fill="#fff"><use href="#top-shafts"/><use href="#top-shafts" transform="matrix(-1 0 0 1 300 0)"/><use href="#bottom-shafts"/><use href="#bottom-shafts" transform="matrix(-1 0 0 1 300 0)"/></g>
 <g id="hubs" filter="url(#metal)" fill="#fff"><use href="#quad-hubs"/><use href="#quad-hubs" transform="matrix(-1 0 0 1 300 0)"/><use href="#quad-hubs" transform="matrix(1 0 0 -1 0 295)"/><use href="#quad-hubs" transform="matrix(-1 0 0 -1 300 295)"/><use href="#top-hubs"/><use href="#top-hubs" transform="matrix(-1 0 0 1 300 0)"/><use href="#bottom-hubs"/><use href="#bottom-hubs" transform="matrix(-1 0 0 1 300 0)"/></g>
 </svg>
