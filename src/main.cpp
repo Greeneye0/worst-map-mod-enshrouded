@@ -16,7 +16,7 @@
 #include "scan.h"
 #include "greeneye.h"
 
-#define UMM_VERSION "1.3.4"
+#define UMM_VERSION "1.3.5"
 
 namespace {
 
@@ -158,6 +158,18 @@ bool ApplyAllPatches() {
 }
 
 } // namespace
+
+namespace unlock_map_markers {
+// The mod's switch (Ctrl + Shift + F12) puts the game's own bytes back, and the mod's again.
+void SetMarkerUnlockPatches(bool on) {
+    for (size_t i = 0; i < kNumPatchSites; ++i) {
+        const auto& spec = kPatchSites[i];
+        const auto& site = g_resolvedSites[i];
+        if (!site.patchAddress) continue;
+        WriteProcessBytes(site.patchAddress, on ? spec.replacementBytes : spec.originalBytes, spec.patchSize);
+    }
+}
+} // namespace unlock_map_markers
 
 // Greeneye Loader (greeneye\unlock-map-markers\unlock-map-markers.dll). With the loader's API 2
 // every hook goes through the loader, so the mod can be hot reloaded while the game runs.

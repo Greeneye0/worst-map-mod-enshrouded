@@ -25,4 +25,7 @@ void UseKeptState(KeptState* kept);
 // the Find dialog.
 void PrepareMapKeyPanelForReload();
 
+// main.cpp: the four marker unlock byte patches on (the mod's bytes) or off (the game's own).
+void SetMarkerUnlockPatches(bool on);
+
 } // namespace unlock_map_markers

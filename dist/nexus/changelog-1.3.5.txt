@@ -1,0 +1,6 @@
+1.3.5
+- Minimap weather now shows the game's real weather: Rain, Snow, and Storm for a blizzard (it always said Clear). The game has no fog weather.
+- Looted chests stay marked while a player is within 500 m; the game only refills a chest after everyone has been that far away for 30 minutes (found by TheSefer). The distance is ResetRadius= in minimap_config.ini.
+- Smaller text in the Map Key: filter rows, category titles and ON / OFF fit their rows. Requested by ZharonJoy.
+- Ctrl + Shift + F12 switches the whole mod off and on, to compare with the game as it is.
+- Reported bugs fixed: Show on Map for a quest opened the map on the player again (reported by HadToRegister). With the thin minimap border the info bar overlapped the border and its cog was hard to reach (reported by HadToRegister and ZharonJoy). Hollow Halls and lore rumors showed with Pins: EXPLORED (reported by ZharonJoy). Clicks over the minimap in the backpack started dragging it, so items stuck to the cursor (reported by Jowdan). Find on the map: Tab typed a space instead of picking a result, and Escape could stop working.

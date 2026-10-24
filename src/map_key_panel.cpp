@@ -395,6 +395,8 @@ constexpr uint8_t kCanonicalDrawWorldMapMarkerPlatePrologue[15] = {
 using DoPlayStateUiFn = void (*)();
 using BuildWorldMapPlayersFn = void (*)(void* outVec, void* mapState);
 DrawMapFilterMenuFn g_origDrawMapFilterMenu = nullptr;
+bool g_modOff = false;             // Ctrl + Shift + F12: the whole mod switched off (SetModOff)
+uint8_t* g_lastMapState = nullptr; // the World Map's state, last seen by DrawMapKeyOverlay
 GetMarkerTypeFn g_origGetMarkerType = nullptr;
 uint8_t* g_worldMapInputHookTarget = nullptr;
 WorldMapInputFn g_origWorldMapInput = nullptr;
@@ -482,7 +484,7 @@ uint8_t* CustomMarkerType(uint32_t typeHash) {
 uint8_t* GetMarkerTypeHook(uint32_t typeHash, void* mgr) {
     {
         greeneye::Lease lease; // an older generation after a hot reload only calls on
-        if (lease) {
+        if (lease && !g_modOff) {
             if (uint8_t* custom = CustomMarkerType(typeHash)) return custom;
         }
     }
@@ -1437,7 +1439,7 @@ uint8_t* ChatAppendHook(uint8_t* result, void* store, uint8_t type, uint64_t* te
                         uint32_t c, uint64_t account, uint64_t* time) {
     {
         greeneye::Lease lease;
-        if (lease && SafeReadChestChatLine(store, type, text) == 1) {
+        if (lease && !g_modOff && SafeReadChestChatLine(store, type, text) == 1) {
             std::memset(result, 0, 8);
             return result;
         }
@@ -4161,6 +4163,7 @@ void ApplyMapZoomSteps(uint8_t* mapState) {
 }
 
 void DrawMapKeyOverlay(void* mapStateVoid) {
+    g_lastMapState = static_cast<uint8_t*>(mapStateVoid);
     auto* client = GetUiClient();
     auto* mapState = static_cast<uint8_t*>(mapStateVoid);
     if (!client || !mapState) return;
@@ -5010,7 +5013,7 @@ bool BlockWorldMapInput(uint8_t* mapState) {
 void WorldMapInputHook(void* mapRootWidget, uint8_t* mapState) {
     {
         greeneye::Lease lease; // released before the game's code runs on
-        if (lease && BlockWorldMapInput(mapState)) return;
+        if (lease && !g_modOff && BlockWorldMapInput(mapState)) return;
     }
     if (g_origWorldMapInput) {
         g_origWorldMapInput(mapRootWidget, mapState);
@@ -5031,7 +5034,7 @@ void DrawMapFilterMenuHook(void* mapState) {
     // calls on instead.
     {
         greeneye::Lease lease;
-        if (lease) {
+        if (lease && !g_modOff) {
             SafeDrawMapKeyOverlay(mapState);
             return;
         }
@@ -6879,13 +6882,98 @@ void SafeDrawHudMinimapOverlay() {
     }
 }
 
+// Ctrl + Shift + F12 switches the whole mod off and on, to compare with the game as it is. Off: the hooks only
+// call on, the byte patches and the fog get the game's own bytes back, the chest pins the mod added leave the
+// game's marker arrays, every pin gets back the type and quest link the mod saved for it, and the map's zoom
+// steps are the game's again; the map then rebuilds its markers. On: all of it comes back.
+void RefreshMapMarkers() {
+    if (uint8_t* mapState = g_lastMapState) {
+        __try {
+            *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
+            *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        }
+    }
+}
+
+void RestoreGameMarkerArrays(uint8_t* client) {
+    __try {
+        constexpr size_t kArrays[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+        for (size_t at : kArrays) {
+            uint8_t* base = *reinterpret_cast<uint8_t**>(client + at);
+            uint64_t& count = *reinterpret_cast<uint64_t*>(client + at + 8);
+            if (!base || count > 10000) continue;
+            uint64_t kept = 0;
+            for (uint64_t i = 0; i < count; ++i) {
+                uint8_t* m = base + i * 0xA0;
+                if ((*reinterpret_cast<uint32_t*>(m) & 0xFFFF0000u) == kChestMarkerUidPrefix) break;
+                if (IsSlotSaved(m)) {
+                    *reinterpret_cast<uint32_t*>(m + 0x30) = *reinterpret_cast<uint32_t*>(m + 0x3c);
+                    *reinterpret_cast<uint32_t*>(m + 0x08) = *reinterpret_cast<uint32_t*>(m + 0x4c);
+                }
+                ++kept;
+            }
+            count = kept; // the mod's chest pins follow the game's own entries
+        }
+        g_savedSlotUid.clear();
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+void RestoreGameZoomSteps() {
+    if (uint8_t* mapState = g_lastMapState) {
+        __try {
+            if (uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8)) {
+                auto* steps = reinterpret_cast<float*>(mapView + 0x40);
+                for (int i = 0; i < 4; ++i) steps[i] = kMapZoomSteps[i];
+                mapView[0x54] = 4;
+                if (uint64_t* idx = *reinterpret_cast<uint64_t**>(mapView + 0x248)) *idx = std::min<uint64_t>(*idx, 3);
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        }
+    }
+}
+
+void SetModOff(bool off) {
+    if (off == g_modOff) return;
+    g_modOff = off;
+    static FogRevealMode s_fogMode = FogRevealMode::RevealAll;
+    if (off) {
+        PrepareMapKeyPanelForReload(); // the minimap's window procedure and mouse, the Find dialog
+        s_fogMode = g_fogRevealMode;
+        ApplyFogRevealMode(FogRevealMode::ExploredOnly); // the game's own fog values
+        g_fogRevealMode = s_fogMode;
+        if (g_kept) g_kept->fogMode = static_cast<int>(s_fogMode);
+        SetMarkerUnlockPatches(false);
+        if (uint8_t* client = GetUiClient()) RestoreGameMarkerArrays(client);
+        RestoreGameZoomSteps();
+    } else {
+        SetMarkerUnlockPatches(true);
+        ApplyFogRevealMode(s_fogMode);
+    }
+    RefreshMapMarkers();
+    if (g_log) g_log("Ctrl+Shift+F12: the mod is %s", off ? "OFF (the game as it is)" : "ON again");
+}
+
+void PollModOffKey() {
+    static bool wasDown = false;
+    HWND fg = GetForegroundWindow();
+    DWORD pid = 0;
+    if (fg) GetWindowThreadProcessId(fg, &pid);
+    const bool down = pid == GetCurrentProcessId() && (GetAsyncKeyState(VK_F12) & 0x8000) != 0 &&
+                      (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 && (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    if (down && !wasDown) SetModOff(!g_modOff);
+    wasDown = down;
+}
+
 void PlayStateUiHook() {
     if (g_origPlayStateUi) {
         g_origPlayStateUi();
     }
     greeneye::Lease lease;
     if (lease) {
-        SafeDrawHudMinimapOverlay();
+        PollModOffKey();
+        if (!g_modOff) SafeDrawHudMinimapOverlay();
     }
 }
 
@@ -6925,7 +7013,7 @@ void BuildWorldMapPlayersHook(void* outVec, void* mapState) {
         g_origBuildWorldMapPlayers(outVec, mapState);
     }
     greeneye::Lease lease;
-    if (lease) {
+    if (lease && !g_modOff) {
         FilterWorldMapPlayerMarkers(outVec);
         // BuildWorldMapPlayers is called by 0x140d8f270 immediately before iterating arr0..arr3
         // to populate mapState+0x56318. Syncing arr0 here ensures newly replicated ECS markers
@@ -7038,7 +7126,7 @@ void DrawWorldMapMarkerIconWithOverrides(void* mapState, uint8_t* m, uint8_t* dr
 void DrawWorldMapMarkerIconHook(void* mapState, uint8_t* m, uint8_t* drawParams) {
     if (!g_origDrawWorldMapMarkerIcon) return;
     greeneye::Lease lease;
-    if (lease) DrawWorldMapMarkerIconWithOverrides(mapState, m, drawParams);
+    if (lease && !g_modOff) DrawWorldMapMarkerIconWithOverrides(mapState, m, drawParams);
     else g_origDrawWorldMapMarkerIcon(mapState, m, drawParams);
 }
 
@@ -7088,7 +7176,7 @@ void DrawWorldMapMarkerPlateHook(void* widget, uint8_t* entry, const float* rect
     void* pushedUiCtx = nullptr;
     bool pushed = false;
     {
-        if (lease) {
+        if (lease && !g_modOff) {
             pushed = TryPushMarkerPlateDimOpacity(entry, pushedUiCtx);
         }
     }

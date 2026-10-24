@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.4
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.5
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, a
@@ -93,12 +93,14 @@ LOOTED CHESTS
 Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check
 mark (Settings > Looted Chests). On the world map, Ctrl + left click a chest to mark it or
 clear the mark. Players who have the mod share their looted chests: open one and it's marked
-on their maps too. A looted chest comes back after 30 minutes of play unless it's in a Flame
-Altar's build zone. Looted chests are saved per world in
+on their maps too. A looted chest comes back after 30 minutes of play with every player at
+least 500 m away (coming closer starts the 30 minutes over), unless it's in a Flame Altar's
+build zone. Looted chests are saved per world in
 greeneye\unlock-map-markers\looted_chests.ini. In minimap_config.ini:
     [Chests]
     InteractKey=E          the key you open chests with
     RespawnMinutes=30
+    ResetRadius=500        meters; a player this close starts the 30 minutes over
 
 
 MINIMAP
@@ -149,6 +151,8 @@ GOOD TO KNOW
 - Made for the current game version. If a game update changes the code it patches, it
   skips that part instead of crashing, and the log says so.
 - With the Find mod installed, Find on the map uses Find's own search box.
+- Ctrl + Shift + F12 switches the whole mod off and on, to compare with the game as it is
+  (best with the world map open).
 
 
 TROUBLESHOOTING
@@ -160,6 +164,25 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.5
+- Minimap weather now shows the game's real weather: Rain, Snow, and Storm for a blizzard (it
+  always said Clear). The game has no fog weather.
+- Looted chests stay marked while a player is within 500 m; the game only refills a chest
+  after everyone has been that far away for 30 minutes (found by TheSefer). The distance is
+  ResetRadius= in minimap_config.ini.
+- Smaller text in the Map Key: filter rows, category titles and ON / OFF fit their rows.
+  Requested by ZharonJoy.
+- Ctrl + Shift + F12 switches the whole mod off and on, to compare with the game as it is.
+- Reported bugs fixed:
+  - Show on Map for a quest opened the map on the player again (reported by HadToRegister).
+  - With the thin minimap border the info bar overlapped the border and its cog was hard to
+    reach (reported by HadToRegister and ZharonJoy).
+  - Hollow Halls and lore rumors showed with Pins: EXPLORED (reported by ZharonJoy).
+  - Clicks over the minimap in the backpack started dragging it, so items stuck to the cursor
+    (reported by Jowdan).
+  - Find on the map: Tab typed a space instead of picking a result, and Escape could stop
+    working.
+
 1.3.4
 - Show Minimap off with Minimap Info Bar on keeps the info bar (time, weather, cog) on screen
   by itself, and the two settings sit together. Requested by FWSWBN.
