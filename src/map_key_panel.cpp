@@ -6,8 +6,11 @@
 #endif
 #include <windows.h>
 #include <psapi.h>
+#include <xinput.h>
 
 #include <algorithm>
+#include <array>
+#include <utility>
 #include <atomic>
 #include <mutex>
 #include <cctype>
@@ -43,7 +46,14 @@ constexpr uint32_t kChestMarkerUidPrefix = 0x70000000u;
 // (7452 of them, far more than the marker arrays the chests borrow can hold).
 constexpr uint32_t kOreTypeHashBase = 0x0e5a0000u;
 constexpr size_t kOreCount = static_cast<size_t>(Ore::Count);
-constexpr uint8_t kMiningCategory = 5;
+constexpr uint8_t kMiningCategory = 5;    // ores
+constexpr uint8_t kMaterialsCategory = 6; // farm soil, bones, tar, archaic essence...
+constexpr uint8_t kPlantsCategory = 7;    // harvestable plants
+constexpr uint8_t kBaitCategory = 8;      // fishing bait critters
+constexpr uint8_t kTreesCategory = 9;     // tree areas (coloured, no icons)
+bool IsResourceCategory(uint8_t c) { return c >= kMiningCategory && c <= kTreesCategory; }
+static_assert(sizeof(kOreCategory) / sizeof(kOreCategory[0]) == static_cast<size_t>(Ore::Count), "one category per row");
+static_assert(sizeof(kOreAreaColors) / sizeof(kOreAreaColors[0]) == static_cast<size_t>(Ore::Count), "one colour per row");
 static_assert(sizeof(kOreLabels) / sizeof(kOreLabels[0]) == kOreCount, "one label per ore");
 static_assert(sizeof(kOreIcons) / sizeof(kOreIcons[0]) == kOreCount, "one icon per ore");
 static_assert(sizeof(kOreNameTags) / sizeof(kOreNameTags[0]) == kOreCount, "one name per ore");
@@ -500,6 +510,8 @@ constexpr size_t kRoundedBoxPrimitive = kPrimitivesOffset + 0x180;
 constexpr size_t kSmallTextStyleOffset = 0x10a0c;
 // FbUiBundle.namedStyles (0x10a0c) .h3 (+0x318): the game's bold 24 px heading, the base of the deposit title
 constexpr size_t kH3StyleOffset = 0x10a0c + 0x318;
+// FbUiBundle.namedStyles .map (+0x1340) .locationName (+0x58): the map's region names (uppercase, outlined)
+constexpr size_t kMapLocationNameStyleOffset = 0x10a0c + 0x1340 + 0x58;
 constexpr size_t kUiCharacterStyleSize = 0x58;
 constexpr size_t kStyleFontSize = 0x20; // UiCharacterStyle.fontSize
 constexpr size_t kHintListOffset = 0x32e18;
@@ -567,31 +579,23 @@ constexpr uint32_t kCustomPinHashes[10] = {
     0x28a5fb2cu, 0xd9b19aecu, 0xa1c4ece9u, 0x3a761350u, 0x7103269eu
 };
 
-// Mining rows: their text comes from OreName (the game's item name), not from .text
-constexpr MarkerRowSpec kCategory5Rows[] = {
-    {kOreTypeHashBase + 0u, 0u, kMiningCategory, kOreLabels[0], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 1u, 0u, kMiningCategory, kOreLabels[1], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 2u, 0u, kMiningCategory, kOreLabels[2], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 3u, 0u, kMiningCategory, kOreLabels[3], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 4u, 0u, kMiningCategory, kOreLabels[4], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 5u, 0u, kMiningCategory, kOreLabels[5], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 6u, 0u, kMiningCategory, kOreLabels[6], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 7u, 0u, kMiningCategory, kOreLabels[7], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 8u, 0u, kMiningCategory, kOreLabels[8], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 9u, 0u, kMiningCategory, kOreLabels[9], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 10u, 0u, kMiningCategory, kOreLabels[10], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 11u, 0u, kMiningCategory, kOreLabels[11], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 12u, 0u, kMiningCategory, kOreLabels[12], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 13u, 0u, kMiningCategory, kOreLabels[13], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 14u, 0u, kMiningCategory, kOreLabels[14], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 15u, 0u, kMiningCategory, kOreLabels[15], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 16u, 0u, kMiningCategory, kOreLabels[16], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 17u, 0u, kMiningCategory, kOreLabels[17], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 18u, 0u, kMiningCategory, kOreLabels[18], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 19u, 0u, kMiningCategory, kOreLabels[19], umm_lang::Str::CatMining},
-    {kOreTypeHashBase + 20u, 0u, kMiningCategory, kOreLabels[20], umm_lang::Str::CatMining},
-};
-static_assert(sizeof(kCategory5Rows) / sizeof(kCategory5Rows[0]) == kOreCount, "one row per ore");
+// Resource rows (Mining, Materials, Plants, Bait, Trees) from ore_deposits.h, built at compile time; their text
+// comes from OreName (the game's item name), not from .text
+template <size_t First, uint8_t Category, umm_lang::Str Title, size_t... I>
+constexpr std::array<MarkerRowSpec, sizeof...(I)> MakeResourceRows(std::index_sequence<I...>) {
+    return {{MarkerRowSpec{kOreTypeHashBase + static_cast<uint32_t>(First + I), 0u, Category, kOreLabels[First + I], Title}...}};
+}
+constexpr auto kMiningRows = MakeResourceRows<kMiningFirst, kMiningCategory, umm_lang::Str::CatMining>(
+    std::make_index_sequence<kMiningCount>{});
+constexpr auto kMaterialsRows = MakeResourceRows<kMaterialsFirst, kMaterialsCategory, umm_lang::Str::CatMaterials>(
+    std::make_index_sequence<kMaterialsCount>{});
+constexpr auto kPlantsRows = MakeResourceRows<kPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(
+    std::make_index_sequence<kPlantsCount>{});
+constexpr auto kBaitRows = MakeResourceRows<kBaitFirst, kBaitCategory, umm_lang::Str::CatBait>(
+    std::make_index_sequence<kBaitCount>{});
+constexpr auto kTreesRows = MakeResourceRows<kTreesFirst, kTreesCategory, umm_lang::Str::CatTrees>(
+    std::make_index_sequence<kTreesCount>{});
+static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount == kOreCount, "every row in one category");
 
 struct CategoryGroupSpec {
     uint8_t category;
@@ -604,7 +608,11 @@ constexpr CategoryGroupSpec kCategoryGroups[] = {
     {1, umm_lang::Str::CatFastTravel, kCategory1Rows, sizeof(kCategory1Rows) / sizeof(kCategory1Rows[0])},
     {2, umm_lang::Str::CatShroud, kCategory2Rows, sizeof(kCategory2Rows) / sizeof(kCategory2Rows[0])},
     {3, umm_lang::Str::CatWorld, kCategory3Rows, sizeof(kCategory3Rows) / sizeof(kCategory3Rows[0])},
-    {kMiningCategory, umm_lang::Str::CatMining, kCategory5Rows, sizeof(kCategory5Rows) / sizeof(kCategory5Rows[0])},
+    {kMiningCategory, umm_lang::Str::CatMining, kMiningRows.data(), kMiningRows.size()},
+    {kMaterialsCategory, umm_lang::Str::CatMaterials, kMaterialsRows.data(), kMaterialsRows.size()},
+    {kPlantsCategory, umm_lang::Str::CatPlants, kPlantsRows.data(), kPlantsRows.size()},
+    {kBaitCategory, umm_lang::Str::CatBait, kBaitRows.data(), kBaitRows.size()},
+    {kTreesCategory, umm_lang::Str::CatTrees, kTreesRows.data(), kTreesRows.size()},
     {0, umm_lang::Str::CatQuests, kCategory0Rows, sizeof(kCategory0Rows) / sizeof(kCategory0Rows[0])},
     {4, umm_lang::Str::CatCustomPins, nullptr,        0},
 };
@@ -989,8 +997,10 @@ void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category
         g_otherPlayersEnabled = enable;
         g_completedQuestsEnabled = enable;
         SaveMinimapConfig();
-    } else if (category == kMiningCategory) {
-        for (bool& on : g_oreEnabled) on = enable;
+    } else if (IsResourceCategory(category)) {
+        for (size_t o = 0; o < kOreCount; ++o) {
+            if (kOreCategory[o] == category) g_oreEnabled[o] = enable;
+        }
         SaveMinimapConfig();
     }
     auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
@@ -1034,8 +1044,11 @@ bool IsCategoryEnabled(FilterEntry* entries, size_t count, uint8_t category) {
     if (category == 0 && (g_otherPlayersEnabled || g_completedQuestsEnabled)) {
         return true;
     }
-    if (category == kMiningCategory) {
-        return AnyOreEnabled();
+    if (IsResourceCategory(category)) {
+        for (size_t o = 0; o < kOreCount; ++o) {
+            if (kOreCategory[o] == category && g_oreEnabled[o]) return true;
+        }
+        return false;
     }
     for (size_t i = 0; i < count; ++i) {
         if (entries[i].category == category && entries[i].enabled != 0) {
@@ -2232,6 +2245,48 @@ int g_findClosingFrames = 0;
 bool g_waitReleaseAfterFindClose = false;
 bool g_panelClickLatch = false;
 bool g_panelCurrentlyHovered = false;
+
+// Gamepad or mouse? The Map Key blocks the map's input while the mouse cursor is over it, so a click on the panel
+// does not also click the map. With a gamepad the hidden Windows cursor stays wherever it was last; after tabbing
+// to the map through the game menu it can sit over the panel, and the block then froze the gamepad's map cursor.
+// So the panel only blocks while the mouse is the device in use: the one that moved or clicked last (XInput pads).
+using XInputGetStateFn = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
+bool UsingGamepad() {
+    static XInputGetStateFn getState = [] {
+        HMODULE x = LoadLibraryW(L"xinput1_4.dll");
+        if (!x) x = LoadLibraryW(L"xinput9_1_0.dll");
+        return x ? reinterpret_cast<XInputGetStateFn>(GetProcAddress(x, "XInputGetState")) : nullptr;
+    }();
+    static DWORD lastPacket[XUSER_MAX_COUNT]{};
+    static uint64_t padTick = 0, mouseTick = 1;
+    static POINT lastCursor{};
+    static uint64_t lastPoll = 0;
+    const uint64_t now = GetTickCount64();
+    if (now - lastPoll < 15) return padTick > mouseTick;
+    lastPoll = now;
+    if (getState) {
+        for (DWORD i = 0; i < XUSER_MAX_COUNT; ++i) {
+            XINPUT_STATE st{};
+            if (getState(i, &st) != ERROR_SUCCESS) continue;
+            const XINPUT_GAMEPAD& g = st.Gamepad;
+            const bool active = g.wButtons != 0 || g.bLeftTrigger > 30 || g.bRightTrigger > 30 ||
+                                std::abs(g.sThumbLX) > 8000 || std::abs(g.sThumbLY) > 8000 ||
+                                std::abs(g.sThumbRX) > 8000 || std::abs(g.sThumbRY) > 8000;
+            if (st.dwPacketNumber != lastPacket[i] && active) padTick = now;
+            lastPacket[i] = st.dwPacketNumber;
+        }
+    }
+    POINT pt{};
+    const bool buttons = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) || (GetAsyncKeyState(VK_RBUTTON) & 0x8000) ||
+                         (GetAsyncKeyState(VK_MBUTTON) & 0x8000);
+    if (GetCursorPos(&pt)) {
+        const bool moved = pt.x != lastCursor.x || pt.y != lastCursor.y;
+        lastCursor = pt;
+        // The game may move the hidden cursor itself while the pad steers: a move right after pad input is the pad's
+        if (buttons || (moved && now - padTick > 250)) mouseTick = now;
+    }
+    return padTick > mouseTick;
+}
 float g_lastRootX = 0.0f;
 float g_lastRootY = 0.0f;
 float g_lastRootW = 1920.0f;
@@ -3312,6 +3367,56 @@ const char* OreName(size_t ore) {
     return kOreLabels[ore];
 }
 
+// The enabled tree areas on the World Map: each forest as one filled shape, named in the bigger ones.
+void DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
+    bool any = false;
+    for (size_t o = kTreesFirst; o < kTreesFirst + kTreesCount; ++o) any = any || g_oreEnabled[o];
+    if (!widgetRaw || !mapState || !any) return;
+    uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
+    if (!mapView) return;
+    const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
+    float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
+    if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
+    if (!(zoom > 0.0f)) return;
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) +
+                          *reinterpret_cast<float*>(mapView + 0x17c) -
+                          *reinterpret_cast<float*>(mapView + 0x1e8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) +
+                          *reinterpret_cast<float*>(mapView + 0x180) -
+                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float left = rootRect[0], top = rootRect[1] + 114.0f; // below the menu banner
+    const float right = rootRect[0] + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
+    const float bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
+    // Each forest is one filled shape in its type's colour (rectangles of 32 m cells that together trace the outline),
+    // and the bigger forests carry their type's name in the map's own location-name style, like its region labels.
+    constexpr int kMaxTreeRectsPerFrame = 3000;
+    const float cellPx = static_cast<float>(kTreeShapeCellMeters) * zoom;
+    int drawn = 0;
+    for (size_t i = 0; i < kTreeShapeRectCount && drawn < kMaxTreeRectsPerFrame; ++i) {
+        const TreeShapeRect& t = kTreeShapeRects[i];
+        if (!g_oreEnabled[t.ore]) continue;
+        const float x0 = originX + t.x0 * cellPx, x1 = originX + (t.x1 + 1) * cellPx;
+        const float y1 = originY + (mapWorldH - t.z0 * static_cast<float>(kTreeShapeCellMeters)) * zoom;
+        float y0 = originY + (mapWorldH - (t.z1 + 1) * static_cast<float>(kTreeShapeCellMeters)) * zoom;
+        if (x1 < left || x0 > right || y1 < top || y0 > bottom) continue;
+        y0 = std::max(y0, top);
+        if (y1 - y0 < 0.5f) continue;
+        DrawSolidRectAbs(widgetRaw, x0, y0, x1 - x0, y1 - y0, kOreAreaColors[t.ore], 0.34f);
+        ++drawn;
+    }
+    for (size_t i = 0; i < kTreeLabelCount; ++i) {
+        const TreeLabel& t = kTreeLabels[i];
+        if (!g_oreEnabled[t.ore]) continue;
+        const float cx = originX + t.x * zoom;
+        const float cy = originY + (mapWorldH - t.z) * zoom;
+        if (cx < left || cx > right || cy < top || cy > bottom) continue;
+        const char* name = OreName(t.ore);
+        const float w = umm_lang::TextWidth(name) * 1.6f + 24.0f, h = 28.0f;
+        DrawLabelAbs(cx - w * 0.5f, cy - h * 0.5f, w, h, name, 0xffffffffu, 0.9f, TextAlignH::Center, TextAlignV::Center,
+                     GetUiAssets() ? GetUiAssets() + kMapLocationNameStyleOffset : nullptr);
+    }
+}
+
 // The enabled ore deposits on the world map, drawn by the mod (the game's marker arrays are far too small for
 // them). Same world -> screen mapping as the Find pulses. Hovering one names it.
 void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState,
@@ -3355,7 +3460,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     for (size_t i = 0; i < kOreDepositCount && drawn < kMaxOreIconsPerFrame; ++i) {
         const size_t d = (i * 7919) % kOreDepositCount;
         const OreDeposit& dep = kOreDeposits[d];
-        if (!g_oreEnabled[dep.ore]) continue;
+        if (!g_oreEnabled[dep.ore] || kOreAreaColors[dep.ore] != 0) continue;
         const float sx = originX + dep.x * zoom;
         const float sy = originY + (mapWorldH - dep.z) * zoom;
         if (sx < left - size || sx > right + size || sy < top - size || sy > bottom + size) continue;
@@ -3926,14 +4031,14 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
     UpdateChestLootTracking(client, focused);
 
-    uint32_t allHashes[64]{};
+    uint32_t allHashes[256]{};
     size_t numHashes = 0;
     for (const auto& grp : kCategoryGroups) {
         for (size_t r = 0; r < grp.rowCount; ++r) {
-            allHashes[numHashes++] = grp.rows[r].typeHash;
+            if (numHashes < sizeof(allHashes) / sizeof(allHashes[0])) allHashes[numHashes++] = grp.rows[r].typeHash;
         }
     }
-    int hashCounts[64]{};
+    int hashCounts[256]{};
     SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
 
     auto openFindDialog = [&]() {
@@ -4023,6 +4128,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             return haveCursor && mx >= absX && mx <= absX + rw && my >= absY && my <= absY + rh;
         };
 
+        DrawTreeAreasOnMap(root.raw, rootRect, mapState);
         DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my);
 
         const PanelLayout& lay = CurrentPanelLayout();
@@ -4075,7 +4181,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                      isHovered(settingsX, settingsY, settingsCardW, kSettingsCardH);
 
         // Block map & map marker hover/click interaction behind the panel or when Find dialog is open
-        const bool panelHovered = !g_findDialogOpen &&
+        const bool panelHovered = !g_findDialogOpen && !UsingGamepad() &&
                                   (isHovered(panelX, panelY, kPanelW, totalH) || settingsHovered);
         const bool rightDown = focused && ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
         if (panelHovered && (leftDown || rightDown || clicked)) {
@@ -4350,7 +4456,12 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                     kBadgeRing, rowOn ? 0.9f : 0.35f);
                             }
 
-                            if (const void* iconRef = GetIconRefForType(client, rowSpec.typeHash)) {
+                            if (IsOreHash(rowSpec.typeHash) && kOreAreaColors[OreIndexOf(rowSpec.typeHash)] != 0) {
+                                // Tree areas have no icon: their colour on the map, in the badge
+                                const float bx = panelX + 31.0f, by = py + curY + (kItemRowH - 12.0f) * 0.5f;
+                                DrawAssetRectAbs(anchor.raw, kCirclePrimitive, bx, by, 12.0f, 12.0f,
+                                    kOreAreaColors[OreIndexOf(rowSpec.typeHash)], rowOn ? 0.95f : 0.35f);
+                            } else if (const void* iconRef = GetIconRefForType(client, rowSpec.typeHash)) {
                                 uint32_t iconTint = rowOn ? 0xffffffffu : 0xff707070u;
                                 if (rowSpec.typeHash == kGoldChestTypeHash) {
                                     iconTint = rowOn ? 0xff38c8ffu : 0xff406880u;
@@ -4661,7 +4772,9 @@ bool BlockWorldMapInput(uint8_t* mapState) {
         }
 
         bool cursorInPanel = g_panelCurrentlyHovered;
-        if (focused && g_lastPanelW > 0.0f && g_lastPanelH > 0.0f) {
+        const bool padInUse = UsingGamepad();
+        if (padInUse) cursorInPanel = false; // the hidden mouse cursor is not where the player is pointing
+        if (focused && !padInUse && g_lastPanelW > 0.0f && g_lastPanelH > 0.0f) {
             POINT pt{};
             RECT cr{};
             if (GetCursorPos(&pt) && ScreenToClient(foreground, &pt) &&
@@ -4916,7 +5029,7 @@ void LoadMinimapConfig() {
     int pinRevealMode = GetPrivateProfileIntA("MinimapV2", "PinRevealMode", 2, cfg.c_str());
     int respawnMins = GetPrivateProfileIntA("Chests", "RespawnMinutes", 30, cfg.c_str());
     // [Mining] Ores = one 0/1 per ore, in the Map Key's order
-    char ores[64]{};
+    char ores[512]{};
     GetPrivateProfileStringA("Mining", "Ores", "", ores, sizeof(ores), cfg.c_str());
     for (size_t o = 0; o < kOreCount; ++o) g_oreEnabled[o] = ores[o] == '1';
     char interactKey[8]{};

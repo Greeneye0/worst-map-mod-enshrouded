@@ -350,6 +350,18 @@ const Row kTable[] = {
     // CatMining
     {"MINING", "BERGBAU", "MINERAIS", "MINIERA", "MINERÍA", "MINERAÇÃO", "WYDOBYCIE", "ДОБЫЧА", "ВИДОБУТОК",
      "MADENCİLİK", "採掘", "채광", "采矿", "採礦", "การขุด"},
+    // CatMaterials
+    {"MATERIALS", "MATERIALIEN", "MATÉRIAUX", "MATERIALI", "MATERIALES", "MATERIAIS", "MATERIAŁY", "МАТЕРИАЛЫ",
+     "МАТЕРІАЛИ", "MALZEMELER", "素材", "재료", "材料", "材料", "วัสดุ"},
+    // CatPlants
+    {"PLANTS", "PFLANZEN", "PLANTES", "PIANTE", "PLANTAS", "PLANTAS", "ROŚLINY", "РАСТЕНИЯ", "РОСЛИНИ", "BİTKİLER",
+     "植物", "식물", "植物", "植物", "พืช"},
+    // CatBait: fishing bait critters
+    {"BAIT", "KÖDER", "APPÂTS", "ESCHE", "CEBOS", "ISCAS", "PRZYNĘTY", "НАЖИВКА", "НАЖИВКА", "YEM", "餌", "미끼",
+     "鱼饵", "魚餌", "เหยื่อ"},
+    // CatTrees
+    {"TREES", "BÄUME", "ARBRES", "ALBERI", "ÁRBOLES", "ÁRVORES", "DRZEWA", "ДЕРЕВЬЯ", "ДЕРЕВА", "AĞAÇLAR", "木",
+     "나무", "树木", "樹木", "ต้นไม้"},
 };
 // clang-format on
 
