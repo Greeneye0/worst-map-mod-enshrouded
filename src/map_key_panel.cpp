@@ -4034,9 +4034,11 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     uint64_t nowMapTick = GetTickCount64();
     if (!g_worldMapWasOpen || (nowMapTick - g_lastWorldMapFrameTick) > 250ULL) {
         g_worldMapWasOpen = true;
-        // Opened from gameplay (M): center on the player. From the journal (F on a quest) or the backpack the
-        // game has already centered the map on what was asked for, so leave it there.
-        g_worldMapOpenCenterFrames = (g_screenBeforeMap == 1) ? 2 : 0;
+        // Center on the player, except when opened from the journal (F on a quest) or the backpack: the game
+        // has already centered the map on what was asked for, so leave it there.
+        g_worldMapOpenCenterFrames = (g_screenBeforeMap == 9) ? 0 : 2;
+        if (g_log) g_log("World Map opened from screen %u (%s)", g_screenBeforeMap,
+                         g_worldMapOpenCenterFrames ? "centering on player" : "keeping the game's view");
     }
     g_lastWorldMapFrameTick = nowMapTick;
     if (g_worldMapOpenCenterFrames > 0) {
@@ -5552,6 +5554,7 @@ struct MinimapMarkerDraw {
     uint8_t sortCat;
     bool isPulsing;
     bool isCleared;
+    int8_t heightDir = 0; // nearby chests: +1 above the player, -1 below
 };
 
 struct AssetSpec32 {
@@ -6202,6 +6205,15 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     if (g_goldChestEnabled || g_silverChestEnabled) {
         const void* goldIconRef = g_goldChestEnabled ? GetIconRefForType(client, kGoldChestTypeHash) : nullptr;
         const void* silverIconRef = g_silverChestEnabled ? GetIconRefForType(client, kSilverChestTypeHash) : nullptr;
+        // Nearby chests get an arrow saying whether they're above or below you (cellars, towers, cliffs).
+        constexpr float kChestHeightNearMeters = 75.0f, kChestHeightMinMeters = 4.0f;
+        float playerY = 0.0f;
+        bool havePlayerY = false;
+        if (uint8_t* clientWorld = GetClientWorld(client)) {
+            const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
+            playerY = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
+            havePlayerY = rawY != 0 && std::isfinite(playerY);
+        }
 
         for (size_t c = 0; c < kTotalChestCount; ++c) {
             const bool chestCleared = IsChestCurrentlyCleared(c);
@@ -6256,7 +6268,14 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 }
             }
 
-            drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, 3, isPulsing, chestCleared});
+            int8_t heightDir = 0;
+            if (havePlayerY && dxMeters * dxMeters + dzMeters * dzMeters <= kChestHeightNearMeters * kChestHeightNearMeters) {
+                const float dy = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f - playerY;
+                if (dy >= kChestHeightMinMeters) heightDir = 1;
+                else if (dy <= -kChestHeightMinMeters) heightDir = -1;
+            }
+
+            drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, 3, isPulsing, chestCleared, heightDir});
         }
     }
 
@@ -6333,6 +6352,15 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                              checkSz, checkSz,
                              0xFFFFFFFFu, 0.98f, 1.12f);
         }
+        if (md.heightDir != 0) {
+            // Up: green, at the icon's top-right corner. Down: orange, at its bottom-right corner.
+            const bool up = md.heightDir > 0;
+            const float ax = md.sx + md.size * 0.5f;
+            const float ay = md.sy + (up ? -0.32f : 0.32f) * md.size;
+            DrawPlayerTriangle(anchor.raw, ax, ay, 0.0f, up ? 1.0f : -1.0f, 0.62f * btnScale,
+                               up ? 0xFF6CC87Cu : 0xFF3C88E8u, up ? 0xFF9CF0ACu : 0xFF64B4FFu,
+                               std::max(0.6f, md.alpha));
+        }
     }
 
     // Draw other players in multiplayer from client + 0x4642c0 (count at +0x4642c8, stride 0x240)
@@ -6341,13 +6369,23 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         uint64_t playerCount = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
         uint32_t localPlayerId = *reinterpret_cast<uint32_t*>(client + 0x18);
         static minimap_players::Roster roster;
+        // p[0x207] is set for players in a hidden place, such as the Hollow Halls (the game moves them to their own
+        // part of the world, top left). Show the players on the same side of it as you: everyone outside, or the
+        // ones in there with you.
+        uint8_t localHidden = 0;
+        if (playerArray && playerCount <= 64) {
+            for (uint64_t i = 0; i < playerCount; ++i) {
+                auto* p = playerArray + i * 0x240;
+                if (*reinterpret_cast<uint32_t*>(p) == localPlayerId) localHidden = p[0x207];
+            }
+        }
         uint32_t activeIds[64]{};
         size_t activeCount = 0;
         if (playerArray && playerCount <= 64) {
             for (uint64_t i = 0; i < playerCount; ++i) {
                 auto* p = playerArray + i * 0x240;
                 const uint32_t id = *reinterpret_cast<uint32_t*>(p);
-                if (id && id != localPlayerId && !p[0x207]) activeIds[activeCount++] = id;
+                if (id && id != localPlayerId && p[0x207] == localHidden) activeIds[activeCount++] = id;
             }
         }
         roster.Retain(activeIds, activeCount);
@@ -6358,8 +6396,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 uint8_t* p = playerArray + i * 0x240;
                 uint32_t pid = *reinterpret_cast<uint32_t*>(p + 0x00);
                 if (pid == 0 || pid == localPlayerId) continue;
-                // p[0x207] != 0 means player is disconnected / hidden (0x140d1369a)
-                if (p[0x207] != 0) continue;
+                if (p[0x207] != localHidden) continue;
 
                 // Live float world coordinates at p + 0x10 {x, y, z} (0x140bd282a, 0x140d557fd)
                 float ox = *reinterpret_cast<float*>(p + 0x10);
