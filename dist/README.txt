@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.0
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.1
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, a
@@ -101,7 +101,8 @@ MINIMAP
 -------
 A minimap with the World Map's terrain, a compass, the time of day (or the weather) and its
 zoom level on your HUD, under the Journal [J] tab at first. Cleared places and looted chests
-show a check mark.
+show a check mark. A gold or silver chest within 75 m that is 4 m or more above or below you
+gets a green up or orange down arrow.
 - Hold Shift + Alt: the mouse cursor appears and the camera stops turning, so you can use
   the minimap without swinging your view or attacking.
     drag the minimap                 move it anywhere on screen
@@ -155,6 +156,11 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.1
+- Minimap: nearby chests above or below you get a green up or orange down arrow.
+- Minimap: other players show in the Hollow Halls too.
+- Reported bugs fixed: none.
+
 1.3.0
 - Mining: every ore deposit in the world, 21 kinds, on the world map, the minimap and in Find,
   each with its own row in the Map Key.
