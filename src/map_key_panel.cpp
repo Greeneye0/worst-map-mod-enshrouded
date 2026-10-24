@@ -3855,6 +3855,23 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         ry += kRowH;
     }
 
+    // Row 2b: Minimap Info Bar [ON / OFF], next to Show Minimap (with the minimap off it stays alone)
+    {
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::MinimapInfoBar), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_minimapInfoBar);
+        if (clicked && hovRow) {
+            g_minimapInfoBar = !g_minimapInfoBar;
+            SaveMinimapConfig();
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
     // Row 3: Minimap Terrain [ON / OFF]
     {
         bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
@@ -3890,23 +3907,6 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
                      act1 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
         if (clicked && (hov0 || hov1) && g_minimapThinBorder != hov1) {
             g_minimapThinBorder = hov1;
-            SaveMinimapConfig();
-            changed = true;
-        }
-        ry += kRowH;
-    }
-
-    // Row 4b: Minimap Info Bar [ON / OFF]
-    {
-        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
-        if (hovRow) {
-            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
-        }
-        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::MinimapInfoBar), 0xffd6e6eeu, 0.96f,
-                     TextAlignH::Left, TextAlignV::Center);
-        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_minimapInfoBar);
-        if (clicked && hovRow) {
-            g_minimapInfoBar = !g_minimapInfoBar;
             SaveMinimapConfig();
             changed = true;
         }
@@ -6018,9 +6018,12 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     const bool hoverSettingsCard = cursorVisible && g_minimapSettingsOpen &&
                                    inRect(mmSettingsX, mmSettingsY, mmSettingsW, kSettingsCardH);
 
+    // Show Minimap off with the info bar on keeps the bar alone (time, weather, cog), where the minimap's bottom was.
+    const bool barOnly = !g_minimapVisible && infoBar;
+
     // If the user turned "Show Minimap" OFF while the Minimap's Settings card is open,
     // hide the minimap immediately while keeping the Settings card open until closed!
-    if (!g_minimapVisible) {
+    if (!g_minimapVisible && !barOnly) {
         g_minimapDraggingMove = false;
         g_minimapDraggingResize = false;
         if (leftPressed && !hoverSettingsCard) {
@@ -6043,13 +6046,13 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     const bool hoverMinus   = infoBar && cursorVisible && !hoverSettingsCard && inRect(minusBtnX, trayButtonsY, zoomBtnW, trayButtonsH);
     const bool hoverPlus    = infoBar && cursorVisible && !hoverSettingsCard && inRect(plusBtnX, trayButtonsY, zoomBtnW, trayButtonsH);
     const bool hoverGear    = cursorVisible && !hoverSettingsCard && inRect(gearBtnX, gearBtnY, gearBtnW, gearBtnH);
-    const bool hoverResize  = cursorVisible && !hoverSettingsCard && !hoverPlus && !hoverMinus && !hoverGear &&
+    const bool hoverResize  = !barOnly && cursorVisible && !hoverSettingsCard && !hoverPlus && !hoverMinus && !hoverGear &&
                               (mouseX >= resizeGripX0 && mouseX <= resizeGripX1 &&
                                mouseY >= resizeGripY0 && mouseY <= resizeGripY1);
     const bool hoverWholeWidget = cursorVisible && !hoverSettingsCard && !hoverMinus && !hoverPlus && !hoverGear &&
-                                  ((thinBorder ? inRect(frameX, frameY, frameSize, frameSize)
-                                               : inRect(frameX + frameSize * 0.06f, frameY + frameSize * 0.04f,
-                                                        frameSize * 0.88f, frameSize * 0.90f)) ||
+                                  ((!barOnly && (thinBorder ? inRect(frameX, frameY, frameSize, frameSize)
+                                                            : inRect(frameX + frameSize * 0.06f, frameY + frameSize * 0.04f,
+                                                                     frameSize * 0.88f, frameSize * 0.90f))) ||
                                    (infoBar && inRect(trayX, trayButtonsY, trayW, trayButtonsH)));
 
     if (leftPressed && !hoverSettingsCard) {
@@ -6075,7 +6078,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         } else if (hoverWholeWidget) {
             // Ctrl + Left-Click on a chest icon inside the minimap viewport clears/restores it
             bool toggledChest = false;
-            if (((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) && inRect(vx, vy, vw, vh) && pxPerMeterX > 0.01f) {
+            if (!barOnly && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) && inRect(vx, vy, vw, vh) && pxPerMeterX > 0.01f) {
                 float clickWx = playerX + (mouseX - vcx) / pxPerMeterX;
                 float clickWz = playerZ - (mouseY - vcy) / pxPerMeterY;
                 float maxRadiusM = std::max(12.0f, 14.0f / pxPerMeterX);
@@ -6135,524 +6138,534 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         }
     }
 
-    // ------------------------------------------------------------------------
-    // 1. Draw Inner Map Viewport Background & Optional Terrain + Shroud + Fog
-    // ------------------------------------------------------------------------
-    DrawSolidRectAbs(anchor.raw, vx - 2.0f, vy - 2.0f, vw + 4.0f, vh + 4.0f, 0xFF141816u, 0.94f);
-    DrawSolidRectAbs(anchor.raw, vx, vy, vw, vh, 0xFF1C211Eu, 0.92f);
-
-    // Named child canvas widget for DrawMinimapTerrain (created on every pass so the UI tree stays balanced,
-    // its WidgetNode is distinct from the layer root node anchor.Handle(), and its ID at +0x30 persists for 0x141185580!)
-    static const UiText kMmCanvasName = MakeUiText("minimapHudCanvas");
-    Widget mmCanvas{};
-    g_namedWidget(mmCanvas.raw, &kMmCanvasName);
-    g_setSize(mmCanvas.Handle(), 0);
-    if (g_minimapShowTerrain) {
-        DrawMinimapTerrain(client, mmCanvas.raw, vx, vy, vw, vh, vcx, vcy, playerX, playerZ, pxPerMeterX, pxPerMeterY);
-    }
-    g_endWidget(mmCanvas.raw);
-
-    // Subtle inner vignette / shadow along viewport edges
-    DrawSolidRectAbs(anchor.raw, vx, vy, vw, 5.0f, 0xFF0A0C0Bu, 0.55f);
-    DrawSolidRectAbs(anchor.raw, vx, vy + vh - 5.0f, vw, 5.0f, 0xFF0A0C0Bu, 0.55f);
-    DrawSolidRectAbs(anchor.raw, vx, vy, 5.0f, vh, 0xFF0A0C0Bu, 0.55f);
-    DrawSolidRectAbs(anchor.raw, vx + vw - 5.0f, vy, 5.0f, vh, 0xFF0A0C0Bu, 0.55f);
-
-    // ------------------------------------------------------------------------
-    // 2. Collect & Draw Real World Map Markers (Synced with Big Map Filters)
-    // ------------------------------------------------------------------------
-    void* mgr = *reinterpret_cast<void**>(client + 0x4667f0);
-    auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
-    size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
-    const bool hideClearedOnBigMap = (client[0x4642b1] != 0);
-    const float customScale = kMarkerScaleLevels[g_customMarkerScaleIdx];
-
-    uint64_t nowTick = GetTickCount64();
-    const bool pulseActive = !g_pulsingPlaces.empty() && (nowTick - g_pulseStartTick <= 14000ULL);
-
-    std::vector<MinimapMarkerDraw> drawList;
-    drawList.reserve(96);
-
-    constexpr size_t kMarkerArrays[4] = { 0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78 };
-    const float iconPad = 10.0f * btnScale;
-
-    // 2a. Non-chest markers from arr0..arr3 (read-only so arrays never flicker!)
-    for (size_t a = 0; a < 4; ++a) {
-        uint8_t* base = *reinterpret_cast<uint8_t**>(client + kMarkerArrays[a]);
-        uint64_t count = *reinterpret_cast<uint64_t*>(client + kMarkerArrays[a] + 8);
-        if (!base || count == 0 || count > 10000) continue;
-
-        for (uint64_t i = 0; i < count; ++i) {
-            uint8_t* m = base + i * 0xA0;
-            uint32_t uid = *reinterpret_cast<uint32_t*>(m + 0x00);
-            // Skip injected chest markers here; we render chests directly from kChestSpawns below so they never flicker!
-            if ((uid & 0xFFFF0000u) == kChestMarkerUidPrefix) continue;
-
-            uint32_t origHash = GetMarkerOrigTypeHash(m);
-            if (origHash == 0u) continue;
-            // Skip duplicate grayed-out spire twin (0x98b2d65d) because 0xa17072be holds the spire
-            if (origHash == 0x98b2d65du) continue;
-
-            const bool isSlotSaved = IsSlotSaved(m);
-            uint32_t savedId08 = isSlotSaved ? *reinterpret_cast<uint32_t*>(m + 0x4c)
-                                             : *reinterpret_cast<uint32_t*>(m + 0x08);
-            if (savedId08 == 0u) savedId08 = *reinterpret_cast<uint32_t*>(m + 0x08);
-            const uint32_t markerState = *reinterpret_cast<uint32_t*>(m + 0x34);
-
-            uint32_t normHash = (origHash == 0xafce0c5fu)
-                                    ? ClassifyQuestOrRumorMarker(savedId08, static_cast<uint8_t>(markerState))
-                                    : NormalizeFilterTypeHash(origHash);
-            if (normHash == 0u) continue;
-            if (!IsFilterEnabled(filterEntries, filterCount, normHash)) {
-                uint32_t subpinQuestHash = (origHash != 0xafce0c5fu)
-                                               ? GetQuestFilterHashForMarkerId(savedId08, true)
-                                               : 0u;
-                if (subpinQuestHash != 0u && IsFilterEnabled(filterEntries, filterCount, subpinQuestHash)) {
-                    normHash = subpinQuestHash;
-                } else {
-                    continue;
-                }
-            }
-
-            // Respect PinRevealMode (Explored / Hybrid / Reveal All) for unexplored pins
-            const bool isUnexploredPin = (g_pinRevealMode != PinRevealMode::RevealAll) &&
-                                         !IsMarkerExplored(client, m, origHash);
-            if (isUnexploredPin && g_pinRevealMode == PinRevealMode::ExploredOnly) {
-                continue;
-            }
-
-            // In Enshrouded (0x140d1394d: cmp dword ptr [rdi+34h], 3), markerState == 3 is Completed/Cleared!
-            const bool isCleared = (markerState == 3u) || (normHash == kCompletedQuestTypeHash);
-            if (hideClearedOnBigMap && isCleared && normHash != kCompletedQuestTypeHash) continue;
-
-            int32_t rawMx = *reinterpret_cast<int32_t*>(m + 0x14);
-            int32_t rawMz = *reinterpret_cast<int32_t*>(m + 0x24);
-            float mx = static_cast<float>(rawMx) +
-                       static_cast<float>(*reinterpret_cast<uint16_t*>(m + 0x10)) / 65536.0f;
-            float mz = static_cast<float>(rawMz) +
-                       static_cast<float>(*reinterpret_cast<uint16_t*>(m + 0x20)) / 65536.0f;
-            if (mx <= 1.0f && mz <= 1.0f) continue;
-
-            float dxMeters = mx - playerX;
-            float dzMeters = mz - playerZ;
-            if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) {
-                continue;
-            }
-
-            float sx = vcx + dxMeters * pxPerMeterX;
-            float sy = vcy - dzMeters * pxPerMeterY;
-            if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f ||
-                sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
-                continue;
-            }
-
-            uint32_t displayHash = (normHash == kCompletedQuestTypeHash)
-                                       ? GetQuestFilterHashForMarkerId(savedId08, false)
-                                       : normHash;
-            if (displayHash == 0u || displayHash == 0x8ba7c122u) {
-                if (normHash == kCompletedQuestTypeHash) displayHash = 0xc52e92e5u;
-            }
-            if (isSlotSaved && m[0x48] != 0 && (normHash == 0xa17072beu || normHash == 0x1095684eu)) {
-                uint64_t lastChg = *reinterpret_cast<uint64_t*>(m + 0x40);
-                bool locked = (lastChg == 0);
-                if (locked) {
-                    displayHash = (normHash == 0xa17072beu) ? 0x98b2d65du : kLockedFastTravelTypeHash;
-                }
-            }
-
-            uint8_t* markerType = GetMarkerTypeHook(displayHash, mgr);
-            if (!markerType && g_getMarkerType && mgr) {
-                markerType = g_getMarkerType(displayHash, mgr);
-            }
-            if (!markerType) continue;
-
-            const bool useMuted = isCleared || (normHash == 0x8ba7c122u);
-            const void* iconRef = markerType + (useMuted ? 0x2c : 0x1c);
-            const auto* iconBytes = static_cast<const uint64_t*>(iconRef);
-            if (iconBytes[0] == 0 && iconBytes[1] == 0) {
-                iconRef = markerType + 0x1c;
-            }
-
-            uint8_t sortCat = markerType[0x14];
-            float iconSize = 18.0f * btnScale;
-            uint32_t tint = 0xFFFFFFFFu;
-            float alpha = 0.96f;
-
-            if (displayHash == 0x98b2d65du || displayHash == kLockedFastTravelTypeHash) {
-                // Locked Spire or Locked Fast Travel Point: dimmed gray
-                tint = 0xFF9E9E9Eu;
-                alpha = 0.85f;
-                iconSize = 20.0f * btnScale;
-            } else if (displayHash == 0xa17072beu) {
-                iconSize = 22.0f * btnScale;
-            } else if (displayHash == 0xa447cba3u || displayHash == 0x6a56c5b3u || displayHash == 0x1095684eu) {
-                iconSize = 20.0f * btnScale;
-            } else if (isCleared) {
-                alpha = 0.88f;
-            }
-
-            if (sortCat == 4) {
-                iconSize *= customScale;
-            }
-            if (isUnexploredPin && g_pinRevealMode == PinRevealMode::Hybrid) {
-                tint = 0xFF8C9296u;
-                alpha = 0.52f;
-            }
-
-            bool isPulsing = false;
-            if (pulseActive) {
-                for (const auto& pp : g_pulsingPlaces) {
-                    float pdx = pp.wx - mx;
-                    float pdz = pp.wz - mz;
-                    if (pdx * pdx + pdz * pdz <= 9.0f) {
-                        isPulsing = true;
-                        break;
-                    }
-                }
-            }
-
-            drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, sortCat, isPulsing, isCleared});
-        }
-    }
-
-    // 2b. Gold & Silver Chests directly from kChestSpawns (100% flicker-free!)
-    if (g_goldChestEnabled || g_silverChestEnabled) {
-        const void* goldIconRef = g_goldChestEnabled ? GetIconRefForType(client, kGoldChestTypeHash) : nullptr;
-        const void* silverIconRef = g_silverChestEnabled ? GetIconRefForType(client, kSilverChestTypeHash) : nullptr;
-        // Nearby chests get an arrow saying whether they're above or below you (cellars, towers, cliffs).
-        constexpr float kChestHeightNearMeters = 75.0f, kChestHeightMinMeters = 4.0f;
-        float playerY = 0.0f;
-        bool havePlayerY = false;
-        if (uint8_t* clientWorld = GetClientWorld(client)) {
-            const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
-            playerY = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
-            havePlayerY = rawY != 0 && std::isfinite(playerY);
-        }
-
-        for (size_t c = 0; c < kTotalChestCount; ++c) {
-            const bool chestCleared = IsChestCurrentlyCleared(c);
-            if (chestCleared && g_lootedChestMode == 0) continue;
-            const bool isGold = (c < kGoldChestCount);
-            if (isGold && !g_goldChestEnabled) continue;
-            if (!isGold && !g_silverChestEnabled) continue;
-
-            const void* iconRef = isGold ? goldIconRef : silverIconRef;
-            if (!iconRef) continue;
-
-            const ChestSpawn& sp = kChestSpawns[c];
-            float mx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
-            float mz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
-
-            float dxMeters = mx - playerX;
-            float dzMeters = mz - playerZ;
-            if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) {
-                continue;
-            }
-
-            const bool chestUnexplored = (g_pinRevealMode != PinRevealMode::RevealAll) &&
-                                         !IsPositionExploredByCharacter(client, sp.px1, sp.pz1);
-            if (chestUnexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) {
-                continue;
-            }
-
-            float sx = vcx + dxMeters * pxPerMeterX;
-            float sy = vcy - dzMeters * pxPerMeterY;
-            if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f ||
-                sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
-                continue;
-            }
-
-            float iconSize = (isGold ? 16.5f : 15.5f) * btnScale;
-            uint32_t tint = isGold ? 0xFF38C8FFu : 0xFFE8E4DCu;
-            float alpha = 0.96f;
-            if (chestCleared || (chestUnexplored && g_pinRevealMode == PinRevealMode::Hybrid)) {
-                tint = isGold ? 0xFF6894ACu : 0xFF909498u;
-                alpha = chestCleared ? 0.50f : 0.55f;
-            }
-
-            bool isPulsing = false;
-            if (pulseActive) {
-                for (const auto& pp : g_pulsingPlaces) {
-                    float pdx = pp.wx - mx;
-                    float pdz = pp.wz - mz;
-                    if (pdx * pdx + pdz * pdz <= 9.0f) {
-                        isPulsing = true;
-                        break;
-                    }
-                }
-            }
-
-            int8_t heightDir = 0;
-            if (havePlayerY && dxMeters * dxMeters + dzMeters * dzMeters <= kChestHeightNearMeters * kChestHeightNearMeters) {
-                const float dy = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f - playerY;
-                if (dy >= kChestHeightMinMeters) heightDir = 1;
-                else if (dy <= -kChestHeightMinMeters) heightDir = -1;
-            }
-
-            drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, 3, isPulsing, chestCleared, heightDir});
-        }
-    }
-
-    // 2c. Ore deposits (Mining), under everything else
-    if (AnyOreEnabled()) {
-        for (size_t d = 0; d < kOreDepositCount; ++d) {
-            const OreDeposit& dep = kOreDeposits[d];
-            if (!g_oreEnabled[dep.ore]) continue;
-            const float dxMeters = dep.x - playerX;
-            const float dzMeters = dep.z - playerZ;
-            if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) continue;
-            const bool unexplored = (g_pinRevealMode != PinRevealMode::RevealAll) &&
-                                    !IsPositionExploredByCharacter(client, dep.x, dep.z);
-            if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) continue;
-            const float sx = vcx + dxMeters * pxPerMeterX;
-            const float sy = vcy - dzMeters * pxPerMeterY;
-            if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f ||
-                sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
-                continue;
-            }
-            drawList.push_back(MinimapMarkerDraw{sx, sy, 13.0f * btnScale, kOreIcons[dep.ore],
-                unexplored ? 0xFF8C9296u : 0xFFFFFFFFu, unexplored ? 0.55f : 0.95f, kMiningCategory, false, false});
-        }
-    }
-
-    // Sort so POIs/Chests (cat 3) render below Vaults (cat 2), Fast Travel/Spires (cat 1), Quests (cat 0), Custom Pins (cat 4)
-    auto catPriority = [](uint8_t cat) -> int {
-        switch (cat) {
-            case kMiningCategory: return -1;
-            case 3: return 0;
-            case 2: return 1;
-            case 1: return 2;
-            case 0: return 3;
-            case 4: return 4;
-            default: return 1;
-        }
-    };
-    std::stable_sort(drawList.begin(), drawList.end(), [&](const MinimapMarkerDraw& a, const MinimapMarkerDraw& b) {
-        return catPriority(a.sortCat) < catPriority(b.sortCat);
-    });
-
-    float elapsedPulseSec = pulseActive ? (static_cast<float>(nowTick - g_pulseStartTick) * 0.001f) : 0.0f;
-    float pulsePhase = std::fmod(elapsedPulseSec, 2.25f) / 2.25f;
-    float pulseT = std::min(1.0f, pulsePhase * 2.0f);
-    float pulseOneMinusT = 1.0f - pulseT;
-    float pulseEase = 1.0f - pulseOneMinusT * pulseOneMinusT;
-    float pulseAlpha = pulseOneMinusT * 0.70f;
-    uint32_t pulseCol = 0xff6be0ffu;
-    if (uint8_t* assets = GetUiAssets()) {
-        pulseCol = *reinterpret_cast<uint32_t*>(assets + kMapPulseColorOffset) | 0xff000000u;
-    }
-
-    for (const auto& md : drawList) {
-        if (md.isPulsing && pulseAlpha > 0.01f) {
-            float ringSz = md.size + pulseEase * 32.0f;
-            DrawAssetRectAbs(anchor.raw, kMapPulseRingPrimitive,
-                             md.sx - ringSz * 0.5f, md.sy - ringSz * 0.5f,
-                             ringSz, ringSz, pulseCol, pulseAlpha, 1.0f);
-        }
-        DrawIconRectAbs(anchor.raw, md.iconRef,
-                        md.sx - md.size * 0.5f, md.sy - md.size * 0.5f,
-                        md.size, md.size, md.color, md.alpha);
-        if (md.isCleared) {
-            // Draw the native completed checkmark (assets + 0xed80) on completed Shroud Roots, Vaults, POIs, or looted chests
-            float checkSz = std::max(10.0f, md.size * 0.62f);
-            float checkX = md.sx + md.size * 0.45f - checkSz * 0.72f;
-            float checkY = md.sy + md.size * 0.45f - checkSz * 0.72f;
-            DrawAssetRectAbs(anchor.raw, kCirclePrimitive,
-                             checkX - 1.0f, checkY - 1.0f,
-                             checkSz + 2.0f, checkSz + 2.0f,
-                             0xFF0A0E10u, 0.85f * md.alpha, 1.0f);
-            DrawAssetRectAbs(anchor.raw, kCheckmarkPrimitive,
-                             checkX, checkY,
-                             checkSz, checkSz,
-                             0xFFFFFFFFu, 0.98f, 1.12f);
-        }
-        if (md.heightDir != 0) {
-            // Up: green, at the icon's top-right corner. Down: orange, at its bottom-right corner.
-            const bool up = md.heightDir > 0;
-            const float ax = md.sx + md.size * 0.5f;
-            const float ay = md.sy + (up ? -0.32f : 0.32f) * md.size;
-            DrawPlayerTriangle(anchor.raw, ax, ay, 0.0f, up ? 1.0f : -1.0f, 0.62f * btnScale,
-                               up ? 0xFF6CC87Cu : 0xFF3C88E8u, up ? 0xFF9CF0ACu : 0xFF64B4FFu,
-                               std::max(0.6f, md.alpha));
-        }
-    }
-
-    // Draw other players in multiplayer from client + 0x4642c0 (count at +0x4642c8, stride 0x240)
-    if (g_otherPlayersEnabled) {
-        uint8_t* playerArray = *reinterpret_cast<uint8_t**>(client + 0x4642c0);
-        uint64_t playerCount = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
-        uint32_t localPlayerId = *reinterpret_cast<uint32_t*>(client + 0x18);
-        static minimap_players::Roster roster;
-        // p[0x207] is set for players in a hidden place, such as the Hollow Halls (the game moves them to their own
-        // part of the world, top left). Show the players on the same side of it as you: everyone outside, or the
-        // ones in there with you.
-        uint8_t localHidden = 0;
-        if (playerArray && playerCount <= 64) {
-            for (uint64_t i = 0; i < playerCount; ++i) {
-                auto* p = playerArray + i * 0x240;
-                if (*reinterpret_cast<uint32_t*>(p) == localPlayerId) localHidden = p[0x207];
-            }
-        }
-        uint32_t activeIds[64]{};
-        size_t activeCount = 0;
-        if (playerArray && playerCount <= 64) {
-            for (uint64_t i = 0; i < playerCount; ++i) {
-                auto* p = playerArray + i * 0x240;
-                const uint32_t id = *reinterpret_cast<uint32_t*>(p);
-                if (id && id != localPlayerId && p[0x207] == localHidden) activeIds[activeCount++] = id;
-            }
-        }
-        roster.Retain(activeIds, activeCount);
-
-        if (playerArray && playerCount > 0 && playerCount <= 64) {
-            const float clampLimit = radiusMeters * 0.91f;
-            for (uint64_t i = 0; i < playerCount; ++i) {
-                uint8_t* p = playerArray + i * 0x240;
-                uint32_t pid = *reinterpret_cast<uint32_t*>(p + 0x00);
-                if (pid == 0 || pid == localPlayerId) continue;
-                if (p[0x207] != localHidden) continue;
-
-                // Live float world coordinates at p + 0x10 {x, y, z} (0x140bd282a, 0x140d557fd)
-                float ox = *reinterpret_cast<float*>(p + 0x10);
-                float oz = *reinterpret_cast<float*>(p + 0x18);
-                if (!(ox > 100.0f && ox < 12000.0f && oz > 100.0f && oz < 12000.0f) && p[0x68] != 0) {
-                    int32_t rx = *reinterpret_cast<int32_t*>(p + 0x54);
-                    int32_t rz = *reinterpret_cast<int32_t*>(p + 0x64);
-                    ox = static_cast<float>(rx) + static_cast<float>(*reinterpret_cast<uint16_t*>(p + 0x50)) / 65536.0f;
-                    oz = static_cast<float>(rz) + static_cast<float>(*reinterpret_cast<uint16_t*>(p + 0x60)) / 65536.0f;
-                }
-                if (!(ox > 100.0f && ox < 12000.0f && oz > 100.0f && oz < 12000.0f)) continue;
-
-                float dxM = ox - playerX;
-                float dzM = oz - playerZ;
-                bool isClamped = false;
-                float maxAxis = std::max(std::abs(dxM), std::abs(dzM));
-                if (maxAxis > clampLimit && maxAxis > 0.001f) {
-                    float scale = clampLimit / maxAxis;
-                    dxM *= scale;
-                    dzM *= scale;
-                    isClamped = true;
-                }
-
-                float osx = vcx + dxM * pxPerMeterX;
-                float osy = vcy - dzM * pxPerMeterY;
-                float pSz = (isClamped ? 16.5f : 20.5f) * btnScale;
-                float pAlpha = isClamped ? 0.86f : 1.0f;
-
-                auto& marker = roster.Update(pid, ox, oz);
-                DrawPlayerTriangle(anchor.raw, osx, osy, marker.dirX, marker.dirZ,
-                                   btnScale * (isClamped ? 0.85f : 1.0f),
-                                   marker.color, marker.color, pAlpha);
-
-                // Draw player character/display name above their marker
-                const char* namePtr = *reinterpret_cast<const char**>(p + 0xc0);
-                size_t nameLen = *reinterpret_cast<size_t*>(p + 0xc8);
-                if (!namePtr || nameLen == 0 || nameLen > 64) {
-                    namePtr = *reinterpret_cast<const char**>(p + 0xd8);
-                    nameLen = *reinterpret_cast<size_t*>(p + 0xe0);
-                }
-                if (namePtr && nameLen > 0 && nameLen <= 48) {
-                    char nameBuf[56]{};
-                    std::memcpy(nameBuf, namePtr, nameLen);
-                    nameBuf[nameLen] = '\0';
-                    float lblW = 110.0f * btnScale;
-                    float lblH = 14.0f * btnScale;
-                    float lblY = osy - pSz * 0.5f - lblH - 1.0f * btnScale;
-                    if (lblY < vy + 2.0f * btnScale) {
-                        lblY = osy + pSz * 0.5f + 1.0f * btnScale;
-                    }
-                    // Subtle shadow + crisp bright label
-                    DrawLabelAbs(osx - lblW * 0.5f + 1.0f, lblY + 1.0f, lblW, lblH,
-                                 nameBuf, 0xFF080A0Cu, 0.90f * pAlpha, TextAlignH::Center, TextAlignV::Center);
-                    DrawLabelAbs(osx - lblW * 0.5f, lblY, lblW, lblH,
-                                 nameBuf, 0xFFF4ECDCu, pAlpha, TextAlignH::Center, TextAlignV::Center);
-                }
-            }
-        }
-    }
-
-    // Also draw active multiplayer map pings if present (*(g + 0xd0) + 0x15130, count at +0x15b30)
-    if (auto* g = static_cast<uint8_t*>(GetUiG())) {
-        if (uint8_t* d0 = *reinterpret_cast<uint8_t**>(g + 0xd0)) {
-            uint8_t pingCount = d0[0x15b30];
-            if (pingCount > 0 && pingCount <= 16) {
-                const void* pingIcon = GetIconRefForType(client, 0x83405288u);
-                if (!pingIcon) pingIcon = GetIconRefForType(client, 0x26d18a06u);
-                for (uint8_t p = 0; p < pingCount; ++p) {
-                    uint8_t* pm = d0 + 0x15130 + static_cast<size_t>(p) * 0xA0;
-                    float ox = static_cast<float>(*reinterpret_cast<int32_t*>(pm + 0x14)) +
-                               static_cast<float>(*reinterpret_cast<uint16_t*>(pm + 0x10)) / 65536.0f;
-                    float oz = static_cast<float>(*reinterpret_cast<int32_t*>(pm + 0x24)) +
-                               static_cast<float>(*reinterpret_cast<uint16_t*>(pm + 0x20)) / 65536.0f;
-                    float dxM = ox - playerX;
-                    float dzM = oz - playerZ;
-                    if (std::abs(dxM) <= radiusMeters && std::abs(dzM) <= radiusMeters && pingIcon) {
-                        float osx = vcx + dxM * pxPerMeterX;
-                        float osy = vcy - dzM * pxPerMeterY;
-                        float pSz = 20.0f * btnScale;
-                        DrawIconRectAbs(anchor.raw, pingIcon, osx - pSz * 0.5f, osy - pSz * 0.5f, pSz, pSz, 0xFFFFFFFFu, 1.0f);
-                    }
-                }
-            }
-        }
-    }
-
-    // Draw local Player Marker at exact center (vcx, vcy) as a clean, compact directional triangle
-    float camDirX = 0.0f, camDirZ = 1.0f;
-    float faceDirX = 0.0f, faceDirZ = 1.0f;
-    GetHudPlayerFacingDirs(client, playerX, playerZ, camDirX, camDirZ, faceDirX, faceDirZ);
-
-    DrawPlayerTriangle(anchor.raw, vcx, vcy, faceDirX, faceDirZ, btnScale, 0xFF63A1B8u, 0xFF8CC4DAu, 1.0f);
-
-    if (thinBorder) {
-        // Thin border: a dark outline and a fine gold line round the map, and a small N at the top
-        const float x0 = frameX, y0 = frameY, sz = frameSize;
-        DrawSolidRectAbs(anchor.raw, x0, y0, sz, 3.0f, 0xFF0A0E10u, 0.9f);
-        DrawSolidRectAbs(anchor.raw, x0, y0 + sz - 3.0f, sz, 3.0f, 0xFF0A0E10u, 0.9f);
-        DrawSolidRectAbs(anchor.raw, x0, y0, 3.0f, sz, 0xFF0A0E10u, 0.9f);
-        DrawSolidRectAbs(anchor.raw, x0 + sz - 3.0f, y0, 3.0f, sz, 0xFF0A0E10u, 0.9f);
-        constexpr uint32_t kThinGold = 0xFF7CC4DCu;
-        DrawSolidRectAbs(anchor.raw, x0 + 1.0f, y0 + 1.0f, sz - 2.0f, 1.0f, kThinGold, 0.9f);
-        DrawSolidRectAbs(anchor.raw, x0 + 1.0f, y0 + sz - 2.0f, sz - 2.0f, 1.0f, kThinGold, 0.9f);
-        DrawSolidRectAbs(anchor.raw, x0 + 1.0f, y0 + 1.0f, 1.0f, sz - 2.0f, kThinGold, 0.9f);
-        DrawSolidRectAbs(anchor.raw, x0 + sz - 2.0f, y0 + 1.0f, 1.0f, sz - 2.0f, kThinGold, 0.9f);
-        DrawLabelAbs(frameCx - 15.0f + 1.0f, vy + 1.0f + 1.0f, 30.0f, 18.0f, umm_lang::T(umm_lang::Str::CompassN),
-                     0xFF080A0Cu, 0.85f, TextAlignH::Center, TextAlignV::Center);
-        DrawLabelAbs(frameCx - 15.0f, vy + 1.0f, 30.0f, 18.0f, umm_lang::T(umm_lang::Str::CompassN),
-                     0xFF9AD3E9u, 0.98f, TextAlignH::Center, TextAlignV::Center);
+    if (barOnly) {
+        // Keep the child mmCanvas widget in the UI tree so pass 0..3 stay balanced
+        static const UiText kMmCanvasName = MakeUiText("minimapHudCanvas");
+        Widget mmCanvas{};
+        g_namedWidget(mmCanvas.raw, &kMmCanvasName);
+        g_setSize(mmCanvas.Handle(), 0);
+        g_endWidget(mmCanvas.raw);
+        DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * U, trayY - 262.0f * U, 1.0f, trayW - trayBaseW);
     } else {
         // ------------------------------------------------------------------------
-        // 3. Frame art: the tray first (it tucks behind the bottom rail), then the frame and the N
-        //    medallion set into the compass rose
+        // 1. Draw Inner Map Viewport Background & Optional Terrain + Shroud + Fog
         // ------------------------------------------------------------------------
-        if (infoBar) DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * U, trayY - 262.0f * U, 1.0f, trayW - trayBaseW);
-        if (frameSize >= kMinimapArtDesign) {
-            const float grow = (frameSize - kMinimapArtDesign) * 0.5f;
-            DrawArtSprite(anchor.raw, kArtFrame370, frameX, frameY, 1.0f, grow, grow);
-            for (int z = 0; z < kArtFrame370.nZonesX; ++z)
-                DrawArtZoneStrip(anchor.raw, kArtFrame370, *kArtFrameStripsX[z], true, z, frameX, frameY, grow, grow);
-            for (int z = 0; z < kArtFrame370.nZonesY; ++z)
-                DrawArtZoneStrip(anchor.raw, kArtFrame370, *kArtFrameStripsY[z], false, z, frameX, frameY, grow, grow);
-        } else {
-            // The smallest pre-rendered size at or above this one, scaled down a little
-            const MinimapArtSprite* bucket = &kArtFrame370;
-            float bucketSize = kMinimapArtDesign;
-            for (int i = 0; i < kMinimapFrameBucketCount; ++i) {
-                if (kMinimapFrameBuckets[i] >= frameSize) {
-                    bucket = kArtFrameBuckets[i];
-                    bucketSize = kMinimapFrameBuckets[i];
-                    break;
+        DrawSolidRectAbs(anchor.raw, vx - 2.0f, vy - 2.0f, vw + 4.0f, vh + 4.0f, 0xFF141816u, 0.94f);
+        DrawSolidRectAbs(anchor.raw, vx, vy, vw, vh, 0xFF1C211Eu, 0.92f);
+
+        // Named child canvas widget for DrawMinimapTerrain (created on every pass so the UI tree stays balanced,
+        // its WidgetNode is distinct from the layer root node anchor.Handle(), and its ID at +0x30 persists for 0x141185580!)
+        static const UiText kMmCanvasName = MakeUiText("minimapHudCanvas");
+        Widget mmCanvas{};
+        g_namedWidget(mmCanvas.raw, &kMmCanvasName);
+        g_setSize(mmCanvas.Handle(), 0);
+        if (g_minimapShowTerrain) {
+            DrawMinimapTerrain(client, mmCanvas.raw, vx, vy, vw, vh, vcx, vcy, playerX, playerZ, pxPerMeterX, pxPerMeterY);
+        }
+        g_endWidget(mmCanvas.raw);
+
+        // Subtle inner vignette / shadow along viewport edges
+        DrawSolidRectAbs(anchor.raw, vx, vy, vw, 5.0f, 0xFF0A0C0Bu, 0.55f);
+        DrawSolidRectAbs(anchor.raw, vx, vy + vh - 5.0f, vw, 5.0f, 0xFF0A0C0Bu, 0.55f);
+        DrawSolidRectAbs(anchor.raw, vx, vy, 5.0f, vh, 0xFF0A0C0Bu, 0.55f);
+        DrawSolidRectAbs(anchor.raw, vx + vw - 5.0f, vy, 5.0f, vh, 0xFF0A0C0Bu, 0.55f);
+
+        // ------------------------------------------------------------------------
+        // 2. Collect & Draw Real World Map Markers (Synced with Big Map Filters)
+        // ------------------------------------------------------------------------
+        void* mgr = *reinterpret_cast<void**>(client + 0x4667f0);
+        auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+        size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
+        const bool hideClearedOnBigMap = (client[0x4642b1] != 0);
+        const float customScale = kMarkerScaleLevels[g_customMarkerScaleIdx];
+
+        uint64_t nowTick = GetTickCount64();
+        const bool pulseActive = !g_pulsingPlaces.empty() && (nowTick - g_pulseStartTick <= 14000ULL);
+
+        std::vector<MinimapMarkerDraw> drawList;
+        drawList.reserve(96);
+
+        constexpr size_t kMarkerArrays[4] = { 0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78 };
+        const float iconPad = 10.0f * btnScale;
+
+        // 2a. Non-chest markers from arr0..arr3 (read-only so arrays never flicker!)
+        for (size_t a = 0; a < 4; ++a) {
+            uint8_t* base = *reinterpret_cast<uint8_t**>(client + kMarkerArrays[a]);
+            uint64_t count = *reinterpret_cast<uint64_t*>(client + kMarkerArrays[a] + 8);
+            if (!base || count == 0 || count > 10000) continue;
+
+            for (uint64_t i = 0; i < count; ++i) {
+                uint8_t* m = base + i * 0xA0;
+                uint32_t uid = *reinterpret_cast<uint32_t*>(m + 0x00);
+                // Skip injected chest markers here; we render chests directly from kChestSpawns below so they never flicker!
+                if ((uid & 0xFFFF0000u) == kChestMarkerUidPrefix) continue;
+
+                uint32_t origHash = GetMarkerOrigTypeHash(m);
+                if (origHash == 0u) continue;
+                // Skip duplicate grayed-out spire twin (0x98b2d65d) because 0xa17072be holds the spire
+                if (origHash == 0x98b2d65du) continue;
+
+                const bool isSlotSaved = IsSlotSaved(m);
+                uint32_t savedId08 = isSlotSaved ? *reinterpret_cast<uint32_t*>(m + 0x4c)
+                                                 : *reinterpret_cast<uint32_t*>(m + 0x08);
+                if (savedId08 == 0u) savedId08 = *reinterpret_cast<uint32_t*>(m + 0x08);
+                const uint32_t markerState = *reinterpret_cast<uint32_t*>(m + 0x34);
+
+                uint32_t normHash = (origHash == 0xafce0c5fu)
+                                        ? ClassifyQuestOrRumorMarker(savedId08, static_cast<uint8_t>(markerState))
+                                        : NormalizeFilterTypeHash(origHash);
+                if (normHash == 0u) continue;
+                if (!IsFilterEnabled(filterEntries, filterCount, normHash)) {
+                    uint32_t subpinQuestHash = (origHash != 0xafce0c5fu)
+                                                   ? GetQuestFilterHashForMarkerId(savedId08, true)
+                                                   : 0u;
+                    if (subpinQuestHash != 0u && IsFilterEnabled(filterEntries, filterCount, subpinQuestHash)) {
+                        normHash = subpinQuestHash;
+                    } else {
+                        continue;
+                    }
+                }
+
+                // Respect PinRevealMode (Explored / Hybrid / Reveal All) for unexplored pins
+                const bool isUnexploredPin = (g_pinRevealMode != PinRevealMode::RevealAll) &&
+                                             !IsMarkerExplored(client, m, origHash);
+                if (isUnexploredPin && g_pinRevealMode == PinRevealMode::ExploredOnly) {
+                    continue;
+                }
+
+                // In Enshrouded (0x140d1394d: cmp dword ptr [rdi+34h], 3), markerState == 3 is Completed/Cleared!
+                const bool isCleared = (markerState == 3u) || (normHash == kCompletedQuestTypeHash);
+                if (hideClearedOnBigMap && isCleared && normHash != kCompletedQuestTypeHash) continue;
+
+                int32_t rawMx = *reinterpret_cast<int32_t*>(m + 0x14);
+                int32_t rawMz = *reinterpret_cast<int32_t*>(m + 0x24);
+                float mx = static_cast<float>(rawMx) +
+                           static_cast<float>(*reinterpret_cast<uint16_t*>(m + 0x10)) / 65536.0f;
+                float mz = static_cast<float>(rawMz) +
+                           static_cast<float>(*reinterpret_cast<uint16_t*>(m + 0x20)) / 65536.0f;
+                if (mx <= 1.0f && mz <= 1.0f) continue;
+
+                float dxMeters = mx - playerX;
+                float dzMeters = mz - playerZ;
+                if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) {
+                    continue;
+                }
+
+                float sx = vcx + dxMeters * pxPerMeterX;
+                float sy = vcy - dzMeters * pxPerMeterY;
+                if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f ||
+                    sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
+                    continue;
+                }
+
+                uint32_t displayHash = (normHash == kCompletedQuestTypeHash)
+                                           ? GetQuestFilterHashForMarkerId(savedId08, false)
+                                           : normHash;
+                if (displayHash == 0u || displayHash == 0x8ba7c122u) {
+                    if (normHash == kCompletedQuestTypeHash) displayHash = 0xc52e92e5u;
+                }
+                if (isSlotSaved && m[0x48] != 0 && (normHash == 0xa17072beu || normHash == 0x1095684eu)) {
+                    uint64_t lastChg = *reinterpret_cast<uint64_t*>(m + 0x40);
+                    bool locked = (lastChg == 0);
+                    if (locked) {
+                        displayHash = (normHash == 0xa17072beu) ? 0x98b2d65du : kLockedFastTravelTypeHash;
+                    }
+                }
+
+                uint8_t* markerType = GetMarkerTypeHook(displayHash, mgr);
+                if (!markerType && g_getMarkerType && mgr) {
+                    markerType = g_getMarkerType(displayHash, mgr);
+                }
+                if (!markerType) continue;
+
+                const bool useMuted = isCleared || (normHash == 0x8ba7c122u);
+                const void* iconRef = markerType + (useMuted ? 0x2c : 0x1c);
+                const auto* iconBytes = static_cast<const uint64_t*>(iconRef);
+                if (iconBytes[0] == 0 && iconBytes[1] == 0) {
+                    iconRef = markerType + 0x1c;
+                }
+
+                uint8_t sortCat = markerType[0x14];
+                float iconSize = 18.0f * btnScale;
+                uint32_t tint = 0xFFFFFFFFu;
+                float alpha = 0.96f;
+
+                if (displayHash == 0x98b2d65du || displayHash == kLockedFastTravelTypeHash) {
+                    // Locked Spire or Locked Fast Travel Point: dimmed gray
+                    tint = 0xFF9E9E9Eu;
+                    alpha = 0.85f;
+                    iconSize = 20.0f * btnScale;
+                } else if (displayHash == 0xa17072beu) {
+                    iconSize = 22.0f * btnScale;
+                } else if (displayHash == 0xa447cba3u || displayHash == 0x6a56c5b3u || displayHash == 0x1095684eu) {
+                    iconSize = 20.0f * btnScale;
+                } else if (isCleared) {
+                    alpha = 0.88f;
+                }
+
+                if (sortCat == 4) {
+                    iconSize *= customScale;
+                }
+                if (isUnexploredPin && g_pinRevealMode == PinRevealMode::Hybrid) {
+                    tint = 0xFF8C9296u;
+                    alpha = 0.52f;
+                }
+
+                bool isPulsing = false;
+                if (pulseActive) {
+                    for (const auto& pp : g_pulsingPlaces) {
+                        float pdx = pp.wx - mx;
+                        float pdz = pp.wz - mz;
+                        if (pdx * pdx + pdz * pdz <= 9.0f) {
+                            isPulsing = true;
+                            break;
+                        }
+                    }
+                }
+
+                drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, sortCat, isPulsing, isCleared});
+            }
+        }
+
+        // 2b. Gold & Silver Chests directly from kChestSpawns (100% flicker-free!)
+        if (g_goldChestEnabled || g_silverChestEnabled) {
+            const void* goldIconRef = g_goldChestEnabled ? GetIconRefForType(client, kGoldChestTypeHash) : nullptr;
+            const void* silverIconRef = g_silverChestEnabled ? GetIconRefForType(client, kSilverChestTypeHash) : nullptr;
+            // Nearby chests get an arrow saying whether they're above or below you (cellars, towers, cliffs).
+            constexpr float kChestHeightNearMeters = 75.0f, kChestHeightMinMeters = 4.0f;
+            float playerY = 0.0f;
+            bool havePlayerY = false;
+            if (uint8_t* clientWorld = GetClientWorld(client)) {
+                const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
+                playerY = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
+                havePlayerY = rawY != 0 && std::isfinite(playerY);
+            }
+
+            for (size_t c = 0; c < kTotalChestCount; ++c) {
+                const bool chestCleared = IsChestCurrentlyCleared(c);
+                if (chestCleared && g_lootedChestMode == 0) continue;
+                const bool isGold = (c < kGoldChestCount);
+                if (isGold && !g_goldChestEnabled) continue;
+                if (!isGold && !g_silverChestEnabled) continue;
+
+                const void* iconRef = isGold ? goldIconRef : silverIconRef;
+                if (!iconRef) continue;
+
+                const ChestSpawn& sp = kChestSpawns[c];
+                float mx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
+                float mz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
+
+                float dxMeters = mx - playerX;
+                float dzMeters = mz - playerZ;
+                if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) {
+                    continue;
+                }
+
+                const bool chestUnexplored = (g_pinRevealMode != PinRevealMode::RevealAll) &&
+                                             !IsPositionExploredByCharacter(client, sp.px1, sp.pz1);
+                if (chestUnexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) {
+                    continue;
+                }
+
+                float sx = vcx + dxMeters * pxPerMeterX;
+                float sy = vcy - dzMeters * pxPerMeterY;
+                if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f ||
+                    sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
+                    continue;
+                }
+
+                float iconSize = (isGold ? 16.5f : 15.5f) * btnScale;
+                uint32_t tint = isGold ? 0xFF38C8FFu : 0xFFE8E4DCu;
+                float alpha = 0.96f;
+                if (chestCleared || (chestUnexplored && g_pinRevealMode == PinRevealMode::Hybrid)) {
+                    tint = isGold ? 0xFF6894ACu : 0xFF909498u;
+                    alpha = chestCleared ? 0.50f : 0.55f;
+                }
+
+                bool isPulsing = false;
+                if (pulseActive) {
+                    for (const auto& pp : g_pulsingPlaces) {
+                        float pdx = pp.wx - mx;
+                        float pdz = pp.wz - mz;
+                        if (pdx * pdx + pdz * pdz <= 9.0f) {
+                            isPulsing = true;
+                            break;
+                        }
+                    }
+                }
+
+                int8_t heightDir = 0;
+                if (havePlayerY && dxMeters * dxMeters + dzMeters * dzMeters <= kChestHeightNearMeters * kChestHeightNearMeters) {
+                    const float dy = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f - playerY;
+                    if (dy >= kChestHeightMinMeters) heightDir = 1;
+                    else if (dy <= -kChestHeightMinMeters) heightDir = -1;
+                }
+
+                drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, 3, isPulsing, chestCleared, heightDir});
+            }
+        }
+
+        // 2c. Ore deposits (Mining), under everything else
+        if (AnyOreEnabled()) {
+            for (size_t d = 0; d < kOreDepositCount; ++d) {
+                const OreDeposit& dep = kOreDeposits[d];
+                if (!g_oreEnabled[dep.ore]) continue;
+                const float dxMeters = dep.x - playerX;
+                const float dzMeters = dep.z - playerZ;
+                if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) continue;
+                const bool unexplored = (g_pinRevealMode != PinRevealMode::RevealAll) &&
+                                        !IsPositionExploredByCharacter(client, dep.x, dep.z);
+                if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) continue;
+                const float sx = vcx + dxMeters * pxPerMeterX;
+                const float sy = vcy - dzMeters * pxPerMeterY;
+                if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f ||
+                    sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
+                    continue;
+                }
+                drawList.push_back(MinimapMarkerDraw{sx, sy, 13.0f * btnScale, kOreIcons[dep.ore],
+                    unexplored ? 0xFF8C9296u : 0xFFFFFFFFu, unexplored ? 0.55f : 0.95f, kMiningCategory, false, false});
+            }
+        }
+
+        // Sort so POIs/Chests (cat 3) render below Vaults (cat 2), Fast Travel/Spires (cat 1), Quests (cat 0), Custom Pins (cat 4)
+        auto catPriority = [](uint8_t cat) -> int {
+            switch (cat) {
+                case kMiningCategory: return -1;
+                case 3: return 0;
+                case 2: return 1;
+                case 1: return 2;
+                case 0: return 3;
+                case 4: return 4;
+                default: return 1;
+            }
+        };
+        std::stable_sort(drawList.begin(), drawList.end(), [&](const MinimapMarkerDraw& a, const MinimapMarkerDraw& b) {
+            return catPriority(a.sortCat) < catPriority(b.sortCat);
+        });
+
+        float elapsedPulseSec = pulseActive ? (static_cast<float>(nowTick - g_pulseStartTick) * 0.001f) : 0.0f;
+        float pulsePhase = std::fmod(elapsedPulseSec, 2.25f) / 2.25f;
+        float pulseT = std::min(1.0f, pulsePhase * 2.0f);
+        float pulseOneMinusT = 1.0f - pulseT;
+        float pulseEase = 1.0f - pulseOneMinusT * pulseOneMinusT;
+        float pulseAlpha = pulseOneMinusT * 0.70f;
+        uint32_t pulseCol = 0xff6be0ffu;
+        if (uint8_t* assets = GetUiAssets()) {
+            pulseCol = *reinterpret_cast<uint32_t*>(assets + kMapPulseColorOffset) | 0xff000000u;
+        }
+
+        for (const auto& md : drawList) {
+            if (md.isPulsing && pulseAlpha > 0.01f) {
+                float ringSz = md.size + pulseEase * 32.0f;
+                DrawAssetRectAbs(anchor.raw, kMapPulseRingPrimitive,
+                                 md.sx - ringSz * 0.5f, md.sy - ringSz * 0.5f,
+                                 ringSz, ringSz, pulseCol, pulseAlpha, 1.0f);
+            }
+            DrawIconRectAbs(anchor.raw, md.iconRef,
+                            md.sx - md.size * 0.5f, md.sy - md.size * 0.5f,
+                            md.size, md.size, md.color, md.alpha);
+            if (md.isCleared) {
+                // Draw the native completed checkmark (assets + 0xed80) on completed Shroud Roots, Vaults, POIs, or looted chests
+                float checkSz = std::max(10.0f, md.size * 0.62f);
+                float checkX = md.sx + md.size * 0.45f - checkSz * 0.72f;
+                float checkY = md.sy + md.size * 0.45f - checkSz * 0.72f;
+                DrawAssetRectAbs(anchor.raw, kCirclePrimitive,
+                                 checkX - 1.0f, checkY - 1.0f,
+                                 checkSz + 2.0f, checkSz + 2.0f,
+                                 0xFF0A0E10u, 0.85f * md.alpha, 1.0f);
+                DrawAssetRectAbs(anchor.raw, kCheckmarkPrimitive,
+                                 checkX, checkY,
+                                 checkSz, checkSz,
+                                 0xFFFFFFFFu, 0.98f, 1.12f);
+            }
+            if (md.heightDir != 0) {
+                // Up: green, at the icon's top-right corner. Down: orange, at its bottom-right corner.
+                const bool up = md.heightDir > 0;
+                const float ax = md.sx + md.size * 0.5f;
+                const float ay = md.sy + (up ? -0.32f : 0.32f) * md.size;
+                DrawPlayerTriangle(anchor.raw, ax, ay, 0.0f, up ? 1.0f : -1.0f, 0.62f * btnScale,
+                                   up ? 0xFF6CC87Cu : 0xFF3C88E8u, up ? 0xFF9CF0ACu : 0xFF64B4FFu,
+                                   std::max(0.6f, md.alpha));
+            }
+        }
+
+        // Draw other players in multiplayer from client + 0x4642c0 (count at +0x4642c8, stride 0x240)
+        if (g_otherPlayersEnabled) {
+            uint8_t* playerArray = *reinterpret_cast<uint8_t**>(client + 0x4642c0);
+            uint64_t playerCount = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
+            uint32_t localPlayerId = *reinterpret_cast<uint32_t*>(client + 0x18);
+            static minimap_players::Roster roster;
+            // p[0x207] is set for players in a hidden place, such as the Hollow Halls (the game moves them to their own
+            // part of the world, top left). Show the players on the same side of it as you: everyone outside, or the
+            // ones in there with you.
+            uint8_t localHidden = 0;
+            if (playerArray && playerCount <= 64) {
+                for (uint64_t i = 0; i < playerCount; ++i) {
+                    auto* p = playerArray + i * 0x240;
+                    if (*reinterpret_cast<uint32_t*>(p) == localPlayerId) localHidden = p[0x207];
                 }
             }
-            DrawArtSprite(anchor.raw, *bucket, frameX, frameY, frameSize / bucketSize);
+            uint32_t activeIds[64]{};
+            size_t activeCount = 0;
+            if (playerArray && playerCount <= 64) {
+                for (uint64_t i = 0; i < playerCount; ++i) {
+                    auto* p = playerArray + i * 0x240;
+                    const uint32_t id = *reinterpret_cast<uint32_t*>(p);
+                    if (id && id != localPlayerId && p[0x207] == localHidden) activeIds[activeCount++] = id;
+                }
+            }
+            roster.Retain(activeIds, activeCount);
+
+            if (playerArray && playerCount > 0 && playerCount <= 64) {
+                const float clampLimit = radiusMeters * 0.91f;
+                for (uint64_t i = 0; i < playerCount; ++i) {
+                    uint8_t* p = playerArray + i * 0x240;
+                    uint32_t pid = *reinterpret_cast<uint32_t*>(p + 0x00);
+                    if (pid == 0 || pid == localPlayerId) continue;
+                    if (p[0x207] != localHidden) continue;
+
+                    // Live float world coordinates at p + 0x10 {x, y, z} (0x140bd282a, 0x140d557fd)
+                    float ox = *reinterpret_cast<float*>(p + 0x10);
+                    float oz = *reinterpret_cast<float*>(p + 0x18);
+                    if (!(ox > 100.0f && ox < 12000.0f && oz > 100.0f && oz < 12000.0f) && p[0x68] != 0) {
+                        int32_t rx = *reinterpret_cast<int32_t*>(p + 0x54);
+                        int32_t rz = *reinterpret_cast<int32_t*>(p + 0x64);
+                        ox = static_cast<float>(rx) + static_cast<float>(*reinterpret_cast<uint16_t*>(p + 0x50)) / 65536.0f;
+                        oz = static_cast<float>(rz) + static_cast<float>(*reinterpret_cast<uint16_t*>(p + 0x60)) / 65536.0f;
+                    }
+                    if (!(ox > 100.0f && ox < 12000.0f && oz > 100.0f && oz < 12000.0f)) continue;
+
+                    float dxM = ox - playerX;
+                    float dzM = oz - playerZ;
+                    bool isClamped = false;
+                    float maxAxis = std::max(std::abs(dxM), std::abs(dzM));
+                    if (maxAxis > clampLimit && maxAxis > 0.001f) {
+                        float scale = clampLimit / maxAxis;
+                        dxM *= scale;
+                        dzM *= scale;
+                        isClamped = true;
+                    }
+
+                    float osx = vcx + dxM * pxPerMeterX;
+                    float osy = vcy - dzM * pxPerMeterY;
+                    float pSz = (isClamped ? 16.5f : 20.5f) * btnScale;
+                    float pAlpha = isClamped ? 0.86f : 1.0f;
+
+                    auto& marker = roster.Update(pid, ox, oz);
+                    DrawPlayerTriangle(anchor.raw, osx, osy, marker.dirX, marker.dirZ,
+                                       btnScale * (isClamped ? 0.85f : 1.0f),
+                                       marker.color, marker.color, pAlpha);
+
+                    // Draw player character/display name above their marker
+                    const char* namePtr = *reinterpret_cast<const char**>(p + 0xc0);
+                    size_t nameLen = *reinterpret_cast<size_t*>(p + 0xc8);
+                    if (!namePtr || nameLen == 0 || nameLen > 64) {
+                        namePtr = *reinterpret_cast<const char**>(p + 0xd8);
+                        nameLen = *reinterpret_cast<size_t*>(p + 0xe0);
+                    }
+                    if (namePtr && nameLen > 0 && nameLen <= 48) {
+                        char nameBuf[56]{};
+                        std::memcpy(nameBuf, namePtr, nameLen);
+                        nameBuf[nameLen] = '\0';
+                        float lblW = 110.0f * btnScale;
+                        float lblH = 14.0f * btnScale;
+                        float lblY = osy - pSz * 0.5f - lblH - 1.0f * btnScale;
+                        if (lblY < vy + 2.0f * btnScale) {
+                            lblY = osy + pSz * 0.5f + 1.0f * btnScale;
+                        }
+                        // Subtle shadow + crisp bright label
+                        DrawLabelAbs(osx - lblW * 0.5f + 1.0f, lblY + 1.0f, lblW, lblH,
+                                     nameBuf, 0xFF080A0Cu, 0.90f * pAlpha, TextAlignH::Center, TextAlignV::Center);
+                        DrawLabelAbs(osx - lblW * 0.5f, lblY, lblW, lblH,
+                                     nameBuf, 0xFFF4ECDCu, pAlpha, TextAlignH::Center, TextAlignV::Center);
+                    }
+                }
+            }
         }
-        DrawArtSprite(anchor.raw, kArtMedallion, frameCx - 150.0f * U, compassCy - 30.5f * U, 1.0f);
-        DrawLabelAbs(frameCx - 15.0f, compassCy - 10.0f, 30.0f, 20.0f, umm_lang::T(umm_lang::Str::CompassN),
-                     0xFF9AD3E9u, 0.98f, TextAlignH::Center, TextAlignV::Center);
+
+        // Also draw active multiplayer map pings if present (*(g + 0xd0) + 0x15130, count at +0x15b30)
+        if (auto* g = static_cast<uint8_t*>(GetUiG())) {
+            if (uint8_t* d0 = *reinterpret_cast<uint8_t**>(g + 0xd0)) {
+                uint8_t pingCount = d0[0x15b30];
+                if (pingCount > 0 && pingCount <= 16) {
+                    const void* pingIcon = GetIconRefForType(client, 0x83405288u);
+                    if (!pingIcon) pingIcon = GetIconRefForType(client, 0x26d18a06u);
+                    for (uint8_t p = 0; p < pingCount; ++p) {
+                        uint8_t* pm = d0 + 0x15130 + static_cast<size_t>(p) * 0xA0;
+                        float ox = static_cast<float>(*reinterpret_cast<int32_t*>(pm + 0x14)) +
+                                   static_cast<float>(*reinterpret_cast<uint16_t*>(pm + 0x10)) / 65536.0f;
+                        float oz = static_cast<float>(*reinterpret_cast<int32_t*>(pm + 0x24)) +
+                                   static_cast<float>(*reinterpret_cast<uint16_t*>(pm + 0x20)) / 65536.0f;
+                        float dxM = ox - playerX;
+                        float dzM = oz - playerZ;
+                        if (std::abs(dxM) <= radiusMeters && std::abs(dzM) <= radiusMeters && pingIcon) {
+                            float osx = vcx + dxM * pxPerMeterX;
+                            float osy = vcy - dzM * pxPerMeterY;
+                            float pSz = 20.0f * btnScale;
+                            DrawIconRectAbs(anchor.raw, pingIcon, osx - pSz * 0.5f, osy - pSz * 0.5f, pSz, pSz, 0xFFFFFFFFu, 1.0f);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Draw local Player Marker at exact center (vcx, vcy) as a clean, compact directional triangle
+        float camDirX = 0.0f, camDirZ = 1.0f;
+        float faceDirX = 0.0f, faceDirZ = 1.0f;
+        GetHudPlayerFacingDirs(client, playerX, playerZ, camDirX, camDirZ, faceDirX, faceDirZ);
+
+        DrawPlayerTriangle(anchor.raw, vcx, vcy, faceDirX, faceDirZ, btnScale, 0xFF63A1B8u, 0xFF8CC4DAu, 1.0f);
+
+        if (thinBorder) {
+            // Thin border: a dark outline and a fine gold line round the map, and a small N at the top
+            const float x0 = frameX, y0 = frameY, sz = frameSize;
+            DrawSolidRectAbs(anchor.raw, x0, y0, sz, 3.0f, 0xFF0A0E10u, 0.9f);
+            DrawSolidRectAbs(anchor.raw, x0, y0 + sz - 3.0f, sz, 3.0f, 0xFF0A0E10u, 0.9f);
+            DrawSolidRectAbs(anchor.raw, x0, y0, 3.0f, sz, 0xFF0A0E10u, 0.9f);
+            DrawSolidRectAbs(anchor.raw, x0 + sz - 3.0f, y0, 3.0f, sz, 0xFF0A0E10u, 0.9f);
+            constexpr uint32_t kThinGold = 0xFF7CC4DCu;
+            DrawSolidRectAbs(anchor.raw, x0 + 1.0f, y0 + 1.0f, sz - 2.0f, 1.0f, kThinGold, 0.9f);
+            DrawSolidRectAbs(anchor.raw, x0 + 1.0f, y0 + sz - 2.0f, sz - 2.0f, 1.0f, kThinGold, 0.9f);
+            DrawSolidRectAbs(anchor.raw, x0 + 1.0f, y0 + 1.0f, 1.0f, sz - 2.0f, kThinGold, 0.9f);
+            DrawSolidRectAbs(anchor.raw, x0 + sz - 2.0f, y0 + 1.0f, 1.0f, sz - 2.0f, kThinGold, 0.9f);
+            DrawLabelAbs(frameCx - 15.0f + 1.0f, vy + 1.0f + 1.0f, 30.0f, 18.0f, umm_lang::T(umm_lang::Str::CompassN),
+                         0xFF080A0Cu, 0.85f, TextAlignH::Center, TextAlignV::Center);
+            DrawLabelAbs(frameCx - 15.0f, vy + 1.0f, 30.0f, 18.0f, umm_lang::T(umm_lang::Str::CompassN),
+                         0xFF9AD3E9u, 0.98f, TextAlignH::Center, TextAlignV::Center);
+        } else {
+            // ------------------------------------------------------------------------
+            // 3. Frame art: the tray first (it tucks behind the bottom rail), then the frame and the N
+            //    medallion set into the compass rose
+            // ------------------------------------------------------------------------
+            if (infoBar) DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * U, trayY - 262.0f * U, 1.0f, trayW - trayBaseW);
+            if (frameSize >= kMinimapArtDesign) {
+                const float grow = (frameSize - kMinimapArtDesign) * 0.5f;
+                DrawArtSprite(anchor.raw, kArtFrame370, frameX, frameY, 1.0f, grow, grow);
+                for (int z = 0; z < kArtFrame370.nZonesX; ++z)
+                    DrawArtZoneStrip(anchor.raw, kArtFrame370, *kArtFrameStripsX[z], true, z, frameX, frameY, grow, grow);
+                for (int z = 0; z < kArtFrame370.nZonesY; ++z)
+                    DrawArtZoneStrip(anchor.raw, kArtFrame370, *kArtFrameStripsY[z], false, z, frameX, frameY, grow, grow);
+            } else {
+                // The smallest pre-rendered size at or above this one, scaled down a little
+                const MinimapArtSprite* bucket = &kArtFrame370;
+                float bucketSize = kMinimapArtDesign;
+                for (int i = 0; i < kMinimapFrameBucketCount; ++i) {
+                    if (kMinimapFrameBuckets[i] >= frameSize) {
+                        bucket = kArtFrameBuckets[i];
+                        bucketSize = kMinimapFrameBuckets[i];
+                        break;
+                    }
+                }
+                DrawArtSprite(anchor.raw, *bucket, frameX, frameY, frameSize / bucketSize);
+            }
+            DrawArtSprite(anchor.raw, kArtMedallion, frameCx - 150.0f * U, compassCy - 30.5f * U, 1.0f);
+            DrawLabelAbs(frameCx - 15.0f, compassCy - 10.0f, 30.0f, 20.0f, umm_lang::T(umm_lang::Str::CompassN),
+                         0xFF9AD3E9u, 0.98f, TextAlignH::Center, TextAlignV::Center);
+        }
     }
 
     // Highlight resize grip when hovered or actively resizing
-    if (hoverResize || g_minimapDraggingResize || shiftAltHeld) {
+    if (!barOnly && (hoverResize || g_minimapDraggingResize || shiftAltHeld)) {
         const uint32_t gripCol = (hoverResize || g_minimapDraggingResize) ? 0xFFA2EBEFu : 0xFF7EBEC2u;
         DrawSolidRectAbs(anchor.raw, resizeGripX0 + 6.0f, resizeGripY1 - 4.0f, 12.0f, 2.0f, gripCol, 0.92f);
         DrawSolidRectAbs(anchor.raw, resizeGripX1 - 4.0f, resizeGripY0 + 6.0f, 2.0f, 12.0f, gripCol, 0.92f);
@@ -6741,7 +6754,7 @@ void DrawHudMinimapOverlay() {
         g_worldMapWasOpen = false;
         g_screenBeforeMap = screen;
     }
-    if (screen == 0 || screen == 2 || screen == 5 || (!g_minimapVisible && !g_minimapSettingsOpen)) {
+    if (screen == 0 || screen == 2 || screen == 5 || (!g_minimapVisible && !g_minimapInfoBar && !g_minimapSettingsOpen)) {
         g_minimapDraggingMove = false;
         g_minimapDraggingResize = false;
         g_minimapSettingsOpen = false;
