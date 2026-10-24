@@ -34,7 +34,9 @@ The mod runs through the Greeneye Loader (API 2, `src/greeneye.h`). All hooks go
 - `src/main.cpp`: start-up, byte patches (`src/patches.h`) that send every marker to the map UI.
 - `src/map_key_panel.cpp`: the panel, Find, fog modes and the minimap.
 - `src/lang.cpp`: the mod's text in every language, language detection (Steam's game language) and text widths.
-- `src/chest_spawns.h`, `src/minimap_frame_spans.h`: chest spawn table and the minimap frame art.
+- `src/chest_spawns.h`: chest spawn table.
+- `src/minimap_art.h`: the minimap frame, tray, N medallion and weather icons as solid rects, generated from
+  the vector art in `art/` by `art/gen_minimap_art.py` (needs Microsoft Edge to render the SVG).
 
 ## License
 
