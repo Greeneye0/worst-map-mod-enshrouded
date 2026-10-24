@@ -3339,7 +3339,21 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     const float half = size * 0.5f;
     size_t hovered = kOreDepositCount;
     float hoveredSx = 0.0f, hoveredSy = 0.0f;
-    for (size_t d = 0; d < kOreDepositCount; ++d) {
+    // Thousands of icons in one frame overflow the game's UI renderer (the map's own tiles stop drawing), so:
+    // one icon per screen cell (where they would overlap anyway), no backing disc at small sizes, and a cap.
+    // The deposits are stored ore by ore; they are visited in a scattered order (i * 7919 mod N, a permutation
+    // since 7919 is prime and does not divide N) so the cap and the shared cells thin every ore alike.
+    constexpr int kMaxOreIconsPerFrame = 1500;
+    const float cell = std::max(8.0f, size * 0.9f);
+    const int gridW = std::max(1, static_cast<int>((right - left) / cell) + 1);
+    const int gridH = std::max(1, static_cast<int>((bottom - top) / cell) + 1);
+    static std::vector<uint8_t> taken;
+    taken.assign(static_cast<size_t>(gridW) * gridH, 0);
+    const bool backing = size > 14.0f;
+    int drawn = 0;
+    static_assert(kOreDepositCount % 7919 != 0, "7919 must not divide the deposit count");
+    for (size_t i = 0; i < kOreDepositCount && drawn < kMaxOreIconsPerFrame; ++i) {
+        const size_t d = (i * 7919) % kOreDepositCount;
         const OreDeposit& dep = kOreDeposits[d];
         if (!g_oreEnabled[dep.ore]) continue;
         const float sx = originX + dep.x * zoom;
@@ -3348,11 +3362,22 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         const bool unexplored = g_pinRevealMode != PinRevealMode::RevealAll &&
                                 !IsPositionExploredByCharacter(client, dep.x, dep.z);
         if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) continue;
+        {
+            const int gx = static_cast<int>((sx - left) / cell), gy = static_cast<int>((sy - top) / cell);
+            if (gx >= 0 && gy >= 0 && gx < gridW && gy < gridH) {
+                uint8_t& t = taken[static_cast<size_t>(gy) * gridW + gx];
+                if (t) continue;
+                t = 1;
+            }
+        }
+        ++drawn;
         // Under the menu banner along the top the game's own pins show through dimmed; so do these
         const bool underBanner = sy < top + kMapBannerBottom;
         const float alpha = (unexplored ? 0.55f : 1.0f) * (underBanner ? 0.22f : 1.0f);
-        DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - half - 2.0f, sy - half - 2.0f, size + 4.0f, size + 4.0f,
-                         0xff0a0e10u, 0.55f * alpha);
+        if (backing) {
+            DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - half - 2.0f, sy - half - 2.0f, size + 4.0f, size + 4.0f,
+                             0xff0a0e10u, 0.55f * alpha);
+        }
         DrawIconRectAbs(widgetRaw, kOreIcons[dep.ore], sx - half, sy - half, size, size,
                         unexplored ? 0xff8c9296u : 0xffffffffu, alpha);
         if (!underBanner && haveCursor && std::fabs(mx - sx) <= half + 2.0f && std::fabs(my - sy) <= half + 2.0f) {
