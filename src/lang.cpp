@@ -347,6 +347,9 @@ const Row kTable[] = {
     // CtrlClick
     {"Ctrl+Click", "Strg+Klick", "Ctrl+Clic", "Ctrl+Clic", "Ctrl+Clic", "Ctrl+Clique", "Ctrl+Klik",
      "Ctrl+Клик", "Ctrl+Клік", "Ctrl+Tık", "Ctrl+クリック", "Ctrl+클릭", "Ctrl+点击", "Ctrl+點擊", "Ctrl+คลิก"},
+    // CatMining
+    {"MINING", "BERGBAU", "MINERAIS", "MINIERA", "MINERÍA", "MINERAÇÃO", "WYDOBYCIE", "ДОБЫЧА", "ВИДОБУТОК",
+     "MADENCİLİK", "採掘", "채광", "采矿", "採礦", "การขุด"},
 };
 // clang-format on
 
