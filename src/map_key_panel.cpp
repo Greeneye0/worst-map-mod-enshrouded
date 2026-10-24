@@ -5416,100 +5416,100 @@ void GetHudPlayerFacingDirs(uint8_t* client, float playerX, float playerZ,
 // Queries Enshrouded's WeatherSystem (client + 0x466fe8) and WeatherVolumeManager for active
 // weather volumes overlapping (playerX, playerZ).
 // Returns: 0 = Clear, 1 = Rain, 2 = Storm, 3 = Snow, 4 = Fog
-int GetActivePlayerWeather(uint8_t* client, float playerX, float playerZ) {
-    if (!client) return 0;
+// The weather at the player, asked of the game itself: FUN_140a9d530(out[4], weatherSystem, position, time)
+// is what its gameplay uses (wet status, fires going out). It walks the WeatherSystem's instances, samples each
+// one's rain mask, fades it in and out, and turns rain to snow by altitude, giving clear / rain / snow /
+// blizzard shares. Decoded 2026-10-24 (game build of Oct 21).
+//
+// It needs the weather clock, which the game keeps in an ECS time resource the mod cannot reach. Every moving
+// instance gives it back exactly: the renderer holds where the instance is now, and it moves in a straight
+// line from its start position since its start time, so now = start + distance / speed.
+//   WeatherSystem (client + 0x466fe8): +0x28 page records (0x40: +8 slots, +0x10 slot count), +0x30 page count,
+//     +0x50 page shift, +0x60 slot mask, +0x88 instance handles (u32: index low 16, generation high 16), +0x90
+//     handle count, +0x148 the renderer. A 0x50-byte slot: generation (u32 & 0x7fffffff), then the instance:
+//     +8 / +0x18 start x / z (32.32), +0x28 speed (m/s), +0x30 start time (ns), +0x40 render handle.
+//   Render instances (*(*(renderer + 0x98) + 0x9d0)): +0x50 page records, +0x58 page count, +0x78 shift,
+//     +0x88 mask, 0x68-byte slots; the data at +4 holds the current x / z floats at +0x34 / +0x38.
+namespace {
+using WeatherAtFn = float* (*)(float* out, void* weatherSystem, const int64_t* position, int64_t timeNs);
+
+uint8_t* PagedSlot(uint8_t* pages, uint64_t pageCount, uint8_t shift, uint64_t mask, size_t stride, uint32_t h) {
+    if (!pages || h == 0 || shift > 31) return nullptr;
+    const uint32_t idx = h & 0xFFFFu;
+    const uint64_t page = idx >> shift;
+    if (page >= pageCount) return nullptr;
+    uint8_t* rec = pages + page * 0x40;
+    uint8_t* slots = *reinterpret_cast<uint8_t**>(rec + 8);
+    const uint64_t slot = idx & mask;
+    if (!slots || slot >= *reinterpret_cast<uint64_t*>(rec + 0x10)) return nullptr;
+    uint8_t* s = slots + slot * stride;
+    return (*reinterpret_cast<uint32_t*>(s) & 0x7fffffffu) == (h >> 16) ? s : nullptr;
+}
+
+bool WeatherClockNs(uint8_t* weatherSys, int64_t& outNs) {
+    uint8_t* renderer = *reinterpret_cast<uint8_t**>(weatherSys + 0x148);
+    uint8_t* r98 = renderer ? *reinterpret_cast<uint8_t**>(renderer + 0x98) : nullptr;
+    uint8_t* mgr = r98 ? *reinterpret_cast<uint8_t**>(r98 + 0x9d0) : nullptr;
+    const uint32_t* handles = *reinterpret_cast<const uint32_t**>(weatherSys + 0x88);
+    const uint64_t count = *reinterpret_cast<uint64_t*>(weatherSys + 0x90);
+    if (!mgr || !handles || count == 0 || count > 256) return false;
+    float bestSpeed = 0.5f; // the fastest instance gives the finest clock
+    bool found = false;
+    for (uint64_t i = 0; i < count; ++i) {
+        uint8_t* s = PagedSlot(*reinterpret_cast<uint8_t**>(weatherSys + 0x28), *reinterpret_cast<uint64_t*>(weatherSys + 0x30),
+                               weatherSys[0x50], *reinterpret_cast<uint64_t*>(weatherSys + 0x60), 0x50, handles[i]);
+        if (!s) continue;
+        uint8_t* inst = s + 8;
+        const float speed = *reinterpret_cast<float*>(inst + 0x28);
+        if (!(speed > bestSpeed)) continue;
+        uint8_t* r = PagedSlot(*reinterpret_cast<uint8_t**>(mgr + 0x50), *reinterpret_cast<uint64_t*>(mgr + 0x58),
+                               mgr[0x78], *reinterpret_cast<uint64_t*>(mgr + 0x88), 0x68,
+                               *reinterpret_cast<uint32_t*>(inst + 0x40));
+        if (!r) continue;
+        const double x0 = static_cast<double>(*reinterpret_cast<int64_t*>(inst + 8)) * 2.3283064365386963e-10;
+        const double z0 = static_cast<double>(*reinterpret_cast<int64_t*>(inst + 0x18)) * 2.3283064365386963e-10;
+        const double x = *reinterpret_cast<float*>(r + 4 + 0x34), z = *reinterpret_cast<float*>(r + 4 + 0x38);
+        const double moved = std::sqrt((x - x0) * (x - x0) + (z - z0) * (z - z0));
+        if (!std::isfinite(moved)) continue;
+        outNs = *reinterpret_cast<int64_t*>(inst + 0x30) + static_cast<int64_t>(moved / speed * 1e9);
+        bestSpeed = speed;
+        found = true;
+    }
+    return found;
+}
+} // namespace
+
+int GetActivePlayerWeather(uint8_t* client, float /*playerX*/, float /*playerZ*/) {
+    static WeatherAtFn weatherAt = nullptr;
+    static bool resolved = false;
+    if (!resolved) {
+        resolved = true;
+        weatherAt = reinterpret_cast<WeatherAtFn>(FindUnique(
+            "48 8B C4 48 89 58 18 48 89 48 08 55 56 57 41 54 41 55 41 56 41 57 48 81 EC 20 01 00 00 "
+            "0F 29 70 B8 4D 8B E8 44 8B 42 0C"));
+        if (g_log) g_log("Minimap weather: %s", weatherAt ? "the game's weather-at-position found" : "weather-at-position not found, weather stays Clear");
+    }
+    if (!client || !weatherAt) return 0;
     __try {
         uint8_t* weatherSys = *reinterpret_cast<uint8_t**>(client + 0x466fe8);
-        if (!weatherSys) return 0;
-
-        uint8_t* weatherRenderer = *reinterpret_cast<uint8_t**>(weatherSys + 0x148);
-        if (!weatherRenderer) return 0;
-        uint8_t* rcx98 = *reinterpret_cast<uint8_t**>(weatherRenderer + 0x98);
-        if (!rcx98) return 0;
-        uint8_t* weatherMgr = *reinterpret_cast<uint8_t**>(rcx98 + 0x9d0);
-        if (!weatherMgr) return 0;
-
-        const uint32_t* handles = *reinterpret_cast<const uint32_t**>(weatherSys + 0x88);
-        uint64_t handleCount = *reinterpret_cast<uint64_t*>(weatherSys + 0x90);
-        if (!handles || handleCount == 0 || handleCount > 512) return 0;
-
-        uint8_t** sysPages = *reinterpret_cast<uint8_t***>(weatherSys + 0x28);
-        uint64_t sysMaxPages = *reinterpret_cast<uint64_t*>(weatherSys + 0x30);
-        uint8_t sysShift = weatherSys[0x50];
-        uint32_t sysMask = *reinterpret_cast<uint32_t*>(weatherSys + 0x60);
-
-        uint8_t** mgrPages = *reinterpret_cast<uint8_t***>(weatherMgr + 0x50);
-        uint64_t mgrMaxPages = *reinterpret_cast<uint64_t*>(weatherMgr + 0x58);
-        uint8_t mgrShift = weatherMgr[0x78];
-        uint32_t mgrMask = *reinterpret_cast<uint32_t*>(weatherMgr + 0x88);
-
-        if (!sysPages || !mgrPages || sysMaxPages == 0 || mgrMaxPages == 0) return 0;
-
-        int bestWeather = 0;
-        float bestWeight = 0.05f;
-
-        for (uint64_t i = 0; i < handleCount; ++i) {
-            uint32_t h = handles[i];
-            if (h == 0 || h == 0xFFFFFFFFu) continue;
-            uint32_t idx = h & 0xFFFFFFu;
-            uint64_t page = idx >> sysShift;
-            if (page >= sysMaxPages) continue;
-            uint8_t* pagePtr = sysPages[page];
-            if (!pagePtr) continue;
-            uint8_t* slot = pagePtr + static_cast<size_t>(idx & sysMask) * 80u;
-            if ((slot[0] & 0x80u) == 0 || (slot[3] != static_cast<uint8_t>(h >> 24))) continue;
-
-            uint8_t* inst = slot + 8;
-            uint32_t renderHandle = *reinterpret_cast<uint32_t*>(inst + 0x40);
-            if (renderHandle == 0 || renderHandle == 0xFFFFFFFFu) continue;
-
-            uint32_t rIdx = renderHandle & 0xFFFFFFu;
-            uint64_t rPage = rIdx >> mgrShift;
-            if (rPage >= mgrMaxPages) continue;
-            uint8_t* rPagePtr = mgrPages[rPage];
-            if (!rPagePtr) continue;
-            uint8_t* rSlot = rPagePtr + static_cast<size_t>(rIdx & mgrMask) * 0x68u;
-            if ((rSlot[0] & 0x80u) == 0 || (rSlot[3] != static_cast<uint8_t>(renderHandle >> 24))) continue;
-
-            uint8_t* vol = rSlot + 4;
-            float wx = *reinterpret_cast<float*>(vol + 0x34);
-            float wz = *reinterpret_cast<float*>(vol + 0x3c);
-            float radius = *reinterpret_cast<float*>(vol + 0x40);
-            uint32_t typeMask = *reinterpret_cast<uint32_t*>(vol + 0x50);
-            float precipIntensity = *reinterpret_cast<float*>(vol + 0x54);
-            float fogDensity = *reinterpret_cast<float*>(vol + 0x58);
-
-            if (!std::isfinite(wx) || !std::isfinite(wz) || !std::isfinite(radius) || radius <= 1.0f) continue;
-
-            float dx = playerX - wx;
-            float dz = playerZ - wz;
-            float distSq = dx * dx + dz * dz;
-            if (distSq > radius * radius) continue;
-
-            float distFactor = 1.0f - std::sqrt(distSq) / radius;
-            int wType = 0;
-            float wStrength = 0.0f;
-            if ((typeMask & 4u) != 0 && precipIntensity > 0.02f) {
-                wType = 2; // Storm
-                wStrength = precipIntensity + 0.5f;
-            } else if ((typeMask & 1u) != 0 && precipIntensity > 0.02f) {
-                wType = 3; // Snow
-                wStrength = precipIntensity + 0.3f;
-            } else if ((typeMask & 2u) != 0 && precipIntensity > 0.02f) {
-                wType = 1; // Rain
-                wStrength = precipIntensity + 0.2f;
-            } else if (((typeMask & 8u) != 0 || fogDensity > 0.15f) && fogDensity > 0.05f) {
-                wType = 4; // Fog
-                wStrength = fogDensity;
-            }
-
-            float score = wStrength * (0.5f + 0.5f * distFactor);
-            if (wType != 0 && score > bestWeight) {
-                bestWeight = score;
-                bestWeather = wType;
+        uint8_t* clientWorld = GetClientWorld(client);
+        if (!weatherSys || !clientWorld) return 0;
+        int64_t nowNs = 0;
+        if (!WeatherClockNs(weatherSys, nowNs)) return 0;
+        const int64_t* pos = reinterpret_cast<const int64_t*>(clientWorld + 0x2c08); // x, y, z (32.32)
+        float mix[4]{}; // clear, rain, snow, blizzard
+        weatherAt(mix, weatherSys, pos, nowNs);
+        // 1 rain, 2 storm (the game's blizzard), 3 snow
+        int best = 0;
+        float bestShare = 0.1f;
+        const int types[3] = {1, 3, 2};
+        for (int k = 0; k < 3; ++k) {
+            if (std::isfinite(mix[k + 1]) && mix[k + 1] > bestShare) {
+                bestShare = mix[k + 1];
+                best = types[k];
             }
         }
-        return bestWeather;
+        return best;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return 0;
     }
