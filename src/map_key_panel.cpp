@@ -82,11 +82,30 @@ bool AnyOreEnabled() {
 // the time. The game gives a slot a new uid whenever it repopulates it, so a uid mismatch means the saved values
 // belong to an older marker. (Nothing is stamped into the slot: m+0x68..0x7f is the marker's name text, and an
 // earlier stamp at m+0x78 overwrote the name's hash, so every chest showed one chest's name.)
-std::unordered_map<const uint8_t*, uint32_t> g_savedSlotUid;
+// The game can also change a marker in place, keeping its uid: finishing a quest turns its pin into another
+// type. So the type (m+0x30) and quest id (m+0x08) the slot held after the mod's last pass are kept too, and a
+// slot that no longer holds them was changed by the game: its saved values are stale (a finished quest stayed a
+// quest "!").
+struct SavedSlot {
+    uint32_t uid;
+    uint32_t hash; // m+0x30 after the mod's last pass
+    uint32_t id08; // m+0x08 after the mod's last pass
+};
+std::unordered_map<const uint8_t*, SavedSlot> g_savedSlotUid;
 
 bool IsSlotSaved(const uint8_t* m) {
     auto it = g_savedSlotUid.find(m);
-    return it != g_savedSlotUid.end() && it->second == *reinterpret_cast<const uint32_t*>(m);
+    return it != g_savedSlotUid.end() && it->second.uid == *reinterpret_cast<const uint32_t*>(m) &&
+           it->second.hash == *reinterpret_cast<const uint32_t*>(m + 0x30) &&
+           it->second.id08 == *reinterpret_cast<const uint32_t*>(m + 0x08);
+}
+
+// After the mod has written a saved slot's type or quest id: what it holds now is the mod's, not a game change.
+void NoteSlotPass(const uint8_t* m) {
+    auto it = g_savedSlotUid.find(m);
+    if (it == g_savedSlotUid.end() || it->second.uid != *reinterpret_cast<const uint32_t*>(m)) return;
+    it->second.hash = *reinterpret_cast<const uint32_t*>(m + 0x30);
+    it->second.id08 = *reinterpret_cast<const uint32_t*>(m + 0x08);
 }
 
 enum class PinRevealMode : int {
@@ -1959,7 +1978,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
         }
         *reinterpret_cast<uint32_t*>(m + 0x3c) = tHash;
         *reinterpret_cast<uint32_t*>(m + 0x4c) = curId08;
-        g_savedSlotUid[m] = *reinterpret_cast<uint32_t*>(m);
+        g_savedSlotUid[m] = SavedSlot{*reinterpret_cast<uint32_t*>(m), *reinterpret_cast<uint32_t*>(m + 0x30),
+                                      *reinterpret_cast<uint32_t*>(m + 0x08)};
         outOrigHash = tHash;
         outSavedId08 = curId08;
     };
@@ -1976,6 +1996,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             *reinterpret_cast<uint32_t*>(m + 0x08) = desiredId08;
             dirty = true;
         }
+        NoteSlotPass(m);
     };
 
     auto addCountForHash = [&](uint32_t h) {
@@ -2034,6 +2055,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                     *reinterpret_cast<uint32_t*>(m + 0x08) = desiredId08;
                     dirty = true;
                 }
+                NoteSlotPass(m);
                 if (m[0x9c] != 0u) {
                     m[0x9c] = 0u;
                     dirty = true;
@@ -2119,9 +2141,13 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 continue;
             }
             if (origHash == 0x454e24f2u) {
-                applyMarkerVisibility(m, origHash, savedId08, mainQuestFilterOn && revealedForPinMode);
+                // A main quest's area circle (Plains For First Base): while its quest is active, with Main Quest; once
+                // it is done (or not started), only with Completed Quests, like the quest's own pin
+                const bool areaQuestActive = savedId08 != 0u && GetQuestFilterHashForMarkerId(savedId08, true) != 0u;
+                const bool showArea = areaQuestActive ? mainQuestFilterOn : g_completedQuestsEnabled;
+                applyMarkerVisibility(m, origHash, savedId08, showArea && revealedForPinMode);
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
-                if (revealedForPinMode) addCountForHash(0xa7cadc08u);
+                if (revealedForPinMode) addCountForHash(areaQuestActive ? 0xa7cadc08u : kCompletedQuestTypeHash);
                 continue;
             }
             if (origHash == 0x813080bcu) {
