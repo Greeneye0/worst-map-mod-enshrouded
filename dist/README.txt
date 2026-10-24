@@ -82,7 +82,8 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
 - Show Minimap, Minimap Terrain, Minimap Icon (sun/moon or weather).
 - Minimap Border: ORNATE or THIN (a fine line, so the map takes less room).
 - Minimap Info Bar: off hides the bar under the minimap; the cog moves to the map's
-  bottom-left corner, and [ and ] still zoom.
+  bottom-left corner, and [ and ] still zoom. With Show Minimap off and the info bar on, the
+  bar (time, weather, cog) stays on screen by itself.
 - Looted Chests        hide them or gray them out.
 Everything is remembered.
 
@@ -159,6 +160,11 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.4
+- Show Minimap off with Minimap Info Bar on keeps the info bar (time, weather, cog) on screen
+  by itself, and the two settings sit together. Requested by FWSWBN.
+- Reported bugs fixed: none.
+
 1.3.3
 - Fertilised Farm Soil has its own row under Materials (it was counted as Farm Soil).
 - Zoomed out, forests draw as merged strips and share one budget with the deposit icons, so the

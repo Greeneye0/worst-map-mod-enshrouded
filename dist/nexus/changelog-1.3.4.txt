@@ -1,0 +1,3 @@
+1.3.4
+- Show Minimap off with Minimap Info Bar on keeps the info bar (time, weather, cog) on screen by itself, and the two settings sit together. Requested by FWSWBN.
+- Reported bugs fixed: none.
