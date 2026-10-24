@@ -2575,16 +2575,20 @@ void SetNativeFindTextFieldValue(uint8_t* dlg, const std::string& val) {
     }
 }
 
+// The game's text editor sets UI owner + 0x2fe70 while a field is being typed in, and the game ignores Escape
+// while it is set. Find's own close clears it only for the field it recorded; Tab in the field can leave it set.
+// (The owner is *(G + 0xd0) itself, as in Find's ReleaseDialogInput.)
+bool ClearTextInputFlag() {
+    auto* g = static_cast<uint8_t*>(GetUiG());
+    uint8_t* owner = g ? *reinterpret_cast<uint8_t**>(g + 0xd0) : nullptr;
+    if (!owner || !*reinterpret_cast<void**>(owner) || !owner[0x2fe70]) return false;
+    owner[0x2fe70] = 0;
+    return true;
+}
+
 void CloseNativeFindDialog() {
-    if (g_findCloseDialog) {
-        g_findCloseDialog();
-    } else if (auto* g = static_cast<uint8_t*>(GetUiG())) {
-        if (auto** pD0 = *reinterpret_cast<uint8_t***>(g + 0xd0)) {
-            if (uint8_t* d0 = *pD0) {
-                d0[0x2fe70] = 0;
-            }
-        }
-    }
+    if (g_findCloseDialog) g_findCloseDialog();
+    if (ClearTextInputFlag() && g_log) g_log("Find on the map: the game's text input was still on after closing; turned it off");
     g_findDialogOpen = false;
     g_findClosingFrames = 15;
     g_waitReleaseAfterFindClose = true;
@@ -4390,6 +4394,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
         if (!g_findDialogOpen && g_findClosingFrames > 0) {
             --g_findClosingFrames;
+            if (ClearTextInputFlag() && g_log) g_log("Find on the map: the game's text input came back on after closing; turned it off");
         }
         if (g_findDialogOpen || g_findClosingFrames > 0 || g_waitReleaseAfterFindClose ||
             g_panelClickLatch || panelHovered) {
@@ -4712,6 +4717,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
         bool ctrlDown = focused && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
         bool escEdge = keyPressedEdge(VK_ESCAPE);
+        // The search field types Tab as a space (a frame or so later); Tab picks from the list instead.
+        static ULONGLONG s_tabTick = 0;
+        const bool tabEdge = keyPressedEdge(VK_TAB);
+        if (tabEdge) s_tabTick = GetTickCount64();
 
         SyncNativeFindDialogState();
         int dlgResult = RunNativeFindDialogFrame(g_mapFindDialog);
@@ -4753,6 +4762,12 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 curQuery = cleaned;
                 SetNativeFindTextFieldValue(g_mapFindDialog, curQuery);
             }
+            if (s_tabTick && GetTickCount64() - s_tabTick < 400 && curQuery.size() == g_findQuery.size() + 1 &&
+                curQuery.back() == ' ' && curQuery.compare(0, g_findQuery.size(), g_findQuery) == 0) {
+                curQuery = g_findQuery;
+                SetNativeFindTextFieldValue(g_mapFindDialog, curQuery);
+                s_tabTick = 0;
+            }
 
             bool forceRebuild = false;
             if (keyPressedEdge(VK_F2) || (ctrlDown && keyPressedEdge('F'))) {
@@ -4771,7 +4786,6 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             int totalRows = static_cast<int>(g_findDisplayRows.size());
             bool downEdge = keyPressedEdge(VK_DOWN);
             bool upEdge = keyPressedEdge(VK_UP);
-            bool tabEdge = keyPressedEdge(VK_TAB);
             bool pgDnEdge = keyPressedEdge(VK_NEXT);
             bool pgUpEdge = keyPressedEdge(VK_PRIOR);
 
