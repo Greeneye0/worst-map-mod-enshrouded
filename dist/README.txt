@@ -157,7 +157,8 @@ If something doesn't work, please post these files with your report (all in the 
 CHANGES
 -------
 1.3.1
-- Minimap: nearby chests above or below you get a green up or orange down arrow.
+- Minimap: nearby chests above or below you get a green up or orange down arrow. Requested
+  by Lomack.
 - Minimap: other players show in the Hollow Halls too.
 - Reported bugs fixed: none.
 
