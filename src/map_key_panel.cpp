@@ -517,6 +517,9 @@ constexpr size_t kH3StyleOffset = 0x10a0c + 0x318;
 constexpr size_t kMapLocationNameStyleOffset = 0x10a0c + 0x1340 + 0x58;
 constexpr size_t kUiCharacterStyleSize = 0x58;
 constexpr size_t kStyleFontSize = 0x20; // UiCharacterStyle.fontSize
+constexpr float kFilterRowFontScale = 0.86f; // the Map Key's filter rows, a little smaller so long lists do not crowd
+constexpr float kCategoryTitleFontScale = 0.9f; // the category bars' titles, inside their bar
+constexpr float kBadgeFontScale = 0.78f;        // ON / OFF, inside the 18 px badge
 constexpr size_t kHintListOffset = 0x32e18;
 constexpr size_t kHintCountOffset = 0x480;
 constexpr uint32_t kLayerOrder = 0x16;
@@ -832,7 +835,7 @@ constexpr uint8_t kGradientToBottomTexture[16] = {0xf0, 0x6a, 0xae, 0x8f, 0xe8, 
 void DrawLabelAbs(float absX, float absY, float w, float h, const char* utf8,
                   uint32_t rgba = 0xffffffffu, float alpha = 1.0f,
                   TextAlignH hAlign = TextAlignH::Left, TextAlignV vAlign = TextAlignV::Center,
-                  const uint8_t* style = nullptr) {
+                  const uint8_t* style = nullptr, float fontScale = 1.0f) {
     uint8_t* assets = GetUiAssets();
     if (!assets || !utf8 || !*utf8) return;
     UiText text = MakeUiText(utf8);
@@ -848,6 +851,12 @@ void DrawLabelAbs(float absX, float absY, float w, float h, const char* utf8,
     }
     label[0x38] = static_cast<uint8_t>(hAlign);
     label[0x39] = static_cast<uint8_t>(vAlign);
+    if (fontScale != 1.0f) {
+        // The label's font size (+0x7c, from the game's text size setting, flag 8 at +0x90); the style's own size
+        // field is only a cap
+        *reinterpret_cast<float*>(label + 0x7c) *= fontScale;
+        *reinterpret_cast<uint16_t*>(label + 0x90) |= 8;
+    }
     label[0x3c] = 0; // Single-line (do not word-wrap)
     label[0x3d] = 1;
     *reinterpret_cast<uint32_t*>(label + 0xb0) = rgba;
@@ -917,7 +926,7 @@ void DrawOnOffBadgeAbs(void* parentWidgetRaw, float rightX, float absY, float ro
     }
     DrawLabelAbs(bx, by, bw, bh, umm_lang::T(on ? umm_lang::Str::On : umm_lang::Str::Off),
                  on ? kOnText : kOffText, (on ? 0.98f : 0.8f) * alpha,
-                 TextAlignH::Center, TextAlignV::Center);
+                 TextAlignH::Center, TextAlignV::Center, nullptr, kBadgeFontScale);
 }
 
 // A Map Key category bar in the slate indigo of the game's menu headers: darker at the top, lighter below
@@ -2146,7 +2155,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 // about a place not yet explored shows the quest / "?" like vanilla, not the place's icon
                 // that the unlock patches reveal; the quest even where the map is not explored yet.
                 const bool explored = IsMarkerExplored(client, m, origHash);
-                const bool subpinRumor = !subpinQuestHash && rumorFilterOn && !explored && m[0x34] != 3 &&
+                // (Pins: EXPLORED hides those too: only what you have been near.)
+                const bool subpinRumor = !exploredOnly && !subpinQuestHash && rumorFilterOn && !explored && m[0x34] != 3 &&
                                          g_isLoreRumorMarkerId && savedId08 != 0u && g_isLoreRumorMarkerId(savedId08);
                 if (subpinQuestOn || subpinRumor) {
                     applyMarkerVisibility(m, origHash, savedId08, false, true, true);
@@ -2187,6 +2197,16 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             uint32_t uid = *reinterpret_cast<uint32_t*>(m + 0x00);
             if ((uid & 0xFFFF0000u) == kChestMarkerUidPrefix) continue;
             uint32_t countHash = *reinterpret_cast<uint32_t*>(m + 0x30);
+            if (a == 1) {
+                // Hollow Halls: the game draws them from this array, so Pins: EXPLORED hides them here as in arr0
+                uint32_t origHash = 0u, savedId08 = 0u;
+                resolveMarkerMeta(m, origHash, savedId08);
+                if (origHash == 0u) continue;
+                const bool revealed = !exploredOnly || IsMarkerExplored(client, m, origHash);
+                applyMarkerVisibility(m, origHash, savedId08, revealed);
+                if (!revealed) continue;
+                countHash = origHash;
+            }
             if (countHash == 0) continue;
             if (exploredOnly && !IsMarkerExplored(client, m, countHash)) continue;
             for (size_t q = 0; q < numQueries; ++q) {
@@ -4161,9 +4181,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     uint64_t nowMapTick = GetTickCount64();
     if (!g_worldMapWasOpen || (nowMapTick - g_lastWorldMapFrameTick) > 250ULL) {
         g_worldMapWasOpen = true;
-        // Center on the player, except when opened from the journal (F on a quest) or the backpack: the game
-        // has already centered the map on what was asked for, so leave it there.
-        g_worldMapOpenCenterFrames = (g_screenBeforeMap == 9) ? 0 : 2;
+        // Center on the player only when opened from play (screen 1, the M key). From any menu (the backpack
+        // or journal 9, Show on Map for a quest 7, ...) the game has already centered the map on what was asked
+        // for, so leave it there.
+        g_worldMapOpenCenterFrames = (g_screenBeforeMap == 1) ? 2 : 0;
         if (g_log) g_log("World Map opened from screen %u (%s)", g_screenBeforeMap,
                          g_worldMapOpenCenterFrames ? "centering on player" : "keeping the game's view");
     }
@@ -4523,7 +4544,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             TextAlignH::Center, TextAlignV::Center);
                         DrawLabelAbs(panelX + 36.0f, py + curY, kPanelW - 50.0f - rowRight - OnOffBadgeWidth(), kCatRowH,
                             umm_lang::T(grp.title), catOn ? kTitle : 0xff948c88u, 1.0f,
-                            TextAlignH::Left, TextAlignV::Center);
+                            TextAlignH::Left, TextAlignV::Center, nullptr, kCategoryTitleFontScale);
 
                         DrawOnOffBadgeAbs(anchor.raw, panelX + kPanelW - rowRight, py + curY, kCatRowH, catOn);
 
@@ -4639,7 +4660,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             }
                             DrawLabelAbs(panelX + 52.0f, py + curY, kPanelW - 46.0f - rowRight - OnOffBadgeWidth(), kItemRowH,
                                 rowText, textCol, rowOn ? 0.96f : 0.75f,
-                                TextAlignH::Left, TextAlignV::Center);
+                                TextAlignH::Left, TextAlignV::Center, nullptr, kFilterRowFontScale);
 
                             DrawOnOffBadgeAbs(anchor.raw, panelX + kPanelW - rowRight, py + curY, kItemRowH, rowOn,
                                 rowOn ? 1.0f : 0.85f);
@@ -5066,6 +5087,7 @@ HWND g_minimapSubclassedHwnd = nullptr;
 WNDPROC g_minimapOrigWndProc = nullptr;
 bool g_minimapMouseLocked = false;
 float g_minimapSavedMouseScale = 0.0017453292f;
+uint8_t g_minimapSavedCursorIndex = 0; // winObj + 0xa8 before the minimap took the mouse (0 play, 1 menus)
 volatile LONG g_minimapWheelDelta = 0;
 
 LRESULT CALLBACK MinimapWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -5102,10 +5124,11 @@ void SetMinimapMouseControl(bool enable, HWND hwnd) {
                 if (*reinterpret_cast<float*>(winObj + 0x68) == 0.0f) {
                     *reinterpret_cast<float*>(winObj + 0x68) = g_minimapSavedMouseScale;
                 }
-                // Restore gameplay hidden/locked cursor state (index 0)
-                winObj[0xa8] = 0;
+                // Give back the cursor state it had: hidden / locked while playing (0), the menu cursor (1) in the
+                // backpack and other menus
+                winObj[0xa8] = g_minimapSavedCursorIndex;
                 if (auto* cursorTable = *reinterpret_cast<uint8_t**>(winObj)) {
-                    SetCursor(*reinterpret_cast<HCURSOR*>(cursorTable + 0x290));
+                    SetCursor(*reinterpret_cast<HCURSOR*>(cursorTable + (g_minimapSavedCursorIndex ? 0x298 : 0x290)));
                 } else {
                     SetCursor(nullptr);
                 }
@@ -5136,6 +5159,7 @@ void SetMinimapMouseControl(bool enable, HWND hwnd) {
             g_minimapSavedMouseScale = curScale;
         }
         *reinterpret_cast<float*>(winObj + 0x68) = 0.0f;
+        if (!g_minimapMouseLocked) g_minimapSavedCursorIndex = winObj[0xa8];
 
         // Set winObj[0xa8] = 1 (the game's native Backpack/UI cursor index!):
         // 1) Prevents WM_MOUSEMOVE (0x140f905d1) from calling SetCursorPos to lock the cursor in place
@@ -5905,7 +5929,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     // (263 units), so its top edge stays hidden behind the rail.
     const bool thinBorder = g_minimapThinBorder;
     const bool infoBar = g_minimapInfoBar;
-    const float trayBottomRel = infoBar ? frameSize - 37.0f * artUnit + 0.6f * U + 31.0f * U : frameSize;
+    // With the thin border there is no rail to tuck it behind: it hangs from the map's bottom edge instead.
+    constexpr float kThinTrayTuck = 2.4f; // the art units the rail would hide
+    const float trayTopRel = thinBorder ? frameSize - kThinTrayTuck * U : frameSize - 37.0f * artUnit + 0.6f * U;
+    const float trayBottomRel = infoBar ? trayTopRel + 31.0f * U : frameSize;
 
     if (!g_minimapCustomPos) {
         // Enshrouded constrains its HUD inside a 21:9 safe area centered on ultra-wide monitors
@@ -5957,7 +5984,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     }
     const float frameCx = frameX + frameSize * 0.5f;
     const float compassCy = frameY + 30.5f * artUnit;
-    const float trayY = frameY + frameSize - 37.0f * artUnit + 0.6f * U;
+    const float trayY = frameY + trayTopRel;
     const float trayH = 31.0f * U;
     const float trayContentCy = trayY + 17.5f * U;     // middle of the part below the rail
     const float gearCapW = 28.2f * U;                   // tray point to the end of the left flourish
@@ -5973,7 +6000,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     const float trayW = std::max(trayHalfW * 2.0f, trayBaseW - 90.0f * U);
     const float trayX = frameCx - trayW * 0.5f;
     const float trayRight = trayX + trayW;
-    const float trayButtonsY = frameY + frameSize - 34.0f * artUnit; // below the rail
+    const float trayButtonsY = thinBorder ? frameY + frameSize : frameY + frameSize - 34.0f * artUnit; // below the rail
     const float trayButtonsH = trayY + trayH - trayButtonsY;
     // Without the info bar the cog sits in the map's bottom-left corner.
     constexpr float kCornerGearSz = 24.0f;
@@ -6042,8 +6069,13 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         if (GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING) != 0) {
             cursorVisible = true;
         }
-        if (screen != 1 || shiftAltHeld || g_minimapSettingsOpen || g_minimapDraggingMove || g_minimapDraggingResize) {
+        const bool minimapHasMouse = shiftAltHeld || g_minimapSettingsOpen || g_minimapDraggingMove || g_minimapDraggingResize;
+        if (minimapHasMouse) {
             cursorVisible = true;
+        } else if (screen != 1) {
+            // In the backpack, journal and other menus the mouse is theirs: a click over the minimap must not start
+            // a drag (which swallowed the game's button-up, so items stuck to the cursor). Shift + Alt still works.
+            cursorVisible = false;
         }
         if (cursorVisible) {
             POINT pt{};
@@ -6671,7 +6703,9 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         DrawPlayerTriangle(anchor.raw, vcx, vcy, faceDirX, faceDirZ, btnScale, 0xFF63A1B8u, 0xFF8CC4DAu, 1.0f);
 
         if (thinBorder) {
-            // Thin border: a dark outline and a fine gold line round the map, and a small N at the top
+            // Thin border: a dark outline and a fine gold line round the map, and a small N at the top. The bar
+            // hangs below it, drawn first so the border's bottom line covers its top edge.
+            if (infoBar) DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * U, trayY - 262.0f * U, 1.0f, trayW - trayBaseW);
             const float x0 = frameX, y0 = frameY, sz = frameSize;
             DrawSolidRectAbs(anchor.raw, x0, y0, sz, 3.0f, 0xFF0A0E10u, 0.9f);
             DrawSolidRectAbs(anchor.raw, x0, y0 + sz - 3.0f, sz, 3.0f, 0xFF0A0E10u, 0.9f);
