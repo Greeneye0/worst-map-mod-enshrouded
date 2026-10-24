@@ -21,11 +21,14 @@ enum class Str : int {
     AncientSpire, FlameAltarHome, FlameSanctum, NightSanctum, GemForge, AncientObelisk, WaterSource,
     FastTravelPoint, ElixirWell, CatacombsTomb, AncientVault, ShroudLair, HollowHalls, HiddenTomb,
     GoldChest, SilverChest, TownSettlement, Farmstead, SurvivorCamp, MineQuarry, CavePassage,
-    EnemyEncampment, BalefireGarrison, MainQuest, SideQuest, LoreRumor, PlayerGrave, OtherPlayers,
+    EnemyEncampment, BalefireGarrison, MainQuest, SideQuest, CompletedQuests, LoreRumor, PlayerGrave, OtherPlayers,
     GoldSarcophagus, SilverSarcophagus, ChestLocked, CustomPin, MapLocation, OtherPlayer,
     TypeToSearch, MatchesFmt, HiddenFmt, FiltersFmt, AllMatchingFmt, AllNamedFmt, ZeroVisibleFmt,
     LockedTag, HiddenTag,
-    Day, Dawn, Dusk, Night, ZoomFmt, CompassN, CompassS, CompassW, CompassE,
+    Day, Dawn, Dusk, Night, ZoomFmt, Terrain, CompassN, CompassS, CompassW, CompassE,
+    Pins, SettingsTitle, PinSize, ShowMinimap, MinimapTerrain, ClockIcon, SunMoon, Weather,
+    LootedChests, Hide, GreyedOut, WeatherClear, WeatherRain, WeatherStorm, WeatherSnow, WeatherFog,
+    HintClearChest, HintToggleKey, HintFind, CtrlClick,
     Count
 };
 

@@ -176,6 +176,10 @@ const Row kTable[] = {
     {"Side Quest", "Nebenquest", "Quête secondaire", "Missione secondaria", "Misión secundaria", "Missão secundária",
      "Zadanie poboczne", "Побочное задание", "Побічне завдання", "Yan Görev", "サイドクエスト", "사이드 퀘스트",
      "支线任务", "支線任務", "เควสต์รอง"},
+    // CompletedQuests
+    {"Completed Quests", "Abgeschlossene Quests", "Quêtes terminées", "Missioni completate", "Misiones completadas",
+     "Missões concluídas", "Ukończone zadania", "Завершённые задания", "Завершені завдання", "Tamamlanan Görevler",
+     "完了したクエスト", "완료된 퀘스트", "已完成任务", "已完成任務", "เควสต์ที่เสร็จแล้ว"},
     // LoreRumor
     {"Lore Rumor (?)", "Gerücht (?)", "Rumeur (?)", "Voce (?)", "Rumor (?)", "Rumor (?)", "Plotka (?)", "Слух (?)",
      "Чутка (?)", "Söylenti (?)", "噂 (?)", "소문 (?)", "传闻 (?)", "傳聞 (?)", "ข่าวลือ (?)"},
@@ -266,11 +270,83 @@ const Row kTable[] = {
     // ZoomFmt (%s = 1.5x)
     {"Zoom: %s", "Zoom: %s", "Zoom : %s", "Zoom: %s", "Zoom: %s", "Zoom: %s", "Zoom: %s", "Зум: %s",
      "Зум: %s", "Zoom: %s", "ズーム: %s", "확대: %s", "缩放: %s", "縮放: %s", "ซูม: %s"},
+    // Terrain
+    {"Terrain", "Gelände", "Terrain", "Terreno", "Terreno", "Terreno", "Teren", "Рельеф",
+     "Рельєф", "Arazi", "地形", "지형", "地形", "地形", "ภูมิประเทศ"},
     // CompassN, CompassS, CompassW, CompassE
     {"N", "N", "N", "N", "N", "N", "N", "С", "Пн", "K", "北", "북", "北", "北", "N"},
     {"S", "S", "S", "S", "S", "S", "S", "Ю", "Пд", "G", "南", "남", "南", "南", "S"},
     {"W", "W", "O", "O", "O", "O", "W", "З", "Зх", "B", "西", "서", "西", "西", "W"},
     {"E", "O", "E", "E", "E", "L", "E", "В", "Сх", "D", "東", "동", "东", "東", "E"},
+    // Pins
+    {"PINS:", "PINS:", "REPÈRES :", "PIN:", "PINES:", "PINOS:", "ZNACZNIKI:", "МЕТКИ:", "МІТКИ:", "PİNLER:",
+     "ピン:", "핀:", "标记:", "標記:", "หมุด:"},
+    // SettingsTitle
+    {"SETTINGS", "EINSTELLUNGEN", "PARAMÈTRES", "IMPOSTAZIONI", "AJUSTES", "CONFIGURAÇÕES", "USTAWIENIA",
+     "НАСТРОЙКИ", "НАЛАШТУВАННЯ", "AYARLAR", "設定", "설정", "设置", "設定", "การตั้งค่า"},
+    // PinSize
+    {"Custom Marker Size", "Größe eigener Marker", "Taille des repères", "Dimensione segnalini", "Tamaño de marcadores",
+     "Tamanho dos marcadores", "Rozmiar znaczników", "Размер меток", "Розмір міток", "İşaret Boyutu",
+     "マーカーサイズ", "마커 크기", "自定义标记大小", "自訂標記大小", "ขนาดหมุด"},
+    // ShowMinimap
+    {"Show Minimap", "Minikarte zeigen", "Afficher la minicarte", "Mostra minimappa", "Mostrar minimapa",
+     "Mostrar minimapa", "Pokaż minimapę", "Показать миникарту", "Показати мінімапу", "Mini Haritayı Göster",
+     "ミニマップ表示", "미니맵 표시", "显示小地图", "顯示小地圖", "แสดงแผนที่ย่อ"},
+    // MinimapTerrain
+    {"Minimap Terrain", "Minikarte Gelände", "Terrain minicarte", "Terreno minimappa", "Terreno del minimapa",
+     "Terreno do minimapa", "Teren minimapy", "Рельеф миникарты", "Рельєф мінімапи", "Mini Harita Arazisi",
+     "ミニマップ地形", "미니맵 지형", "小地图地形", "小地圖地形", "ภูมิประเทศแผนที่ย่อ"},
+    // ClockIcon
+    {"Minimap Icon", "Minikarte Symbol", "Icône minicarte", "Icona minimappa", "Icono del minimapa",
+     "Ícone do minimapa", "Ikona minimapy", "Значок миникарты", "Значок мінімапи", "Mini Harita Simgesi",
+     "ミニマップアイコン", "미니맵 아이콘", "小地图图标", "小地圖圖示", "ไอคอนแผนที่ย่อ"},
+    // SunMoon
+    {"Sun / Moon", "Sonne / Mond", "Soleil / Lune", "Sole / Luna", "Sol / Luna", "Sol / Lua", "Słońce / Księżyc",
+     "Солнце / Луна", "Сонце / Місяць", "Güneş / Ay", "太陽 / 月", "해 / 달", "日月", "日月", "อาทิตย์ / จันทร์"},
+    // Weather
+    {"Weather", "Wetter", "Météo", "Meteo", "Clima", "Clima", "Pogoda", "Погода", "Погода", "Hava Durumu",
+     "天気", "날씨", "天气", "天氣", "สภาพอากาศ"},
+    // LootedChests
+    {"Looted Chests", "Geplünderte Truhen", "Coffres pillés", "Forzieri saccheggiati", "Cofres saqueados",
+     "Baús saqueados", "Otwarte skrzynie", "Открытые сундуки", "Відкриті скрині", "Yağmalanan Sandıklar",
+     "開封済みの宝箱", "획득한 상자", "已开启宝箱", "已開啟寶箱", "หีบที่เปิดแล้ว"},
+    // Hide
+    {"Hide", "Ausblenden", "Masquer", "Nascondi", "Ocultar", "Ocultar", "Ukryj", "Скрыть", "Сховати", "Gizle",
+     "非表示", "숨김", "隐藏", "隱藏", "ซ่อน"},
+    // GreyedOut
+    {"Greyed Out", "Ausgegraut", "Grisé", "Oscurato", "Atenuado", "Acinzentado", "Wyszarzone", "Серый", "Сірий",
+     "Soluk", "グレー表示", "회색 표시", "变灰", "變灰", "สีเทา"},
+    // WeatherClear
+    {"Clear", "Klar", "Dégagé", "Sereno", "Despejado", "Limpo", "Pogodnie", "Ясно", "Ясно", "Açık",
+     "晴れ", "맑음", "晴朗", "晴朗", "แจ่มใส"},
+    // WeatherRain
+    {"Rain", "Regen", "Pluie", "Pioggia", "Lluvia", "Chuva", "Deszcz", "Дождь", "Дощ", "Yağmur",
+     "雨", "비", "雨", "雨", "ฝนตก"},
+    // WeatherStorm
+    {"Storm", "Sturm", "Orage", "Tempesta", "Tormenta", "Tempestade", "Burza", "Гроза", "Гроза", "Fırtına",
+     "嵐", "폭풍", "暴风雨", "暴風雨", "พายุ"},
+    // WeatherSnow
+    {"Snow", "Schnee", "Neige", "Neve", "Nieve", "Neve", "Śnieg", "Снег", "Сніг", "Kar",
+     "雪", "눈", "雪", "雪", "หิมะ"},
+    // WeatherFog
+    {"Fog", "Nebel", "Brouillard", "Nebbia", "Niebla", "Neblina", "Mgła", "Туман", "Туман", "Sis",
+     "霧", "안개", "雾", "霧", "หมอก"},
+    // HintClearChest (the map's hint bar, with Ctrl + left click): mark or unmark a chest as looted
+    {"Mark Chest Looted", "Truhe abhaken", "Marquer coffre pillé", "Segna forziere saccheggiato",
+     "Marcar cofre saqueado", "Marcar baú saqueado", "Oznacz otwartą skrzynię", "Отметить сундук открытым",
+     "Позначити скриню відкритою", "Sandığı yağmalandı işaretle", "宝箱を開封済みにする", "상자 획득 표시",
+     "标记已开启宝箱", "標記已開啟寶箱", "ทำเครื่องหมายหีบที่เปิดแล้ว"},
+    // HintToggleKey (Tab): show or hide the Map Key panel
+    {"Show/Hide Map Key", "Legende ein/aus", "Afficher/masquer légende", "Mostra/nascondi legenda",
+     "Mostrar/ocultar leyenda", "Mostrar/ocultar legenda", "Pokaż/ukryj legendę", "Показать/скрыть легенду",
+     "Показати/сховати легенду", "Lejantı göster/gizle", "凡例の表示切替", "범례 표시/숨기기",
+     "显示/隐藏图例", "顯示/隱藏圖例", "แสดง/ซ่อนคำอธิบาย"},
+    // HintFind (Shift+F): the Find button's text, in the hint bar's sentence case
+    {"Find", "Suchen", "Chercher", "Cerca", "Buscar", "Buscar", "Szukaj", "Поиск", "Пошук", "Ara",
+     "検索", "검색", "搜索", "搜尋", "ค้นหา"},
+    // CtrlClick
+    {"Ctrl+Click", "Strg+Klick", "Ctrl+Clic", "Ctrl+Clic", "Ctrl+Clic", "Ctrl+Clique", "Ctrl+Klik",
+     "Ctrl+Клик", "Ctrl+Клік", "Ctrl+Tık", "Ctrl+クリック", "Ctrl+클릭", "Ctrl+点击", "Ctrl+點擊", "Ctrl+คลิก"},
 };
 // clang-format on
 

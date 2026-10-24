@@ -43,4 +43,9 @@ echo Running offline binary patch verification...
 bin\test_patches.exe
 if errorlevel 1 exit /b 1
 
+cl /nologo /std:c++20 /O2 /EHsc /MT /W4 tests\test_player_markers.cpp /Fo:build\test_player_markers.obj /Fe:bin\test_player_markers.exe
+if errorlevel 1 exit /b 1
+bin\test_player_markers.exe
+if errorlevel 1 exit /b 1
+
 echo Built bin\loader\unlock-map-markers.dll for Greeneye Loader API 2
