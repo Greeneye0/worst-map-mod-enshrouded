@@ -38,4 +38,4 @@ The mod runs through the Greeneye Loader (API 2, `src/greeneye.h`). All hooks go
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Made with the help of AI (Claude by Anthropic, and Google Antigravity).
+MIT, see [LICENSE](LICENSE). Made with the help of AI (Claude by Anthropic, OpenAI Codex and Google Antigravity).
