@@ -116,6 +116,7 @@ bool g_minimapSettingsOpen = false;
 bool g_bridgeRefreshMap = false;
 bool g_bridgeRecenterMap = false;
 float g_chestRespawnMinutes = 30.0f;
+float g_chestResetRadiusMeters = 500.0f; // a player this close restarts a looted chest's respawn timer
 
 struct ChestLootState {
     bool looted;
@@ -1467,6 +1468,8 @@ void ApplySharedChestStates() {
     }
 }
 
+bool GetHudPlayerWorldPos(uint8_t* client, float& outX, float& outZ);
+
 void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     if (!client) return;
     uint8_t screen = client[0x1cd8];
@@ -1542,14 +1545,45 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     g_lootPrevScreen = screen;
 
     // 2. Respawn: a looted chest outside every Flame Altar build zone comes back after RespawnMinutes of
-    //    play time (time in a world, counted by this mod; it is not the game's clock).
+    //    play time (time in a world, counted by this mod; it is not the game's clock). Like the game's own
+    //    timer, it only runs while every player is ResetRadius (500 m) away: coming closer starts it over.
     if (dtSec > 0.0) {
         BuildZoneBox zones[64]{};
         size_t numZones = CollectActiveBuildZones(client, zones, 64);
+        float players[65][2]{};
+        size_t numPlayers = 0;
+        float px = 0.0f, pz = 0.0f;
+        if (GetHudPlayerWorldPos(client, px, pz)) {
+            players[numPlayers][0] = px;
+            players[numPlayers][1] = pz;
+            ++numPlayers;
+        }
+        uint8_t* playerArray = *reinterpret_cast<uint8_t**>(client + 0x4642c0);
+        const uint64_t playerCount = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
+        for (uint64_t i = 0; playerArray && playerCount <= 64 && i < playerCount; ++i) {
+            uint8_t* pl = playerArray + i * 0x240;
+            const float ox = *reinterpret_cast<float*>(pl + 0x10), oz = *reinterpret_cast<float*>(pl + 0x18);
+            if (*reinterpret_cast<uint32_t*>(pl) != 0 && std::isfinite(ox) && std::isfinite(oz)) {
+                players[numPlayers][0] = ox;
+                players[numPlayers][1] = oz;
+                ++numPlayers;
+            }
+        }
+        const float resetSq = g_chestResetRadiusMeters * g_chestResetRadiusMeters;
+        auto playerNear = [&](size_t c) {
+            const ChestSpawn& sp = kChestSpawns[c];
+            const float cx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
+            const float cz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
+            for (size_t i = 0; i < numPlayers; ++i) {
+                const float dx = players[i][0] - cx, dz = players[i][1] - cz;
+                if (dx * dx + dz * dz <= resetSq) return true;
+            }
+            return false;
+        };
         const double respawnSec = std::max(1.0, static_cast<double>(g_chestRespawnMinutes) * 60.0);
         for (size_t c = 0; c < kTotalChestCount; ++c) {
             if (!g_chestLootStates[c].looted) continue;
-            if (IsChestInBuildZone(c, zones, numZones)) {
+            if (IsChestInBuildZone(c, zones, numZones) || playerNear(c)) {
                 g_chestLootStates[c].elapsedOutOfBuildZoneSec = 0.0;
             } else {
                 g_chestLootStates[c].elapsedOutOfBuildZoneSec += dtSec;
@@ -5143,6 +5177,11 @@ void LoadMinimapConfig() {
     int markerScaleIdx = GetPrivateProfileIntA("MinimapV2", "CustomMarkerScaleIdx", 2, cfg.c_str());
     int pinRevealMode = GetPrivateProfileIntA("MinimapV2", "PinRevealMode", 2, cfg.c_str());
     int respawnMins = GetPrivateProfileIntA("Chests", "RespawnMinutes", 30, cfg.c_str());
+    int resetRadius = GetPrivateProfileIntA("Chests", "ResetRadius", -1, cfg.c_str());
+    if (resetRadius < 0) {
+        resetRadius = 500;
+        WritePrivateProfileStringA("Chests", "ResetRadius", "500", cfg.c_str());
+    }
     // [Mining] Ores = one 0/1 per ore, in the Map Key's order
     char ores[512]{};
     GetPrivateProfileStringA("Mining", "Ores", "", ores, sizeof(ores), cfg.c_str());
@@ -5184,6 +5223,7 @@ void LoadMinimapConfig() {
     g_customMarkerScaleIdx = std::max(0, std::min(kMarkerScaleCount - 1, markerScaleIdx));
     g_pinRevealMode = static_cast<PinRevealMode>(std::max(0, std::min(2, pinRevealMode)));
     g_chestRespawnMinutes = std::max(1.0f, static_cast<float>(respawnMins));
+    g_chestResetRadiusMeters = std::max(0.0f, static_cast<float>(resetRadius));
     ApplyCustomMarkerScale();
 }
 
