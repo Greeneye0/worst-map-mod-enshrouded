@@ -391,6 +391,14 @@ const Row kTable[] = {
      "Przytrzymaj, aby pominąć blokady", "Удерживайте, чтобы обойти блокировки", "Утримуйте, щоб обійти блокування",
      "Kilitleri atlamak için basılı tutun", "長押しでロックを無視", "길게 눌러 잠금 무시", "长按以忽略锁定",
      "長按以忽略鎖定", "กดค้างเพื่อข้ามการล็อก"},
+    // LockExempt: tooltip of a Map Key padlock
+    {"Exempt from Show All / Hide All", "Von Alle zeigen / Alle ausblenden ausgenommen",
+     "Exclu de Tout afficher / Tout masquer", "Escluso da Mostra tutto / Nascondi tutto",
+     "Excluido de Mostrar todo / Ocultar todo", "Excluído de Mostrar tudo / Ocultar tudo",
+     "Pomijany przez Pokaż wszystko / Ukryj wszystko", "Не меняется кнопками Показать всё / Скрыть всё",
+     "Не змінюється кнопками Показати все / Сховати все", "Hepsini göster / Hepsini gizle bunu atlar",
+     "すべて表示 / すべて非表示の対象外", "모두 표시 / 모두 숨기기에서 제외", "不受全部显示 / 全部隐藏影响",
+     "不受全部顯示 / 全部隱藏影響", "ไม่ถูกเปลี่ยนโดยแสดงทั้งหมด / ซ่อนทั้งหมด"},
 };
 // clang-format on
 

@@ -4495,7 +4495,11 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         // or journal 9, Show on Map for a quest 7, ...) the game has already centered the map on what was asked
         // for, so leave it there.
         g_worldMapOpenCenterFrames = (g_screenBeforeMap == 1) ? 2 : 0;
-        if (g_log) g_log("World Map opened from screen %u (%s)", g_screenBeforeMap,
+        // At most once a second: a screen flipping with the map every frame wrote ~11000 lines a minute
+        static uint64_t s_lastOpenLog = 0;
+        const bool logOpen = nowMapTick - s_lastOpenLog >= 1000ULL;
+        if (logOpen) s_lastOpenLog = nowMapTick;
+        if (g_log && logOpen) g_log("World Map opened from screen %u (%s)", g_screenBeforeMap,
                          g_worldMapOpenCenterFrames ? "centering on player" : "keeping the game's view");
     }
     g_lastWorldMapFrameTick = nowMapTick;
@@ -4804,8 +4808,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             }
 
             if (!g_panelCollapsed) {
-                bool showHoldHint = false;
-                float holdHintY = 0.0f;
+                // The tooltip strip drawn over the list this frame (Show All / Hide All, or a hovered padlock)
+                const char* hintText = nullptr;
+                float hintY = 0.0f;
                 // SHOW ALL / HIDE ALL
                 {
                     const float btnY = kTitleBarH + 4.0f, btnH = kActionRowH - 4.0f;
@@ -4853,8 +4858,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             s_allPress = -1;
                         }
                     }
-                    showHoldHint = (hovBtn[0] || hovBtn[1]) && s_allPress < 0;
-                    holdHintY = panelY + btnY + btnH + 5.0f;
+                    if ((hovBtn[0] || hovBtn[1]) && s_allPress < 0) {
+                        hintText = umm_lang::T(umm_lang::Str::HoldForLocked);
+                        hintY = panelY + btnY + btnH + 5.0f;
+                    }
                 }
 
                 auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
@@ -4899,6 +4906,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             hovCat, hovCatLock);
                         DrawOnOffBadgeAbs(anchor.raw, panelX + kPanelW - rowRight, py + curY, kCatRowH, catOn);
 
+                        if (hovCatLock) {
+                            hintText = umm_lang::T(umm_lang::Str::LockExempt);
+                            hintY = py + curY + kCatRowH + 4.0f;
+                        }
                         if (clicked && hovCatLock) {
                             ToggleCategoryLock(grp.category);
                         } else if (clicked && hovCatCollapse) {
@@ -5030,6 +5041,11 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             DrawOnOffBadgeAbs(anchor.raw, panelX + kPanelW - rowRight, py + curY, kItemRowH, rowOn,
                                 rowOn ? 1.0f : 0.85f);
 
+                            if (hovRowLock) {
+                                hintText = umm_lang::T(umm_lang::Str::LockExempt);
+                                hintY = py + curY + kItemRowH + 4.0f;
+                                if (hintY + 36.0f > panelY + contentBottom) hintY = py + curY - 36.0f;
+                            }
                             if (clicked && hovRowLock) {
                                 ToggleRowLock(rowSpec.typeHash);
                             } else if (clicked && hovRow) {
@@ -5080,11 +5096,12 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     DrawBoxAbs(anchor.raw, kRoundedBoxPrimitive, trackX, drawThumbY, 6.0f, thumbH,
                         lit ? kTitle : kGold, lit ? 0.95f : 0.8f, 3.0f);
                 }
-                if (showHoldHint) {
-                    // A tooltip strip under the buttons, the panel's full width so every language fits: opaque,
-                    // gold-framed, on a soft shadow, the text centred. It shrinks if a translation is long
-                    // (TextWidth runs ~15% short of the drawn text, hence the 1.15).
-                    const char* hint = umm_lang::T(umm_lang::Str::HoldForLocked);
+                if (hintText) {
+                    // A tooltip strip, the panel's full width so every language fits: opaque, gold-framed, on a soft
+                    // shadow, the text centred. It shrinks if a translation is long (TextWidth runs ~15% short of
+                    // the drawn text, hence the 1.15).
+                    const char* hint = hintText;
+                    const float holdHintY = hintY;
                     constexpr float kHintH = 32.0f;
                     const float hintX = panelX + 8.0f, hintW = kPanelW - 16.0f;
                     const float rawW = umm_lang::TextWidth(hint) * 1.15f;
