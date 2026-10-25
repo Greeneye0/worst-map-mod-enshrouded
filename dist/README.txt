@@ -115,7 +115,8 @@ LOOTED CHESTS
 -------------
 Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check
 mark (Settings > Looted Chests). On the world map, Ctrl + left click a chest to mark it or
-clear the mark. Players who have the mod share their looted chests: open one and it's marked
+clear the mark. Chests you opened before installing the mod aren't known to it: they show
+until you open them again or Ctrl + left click them. Players who have the mod share their looted chests: open one and it's marked
 on their maps too. A looted chest comes back after 30 minutes of play with every player at
 least 500 m away (coming closer starts the 30 minutes over), unless it's in a Flame Altar's
 build zone. Looted chests are saved per world in
