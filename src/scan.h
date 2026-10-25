@@ -29,6 +29,12 @@ bool StartsAsExpected(const uint8_t* target, const uint8_t* expected, size_t n);
 // chained, never overwritten.
 void* InstallHook(uint8_t* target, void* detour, size_t length, const uint8_t* code = nullptr, size_t codeLength = 0);
 
+// The start of the function that contains code (its first chunk, from the unwind table).
+uint8_t* FunctionStart(const uint8_t* code);
+
+// An ECS system's function by its name (.rdata: {name, length, function}).
+uint8_t* SystemFunction(const char* name);
+
 // Redirects the calls to target made inside the named ECS systems (their names in .rdata) to detour, leaving the
 // function itself and every other caller alone. Returns what the detour calls on (target, or the hook already
 // there), or nullptr if any call could not be redirected.

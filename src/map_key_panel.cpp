@@ -20,6 +20,7 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <map>
 #include <unordered_set>
 #include <vector>
 
@@ -31,6 +32,8 @@
 #include "minimap_art.h"
 #include "scan.h"
 #include "greeneye.h"
+#include "jumppatch.h"
+#include <intrin.h>
 #include "lang.h"
 
 namespace unlock_map_markers {
@@ -64,6 +67,7 @@ uint32_t OreHash(size_t ore) { return kOreTypeHashBase + static_cast<uint32_t>(o
 bool g_oreEnabled[kOreCount]{};
 const char* OreName(size_t ore);
 int KnowledgeRemaining(size_t ore); // knowledge.inl
+namespace chest_glow { void UpdateKey(uint8_t* client, bool appFocused); void DrawMarkers(uint8_t* client); } // chest_glow.inl
 bool IsKnowledgeDeposit(size_t d);
 const char* KnowledgeSpotName(size_t d);
 void UpdateKnowledge();
@@ -1975,6 +1979,7 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     }
     UpdateBuiltWater(client);
     UpdateKnowledge();
+    chest_glow::UpdateKey(client, appFocused);
 
     // 1. A chest counts as looted when the interact key is pressed next to it and the game switches to its
     //    chest screen (21) right after. The key alone, or the inventory (9) opened by itself, marks nothing.
@@ -4095,6 +4100,8 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
 }
 
 #include "knowledge.inl"
+#include "chest_silhouette.inl"
+#include "chest_glow.inl"
 
 // The enabled ore deposits on the world map, drawn by the mod (the game's marker arrays are far too small for
 // them). Same world -> screen mapping as the Find pulses. Hovering one names it.
@@ -7730,6 +7737,7 @@ void DrawHudMinimapOverlay() {
 
     // Update chest loot detection and 30-game-minute respawn timer (even while inventory/loot UI is open)
     UpdateChestLootTracking(client, appFocused);
+    chest_glow::DrawMarkers(client); // GG's chests on screen, through walls
 
     // Screen state check:
     // 1 = Playing (normal HUD), 5 = World Map, 2 = Pause/System Menu, 9 = Inventory/Journal
@@ -8302,6 +8310,7 @@ bool InstallMapKeyPanelHook(LogFn logger) {
     }
     InstallBuiltWaterHooks();
     FindSave2Block();
+    chest_glow::Install();
     if (!g_sendCommand || !g_origChatAppend) {
         g_sendCommand = nullptr; // never send what we could not receive
         if (g_log) g_log("Looted chests: chat functions not found; looted chests are not shared in multiplayer");
