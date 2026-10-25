@@ -64,6 +64,8 @@ uint32_t OreHash(size_t ore) { return kOreTypeHashBase + static_cast<uint32_t>(o
 bool g_oreEnabled[kOreCount]{};
 const char* OreName(size_t ore);
 int KnowledgeRemaining(size_t ore); // knowledge.inl
+bool IsKnowledgeDeposit(size_t d);
+const char* KnowledgeSpotName(size_t d);
 void UpdateKnowledge();
 
 int OreDepositCount(size_t ore) {
@@ -3457,9 +3459,10 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
         if (g_pinRevealMode == PinRevealMode::ExploredOnly && !IsPositionExploredByCharacter(client, dep.x, dep.z)) {
             isFilterOn = false;
         }
-        const char* name = OreName(dep.ore);
+        // Lore notes and bosses by their own names ("Armored Fell Thunderbrute"), under their row's name
+        const char* name = IsKnowledgeDeposit(d) ? KnowledgeSpotName(d) : OreName(dep.ore);
         processCandidate(static_cast<float>(dep.x), static_cast<float>(dep.z), OreHash(dep.ore), OreHash(dep.ore),
-                         isFilterOn, false, name, name);
+                         isFilterOn, false, name, OreName(dep.ore));
     }
 
     // 3. Scan Other Players in multiplayer from client + 0x4642c0
@@ -3590,8 +3593,37 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
     }
 }
 
+// Find showed places a filter hides (F2): their Map Key rows are brought into view (panel and category expanded, list
+// scrolled) and flashed for a few seconds, so the player sees which filter to switch on.
+std::unordered_set<uint32_t> g_flashRows;   // row type hashes
+uint64_t g_flashRowsUntil = 0;
+uint32_t g_scrollToRow = 0;                 // scrolled to on the next Map Key frame
+
+void RevealFilteredFindRows(const std::vector<size_t>& matchIndices) {
+    g_flashRows.clear();
+    for (size_t idx : matchIndices) {
+        if (idx >= g_findMatchedPlaces.size() || g_findMatchedPlaces[idx].isFilterOn) continue;
+        const uint32_t row = RowHashOf(g_findMatchedPlaces[idx].filterTypeHash);
+        for (size_t c = 0; c < kCategoryGroupCount; ++c) {
+            const auto& grp = kCategoryGroups[c];
+            bool here = false;
+            for (size_t r = 0; r < grp.rowCount && !here; ++r) here = grp.rows[r].typeHash == row;
+            if (grp.category == 4) {
+                for (uint32_t pin : kCustomPinHashes) here = here || pin == row;
+            }
+            if (!here) continue;
+            g_categoryCollapsed[c] = false;
+            g_panelCollapsed = false;
+            if (g_flashRows.empty()) g_scrollToRow = row;
+            g_flashRows.insert(row);
+        }
+    }
+    if (!g_flashRows.empty()) g_flashRowsUntil = GetTickCount64() + 14000ULL; // as long as the map's pulses
+}
+
 void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vector<size_t>& matchIndices) {
     if (!mapState || matchIndices.empty()) return;
+    RevealFilteredFindRows(matchIndices);
 
     g_pulsingPlaces.clear();
     float minX = 1e9f, maxX = -1e9f, minZ = 1e9f, maxZ = -1e9f;
@@ -5236,6 +5268,11 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         for (size_t r = 0; r < grp.rowCount; ++r) {
                             const auto& rowSpec = grp.rows[r];
                             int count = hashCounts[hashIdx++];
+                            if (g_scrollToRow != 0 && rowSpec.typeHash == g_scrollToRow) {
+                                // Find revealed this row: scroll it to the upper part of the list (clamped below)
+                                g_mapKeyScroll = std::max(0.0f, curY - contentTop - kItemRowH * 2.0f);
+                                g_scrollToRow = 0;
+                            }
                             for (uint32_t linked : {rowSpec.pairedHash, rowSpec.pairedHash2}) {
                                 if (IsOreHash(linked)) count += OreDepositCount(OreIndexOf(linked));
                                 if (linked == OreHash(kWaterFirst)) count += static_cast<int>(g_builtWater.size());
@@ -5247,6 +5284,23 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             bool rowOn = IsFilterEnabled(filterEntries, filterCount, rowSpec.typeHash);
                             const float rowW = kPanelW - 8.0f - (rowRight - 6.0f);
                             bool hovRow = isHovered(panelX + 8.0f, py + curY, rowW, kItemRowH);
+                            if (!g_flashRows.empty() && g_flashRows.count(rowSpec.typeHash)) {
+                                const uint64_t nowFlash = GetTickCount64();
+                                if (nowFlash >= g_flashRowsUntil) {
+                                    g_flashRows.clear();
+                                } else {
+                                    // A gold glow box around the row, pulsing with the found places on the map: bright
+                                    // at the start of each 2.25 s pulse, fading over its first half
+                                    const float elapsed = 14.0f - static_cast<float>(g_flashRowsUntil - nowFlash) * 0.001f;
+                                    const float phase = std::fmod(std::max(0.0f, elapsed), 2.25f) / 2.25f;
+                                    const float fade = 1.0f - std::min(1.0f, phase * 2.0f);
+                                    const float pulse = 0.25f + 0.75f * fade;
+                                    DrawBoxAbs(anchor.raw, kGlowBoxSmallPrimitive, panelX + 4.0f, py + curY - 4.0f,
+                                        rowW + 8.0f, kItemRowH + 8.0f, kGold, 0.35f + 0.55f * pulse, 8.0f);
+                                    DrawFramedBoxAbs(anchor.raw, panelX + 8.0f, py + curY, rowW, kItemRowH,
+                                        kHoverFill, 0.6f * pulse, kGold, 0.95f, 4.0f);
+                                }
+                            }
                             const bool rowLocked = IsRowLocked(rowSpec.typeHash);
                             const bool rowCatLocked = IsCategoryLocked(grp.category);
                             const float rowLockX = LockLeftX(panelX + kPanelW - rowRight);
