@@ -121,7 +121,6 @@ constexpr int kMarkerScaleCount = static_cast<int>(sizeof(kMarkerScaleLevels) / 
 bool g_goldChestEnabled = true;
 bool g_silverChestEnabled = true;
 bool g_otherPlayersEnabled = true;
-bool g_completedQuestsEnabled = false;
 bool g_minimapShowTerrain = true;
 bool g_minimapThinBorder = false; // a thin line instead of the ornate frame
 bool g_minimapInfoBar = true;     // the tray under the minimap (time, weather, zoom); off puts the cog on the map
@@ -218,6 +217,7 @@ CustomMapMarkerType g_lockedFastTravelMarkerType = {
     0,
     {}
 };
+
 
 struct UiText {
     const char* utf8;
@@ -595,7 +595,6 @@ constexpr MarkerRowSpec kCategory3Rows[] = {
 constexpr MarkerRowSpec kCategory0Rows[] = {
     {0xa7cadc08u, 0u, 0, "Main Quest", umm_lang::Str::MainQuest},
     {0xc52e92e5u, 0u, 0, "Side Quest", umm_lang::Str::SideQuest},
-    {kCompletedQuestTypeHash, 0u, 0, "Completed Quests", umm_lang::Str::CompletedQuests},
     {0x8ba7c122u, 0u, 0, "Lore Rumor (?)", umm_lang::Str::LoreRumor},
     {0x1ad8f96eu, 0u, 0, "Player Grave", umm_lang::Str::PlayerGrave},
     {kOtherPlayerTypeHash, 0u, 0, "Other Players", umm_lang::Str::OtherPlayers},
@@ -964,7 +963,7 @@ bool IsFilterEnabled(FilterEntry* entries, size_t count, uint32_t typeHash) {
     if (typeHash == kGoldChestTypeHash) return g_goldChestEnabled;
     if (typeHash == kSilverChestTypeHash) return g_silverChestEnabled;
     if (typeHash == kOtherPlayerTypeHash) return g_otherPlayersEnabled;
-    if (typeHash == kCompletedQuestTypeHash) return g_completedQuestsEnabled;
+    if (typeHash == kCompletedQuestTypeHash) return false; // finished quests are never shown
     if (IsOreHash(typeHash)) return g_oreEnabled[OreIndexOf(typeHash)];
     for (size_t i = 0; i < count; ++i) {
         if (entries[i].typeHash == typeHash) {
@@ -999,9 +998,6 @@ void SetSingleFilterState(uint8_t* client, uint8_t* mapState, uint32_t typeHash,
     } else if (typeHash == kOtherPlayerTypeHash) {
         g_otherPlayersEnabled = enable;
         SaveMinimapConfig();
-    } else if (typeHash == kCompletedQuestTypeHash) {
-        g_completedQuestsEnabled = enable;
-        SaveMinimapConfig();
     } else if (IsOreHash(typeHash)) {
         g_oreEnabled[OreIndexOf(typeHash)] = enable;
         SaveMinimapConfig();
@@ -1028,7 +1024,6 @@ void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category
         g_silverChestEnabled = enable;
     } else if (category == 0) {
         g_otherPlayersEnabled = enable;
-        g_completedQuestsEnabled = enable;
         SaveMinimapConfig();
     } else if (IsResourceCategory(category)) {
         for (size_t o = 0; o < kOreCount; ++o) {
@@ -1055,7 +1050,6 @@ void SetAllFiltersState(uint8_t* client, uint8_t* mapState, bool enable) {
     g_goldChestEnabled = enable;
     g_silverChestEnabled = enable;
     g_otherPlayersEnabled = enable;
-    g_completedQuestsEnabled = enable;
     for (bool& on : g_oreEnabled) on = enable;
     SaveMinimapConfig();
     auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
@@ -1074,7 +1068,7 @@ bool IsCategoryEnabled(FilterEntry* entries, size_t count, uint8_t category) {
     if (category == 3 && (g_goldChestEnabled || g_silverChestEnabled)) {
         return true;
     }
-    if (category == 0 && (g_otherPlayersEnabled || g_completedQuestsEnabled)) {
+    if (category == 0 && g_otherPlayersEnabled) {
         return true;
     }
     if (IsResourceCategory(category)) {
@@ -1870,21 +1864,30 @@ int LoreRumorFound(uint8_t* client, uint32_t id08) {
 }
 
 // Classifies a 0xafce0c5f marker into active Main Quest (0xa7cadc08u), active Side Quest (0xc52e92e5u),
-// Completed Quests (kCompletedQuestTypeHash), Lore Rumor (0x8ba7c122u), or 0u (inactive NPC / hidden).
-uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t state34) {
+// finished (kCompletedQuestTypeHash; never shown), Lore Rumor (0x8ba7c122u), or 0u (inactive NPC / hidden).
+// Done or not comes from the quest itself, not the pin's state (a finished quest's pin often still reads 2):
+// FUN_140d34ef0 (active quest for a marker) returns the quest only while it is started, not finished and this
+// marker's objective is open. A quest found for the marker (FUN_140d26fc0) that is not active for it is done
+// when its last objective is (FUN_141205790: objectives at +0x28, count +0x30, 0x50 bytes each; the last one's
+// state at +0x18, or +0x1c for the character, is 2). Anything else has not been reached yet and stays hidden.
+bool QuestFinished(const uint8_t* quest) {
+    const uint64_t n = *reinterpret_cast<const uint64_t*>(quest + 0x30);
+    const uint8_t* objs = *reinterpret_cast<uint8_t* const*>(quest + 0x28);
+    if (!objs || n == 0 || n > 256) return false;
+    const uint8_t* last = objs + (n - 1) * 0x50;
+    return *reinterpret_cast<const int32_t*>(last + 0x18) == 2 || *reinterpret_cast<const int32_t*>(last + 0x1c) == 2;
+}
+
+uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t /*state34*/) {
     if (id08 == 0u) return 0u;
-    if (state34 != 3) {
-        uint32_t activeQ = GetQuestFilterHashForMarkerId(id08, true);
-        if (activeQ != 0u) return activeQ;
-    }
+    if (uint32_t activeQ = GetQuestFilterHashForMarkerId(id08, true)) return activeQ;
     if (g_isLoreRumorMarkerId && g_isLoreRumorMarkerId(id08)) {
-        // A rumor about something already found (its lore entry is found) is done: it shows with Completed Quests,
-        // as the game drops it (a found Cosmetic Item Location kept its "?")
+        // A rumor about something already found (its lore entry is found) is done and hidden, as the game drops it
+        // (a found Cosmetic Item Location kept its "?")
         return LoreRumorFound(GetUiClient(), id08) == 1 ? kCompletedQuestTypeHash : 0x8ba7c122u;
     }
-    uint32_t anyQ = GetQuestFilterHashForMarkerId(id08, false);
-    if (anyQ != 0u) {
-        return (state34 == 3) ? kCompletedQuestTypeHash : 0u;
+    if (const auto* quest = g_getQuestByMarkerId ? static_cast<const uint8_t*>(g_getQuestByMarkerId(id08)) : nullptr) {
+        return QuestFinished(quest) ? kCompletedQuestTypeHash : 0u;
     }
     return g_isLoreRumorMarkerId ? 0u : 0x8ba7c122u;
 }
@@ -2166,23 +2169,23 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 bool showPin = (effHash == 0u)                     ? false
                              : (effHash == 0xa7cadc08u)            ? mainQuestFilterOn
                              : (effHash == 0xc52e92e5u)            ? sideQuestFilterOn
-                             : (effHash == kCompletedQuestTypeHash) ? g_completedQuestsEnabled
+                             : (effHash == kCompletedQuestTypeHash) ? false // finished: never shown
                                                                    : rumorFilterOn;
                 applyMarkerVisibility(m, origHash, savedId08, showPin && revealedForPinMode);
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
-                if (revealedForPinMode && effHash != 0u) {
+                if (revealedForPinMode && effHash != 0u && effHash != kCompletedQuestTypeHash) {
                     addCountForHash(effHash);
                 }
                 continue;
             }
             if (origHash == 0x454e24f2u) {
-                // A main quest's area circle (Plains For First Base): while its quest is active, with Main Quest; once
-                // it is done (or not started), only with Completed Quests, like the quest's own pin
-                const bool areaQuestActive = savedId08 != 0u && GetQuestFilterHashForMarkerId(savedId08, true) != 0u;
-                const bool showArea = areaQuestActive ? mainQuestFilterOn : g_completedQuestsEnabled;
-                applyMarkerVisibility(m, origHash, savedId08, showArea && revealedForPinMode);
+                // A main quest's area circle (Plains For First Base): like the quest's own pin, with Main Quest while
+                // the quest is on, hidden once it is done or before it begins
+                const uint32_t areaHash = ClassifyQuestOrRumorMarker(savedId08, m[0x34]);
+                const bool areaQuestActive = areaHash == 0xa7cadc08u || areaHash == 0xc52e92e5u;
+                applyMarkerVisibility(m, origHash, savedId08, areaQuestActive && mainQuestFilterOn && revealedForPinMode);
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
-                if (revealedForPinMode) addCountForHash(areaQuestActive ? 0xa7cadc08u : kCompletedQuestTypeHash);
+                if (revealedForPinMode && areaQuestActive) addCountForHash(0xa7cadc08u);
                 continue;
             }
             if (origHash == 0x813080bcu) {
@@ -5270,7 +5273,6 @@ void LoadMinimapConfig() {
     int sizePx = GetPrivateProfileIntA("MinimapV2", "Size", 236, cfg.c_str());
     int zoomIdx = GetPrivateProfileIntA("MinimapV2", "ZoomIdx", 2, cfg.c_str());
     int otherPlayers = GetPrivateProfileIntA("MinimapV2", "OtherPlayers", 1, cfg.c_str());
-    int completedQuests = GetPrivateProfileIntA("MinimapV2", "CompletedQuests", 0, cfg.c_str());
     int showTerrain = GetPrivateProfileIntA("MinimapV2", "ShowTerrain", 1, cfg.c_str());
     int thinBorder = GetPrivateProfileIntA("MinimapV2", "ThinBorder", 0, cfg.c_str());
     int infoBar = GetPrivateProfileIntA("MinimapV2", "InfoBar", 1, cfg.c_str());
@@ -5316,7 +5318,6 @@ void LoadMinimapConfig() {
     g_minimapSize = std::max(150.0f, std::min(kMinimapMaxSize, static_cast<float>(sizePx)));
     g_minimapZoomIdx = std::max(0, std::min(kMinimapZoomCount - 1, zoomIdx));
     g_otherPlayersEnabled = (otherPlayers != 0);
-    g_completedQuestsEnabled = (completedQuests != 0);
     g_minimapShowTerrain = (showTerrain != 0);
     g_minimapThinBorder = (thinBorder != 0);
     g_minimapInfoBar = (infoBar != 0);
@@ -5345,8 +5346,6 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "ZoomIdx", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_otherPlayersEnabled ? 1 : 0);
     WritePrivateProfileStringA("MinimapV2", "OtherPlayers", buf, cfg.c_str());
-    std::snprintf(buf, sizeof(buf), "%d", g_completedQuestsEnabled ? 1 : 0);
-    WritePrivateProfileStringA("MinimapV2", "CompletedQuests", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_minimapShowTerrain ? 1 : 0);
     WritePrivateProfileStringA("MinimapV2", "ShowTerrain", buf, cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "ThinBorder", g_minimapThinBorder ? "1" : "0", cfg.c_str());
