@@ -2341,6 +2341,13 @@ uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t /*state34*/) {
     return g_isLoreRumorMarkerId ? 0u : 0x8ba7c122u;
 }
 
+// A quest area circle (0x454e24f2, Plains For First Base) is shown only while its quest is on: hidden once it is
+// done or before it begins.
+bool IsActiveQuestArea(uint32_t id08, uint8_t state34) {
+    const uint32_t areaHash = ClassifyQuestOrRumorMarker(id08, state34);
+    return areaHash == 0xa7cadc08u || areaHash == 0xc52e92e5u;
+}
+
 bool IsMarkerTypeAlwaysRevealed(uint32_t origHash, uint8_t b48, uint64_t lastChg) {
     if (origHash == 0xa447cba3u || origHash == 0x6a56c5b3u ||
         origHash == 0x1ad8f96eu || origHash == kOtherPlayerTypeHash) {
@@ -2630,8 +2637,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             if (origHash == 0x454e24f2u) {
                 // A main quest's area circle (Plains For First Base): like the quest's own pin, with Main Quest while
                 // the quest is on, hidden once it is done or before it begins
-                const uint32_t areaHash = ClassifyQuestOrRumorMarker(savedId08, m[0x34]);
-                const bool areaQuestActive = areaHash == 0xa7cadc08u || areaHash == 0xc52e92e5u;
+                const bool areaQuestActive = IsActiveQuestArea(savedId08, m[0x34]);
                 applyMarkerVisibility(m, origHash, savedId08, areaQuestActive && mainQuestFilterOn && revealedForPinMode);
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
                 if (revealedForPinMode && areaQuestActive) addCountForHash(0xa7cadc08u);
@@ -3397,6 +3403,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
                                       ? ClassifyQuestOrRumorMarker(savedId08, m[0x34])
                                       : NormalizeFilterTypeHash(origHash);
             if (filterHash == 0u) continue;
+            if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, m[0x34])) continue; // its quest is done
             bool isFilterOn = IsFilterEnabled(filterEntries, filterCount, filterHash);
             if (!isFilterOn && origHash != 0xafce0c5fu) {
                 uint32_t subpinQuestHash = GetQuestFilterHashForMarkerId(savedId08, true);
@@ -7156,6 +7163,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                                         ? ClassifyQuestOrRumorMarker(savedId08, static_cast<uint8_t>(markerState))
                                         : NormalizeFilterTypeHash(origHash);
                 if (normHash == 0u) continue;
+                // A main quest's area circle (Plains For First Base): only while its quest is on, like the world map
+                if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, static_cast<uint8_t>(markerState))) continue;
                 if (g_hideCompletedPlaces && markerState == 3u && origHash != 0xafce0c5fu) continue; // Completed Places: Hide
                 if (!IsFilterEnabled(filterEntries, filterCount, normHash)) {
                     uint32_t subpinQuestHash = (origHash != 0xafce0c5fu)

@@ -1,0 +1,2 @@
+1.3.8
+- Reported bug fixed: the quest circle for your first base stayed on the minimap (and in Find) after that quest was done (reported by izisot).

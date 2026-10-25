@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.7
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.8
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
@@ -187,6 +187,10 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.8
+- Reported bug fixed: the quest circle for your first base stayed on the minimap (and in Find)
+  after that quest was done (reported by izisot).
+
 1.3.7
 - Press G twice while playing: everything near you that isn't done yet glows through walls
   and floors for 14 seconds (unlooted gold and silver chests, unread lore notes, bosses you
