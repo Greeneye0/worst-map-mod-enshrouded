@@ -1,0 +1,4 @@
+1.3.10
+- Read lore notes and beaten bosses now show on a dedicated server too (they were only tracked in single player and when you host).
+- On a dedicated server, chests looted before you were away come back on your map when you return, since the server kept running (before, only time in that world counted).
+- A chest lit by G G and by Find or Quick Deposit at the same time no longer stays lit.

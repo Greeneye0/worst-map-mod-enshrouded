@@ -4,6 +4,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <ctime>
 #include <windows.h>
 #include <psapi.h>
 #include <xinput.h>
@@ -71,6 +72,8 @@ namespace chest_glow { void UpdateKey(uint8_t* client, bool appFocused); void Dr
 bool IsKnowledgeDeposit(size_t d);
 const char* KnowledgeSpotName(size_t d);
 void UpdateKnowledge();
+extern int g_worldHostState; // knowledge.inl: 1 hosted here, 0 on a server, -1 not known yet
+extern bool g_worldHostRecheck;
 
 int OreDepositCount(size_t ore) {
     static int counts[kOreCount]{};
@@ -1664,6 +1667,8 @@ std::string g_lootSection;              // empty: no world matched yet
 std::vector<std::pair<int32_t, int32_t>> g_lootAltars;
 bool g_lootSaveDirty = false;
 uint64_t g_lootLastSaveTick = 0;
+double g_lootOfflineSec = 0.0;          // time since this world was last played here, not yet counted (LastPlayed)
+uint64_t g_lootOfflineTick = 0;         // when that was read
 uint64_t g_lootLastMatchTick = 0;
 uint8_t g_lootPrevScreen = 0;
 uint8_t* g_lootClientWorld = nullptr;   // the game's world object the state belongs to
@@ -1735,6 +1740,8 @@ void SaveLootedChests() {
     }
     WritePrivateProfileStringA(g_lootSection.c_str(), "Altars", altars.c_str(), path.c_str());
     WritePrivateProfileStringA(g_lootSection.c_str(), "Looted", looted.c_str(), path.c_str());
+    std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(std::time(nullptr)));
+    WritePrivateProfileStringA(g_lootSection.c_str(), "LastPlayed", buf, path.c_str());
     SaveBuiltWater(path);
 }
 
@@ -1751,6 +1758,13 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
         g_lootSection = name;
         g_lootAltars = saved;
         LoadBuiltWater(name, path);
+        // A server keeps running while you're away: its chests come back meanwhile (counted once we know it's one)
+        const long long lastPlayed = GetPrivateProfileIntA(name, "LastPlayed", 0, path.c_str()); // unix seconds
+        const long long away = static_cast<long long>(std::time(nullptr)) - lastPlayed;
+        g_lootOfflineSec = lastPlayed > 0 && away > 0 ? static_cast<double>(away) : 0.0;
+        g_lootOfflineTick = GetTickCount64();
+        g_worldHostState = -1; // the last world's answer does not hold here
+        g_worldHostRecheck = true;
         GetPrivateProfileStringA(name, "Looted", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
         const char* t = text.data();
         size_t idx = 0;
@@ -2081,6 +2095,28 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
             return false;
         };
         const double respawnSec = std::max(1.0, static_cast<double>(g_chestRespawnMinutes) * 60.0);
+        // Time away from a world on someone else's server counts too, everyone away: it ran on without us. A world
+        // hosted here was stopped meanwhile. Not known within three minutes: not counted.
+        if (g_lootOfflineSec > 0.0 && (g_worldHostState != -1 || nowTick - g_lootOfflineTick > 180000ULL)) {
+            if (g_worldHostState == 0) {
+                size_t back = 0;
+                for (size_t c = 0; c < kTotalChestCount; ++c) {
+                    auto& st = g_chestLootStates[c];
+                    if (!st.looted || IsChestInBuildZone(c, zones, numZones)) continue;
+                    st.elapsedOutOfBuildZoneSec += g_lootOfflineSec;
+                    if (st.elapsedOutOfBuildZoneSec >= respawnSec) {
+                        st.looted = false;
+                        st.elapsedOutOfBuildZoneSec = 0.0;
+                        ++back;
+                    }
+                }
+                g_chestLootDirty = true;
+                g_lootSaveDirty = true;
+                if (g_log) g_log("Looted chests: away from this server world for %.0f min; %zu chests came back meanwhile",
+                                 g_lootOfflineSec / 60.0, back);
+            }
+            g_lootOfflineSec = 0.0;
+        }
         for (size_t c = 0; c < kTotalChestCount; ++c) {
             if (!g_chestLootStates[c].looted) continue;
             if (IsChestInBuildZone(c, zones, numZones) || playerNear(c)) {

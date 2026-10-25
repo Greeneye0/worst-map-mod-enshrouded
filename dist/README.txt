@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.9
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.10
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
@@ -116,10 +116,11 @@ LOOTED CHESTS
 Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check
 mark (Settings > Looted Chests). On the world map, Ctrl + left click a chest to mark it or
 clear the mark. Chests you opened before installing the mod aren't known to it: they show
-until you open them again or Ctrl + left click them. Players who have the mod share their looted chests: open one and it's marked
-on their maps too. A looted chest comes back after 30 minutes of play with every player at
-least 500 m away (coming closer starts the 30 minutes over), unless it's in a Flame Altar's
-build zone. Looted chests are saved per world in
+until you open them again or Ctrl + left click them. Players who have the mod share their
+looted chests: open one and it's marked on their maps too. A looted chest comes back after
+30 minutes of play with every player at least 500 m away (coming closer starts the 30 minutes
+over), unless it's in a Flame Altar's build zone. On a dedicated server the time you're away
+counts too, since the server keeps running. Looted chests are saved per world in
 greeneye\unlock-map-markers\looted_chests.ini. In minimap_config.ini:
     [Chests]
     InteractKey=E          the key you open chests with
@@ -188,6 +189,13 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.10
+- Read lore notes and beaten bosses now show on a dedicated server too (they were only
+  tracked in single player and when you host).
+- On a dedicated server, chests looted before you were away come back on your map when you
+  return, since the server kept running (before, only time in that world counted).
+- A chest lit by G G and by Find or Quick Deposit at the same time no longer stays lit.
+
 1.3.9
 - Reported bug fixed: a locked chest wasn't marked looted after you picked its lock and looted
   it (reported by izisot).

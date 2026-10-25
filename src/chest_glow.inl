@@ -137,7 +137,9 @@ void Set(void* renderer, uint32_t handle, uint8_t group) {
 void Restore(unsigned i) {
     const Applied& a = g_applied[i];
     uint8_t* current = g_instance(a.renderer, a.handle, true);
-    if (current == a.instance && current && current[0x78] == kGroup) Set(a.renderer, a.handle, a.before);
+    // A group another mod set (Quick Deposit's 6, Find's 7) is not put back: that mod restores its own, and once both
+    // had lit the chest it stayed lit with neither.
+    if (current == a.instance && current && current[0x78] == kGroup) Set(a.renderer, a.handle, a.before == 6 || a.before == 7 ? 0 : a.before);
     g_applied[i] = g_applied[--g_appliedCount];
 }
 
