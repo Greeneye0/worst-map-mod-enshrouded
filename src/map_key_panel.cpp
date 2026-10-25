@@ -1249,6 +1249,8 @@ bool g_lootSaveDirty = false;
 uint64_t g_lootLastSaveTick = 0;
 uint64_t g_lootLastMatchTick = 0;
 uint8_t g_lootPrevScreen = 0;
+uint8_t* g_lootClientWorld = nullptr;   // the game's world object the state belongs to
+uint64_t g_lootLastAltarCheckTick = 0;
 size_t g_lootPendingChest = kTotalChestCount; // chest the interact key was pressed at
 uint64_t g_lootPendingTick = 0;
 int g_interactVk = 'E';
@@ -1494,19 +1496,30 @@ void ApplySharedChestStates() {
 
 bool GetHudPlayerWorldPos(uint8_t* client, float& outX, float& outZ);
 
+// The world was left: save it and start the next world clean (its record is matched again by its altars).
+void ResetLootWorld(const char* why) {
+    if (!g_lootSection.empty()) SaveLootedChests();
+    if (g_log && !g_lootSection.empty()) g_log("Looted chests: left world %s (%s)", g_lootSection.c_str(), why);
+    g_lootSection.clear();
+    g_lootAltars.clear();
+    for (auto& s : g_chestLootStates) s = ChestLootState{};
+    g_chestLootDirty = true;
+    g_lootLastMatchTick = 0;
+}
+
 void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     if (!client) return;
     uint8_t screen = client[0x1cd8];
     const uint64_t nowTick = GetTickCount64();
+    // Another world loaded without the mod seeing the main menu (it draws nothing there): the game's world
+    // object is a new one
+    if (uint8_t* clientWorld = GetClientWorld(client)) {
+        if (g_lootClientWorld && clientWorld != g_lootClientWorld) ResetLootWorld("new world object");
+        g_lootClientWorld = clientWorld;
+    }
     if (screen == 0) {
         // Main menu: the world was left. Save it and start the next world clean.
-        if (g_lootPrevScreen != 0) {
-            if (!g_lootSection.empty()) SaveLootedChests();
-            g_lootSection.clear();
-            g_lootAltars.clear();
-            for (auto& s : g_chestLootStates) s = ChestLootState{};
-            g_chestLootDirty = true;
-        }
+        if (g_lootPrevScreen != 0) ResetLootWorld("main menu");
         g_lootPrevScreen = 0;
         g_lastChestUpdateTick = 0;
         g_lootPendingChest = kTotalChestCount;
@@ -1525,6 +1538,13 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     }
     if (!g_lootSection.empty()) ApplySharedChestStates();
 
+    // A matched world whose altars are all gone is another world
+    if (!g_lootSection.empty() && screen == 1 && nowTick - g_lootLastAltarCheckTick > 5000ULL) {
+        g_lootLastAltarCheckTick = nowTick;
+        std::vector<std::pair<int32_t, int32_t>> altars;
+        CollectAltarPositions(client, altars);
+        if (!altars.empty() && !AltarsShared(altars, g_lootAltars)) ResetLootWorld("altars differ");
+    }
     if (g_lootSection.empty() && nowTick - g_lootLastMatchTick > 2000ULL) {
         g_lootLastMatchTick = nowTick;
         std::vector<std::pair<int32_t, int32_t>> altars;
