@@ -4101,10 +4101,16 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     const bool backing = size > 14.0f;
     int drawn = 0;
     static_assert(kOreDepositCount % 7919 != 0, "7919 must not divide the deposit count");
-    for (size_t i = 0; i < kOreDepositCount && drawn < maxIcons; ++i) {
+    // Three passes: the dense resource rows (thinned to one per cell, capped), then the sparse point rows (water,
+    // beacons), then lore notes and bosses: never thinned or capped, drawn on top, so a barrel beside a boss can't
+    // hide it.
+    for (int pass = 0; pass < 3; ++pass)
+    for (size_t i = 0; i < kOreDepositCount && (pass > 0 || drawn < maxIcons); ++i) {
         const size_t d = (i * 7919) % kOreDepositCount;
         const OreDeposit& dep = kOreDeposits[d];
         if (!g_oreEnabled[dep.ore] || kOreAreaColors[dep.ore] != 0) continue;
+        const int depPass = IsResourceCategory(kOreCategory[dep.ore]) ? 0 : (IsKnowledgeDeposit(d) ? 2 : 1);
+        if (depPass != pass) continue;
         const float sx = originX + dep.x * zoom;
         const float sy = originY + (mapWorldH - dep.z) * zoom;
         if (sx < left - size || sx > right + size || sy < top - size || sy > bottom + size) continue;
@@ -4113,7 +4119,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) continue;
         const bool done = KnowledgeDone(d); // a lore note read / a boss defeated: hidden or greyed like looted chests
         if (done && g_lootedChestMode == 0) continue;
-        {
+        if (pass == 0) {
             const int gx = static_cast<int>((sx - left) / cell), gy = static_cast<int>((sy - top) / cell);
             if (gx >= 0 && gy >= 0 && gx < gridW && gy < gridH) {
                 uint8_t& t = taken[static_cast<size_t>(gy) * gridW + gx];
@@ -4147,8 +4153,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
                               : IsKnowledgeDeposit(hovered)  ? KnowledgeSpotName(hovered)
                                                              : OreName(kOreDeposits[hovered].ore);
     if (g_oreEnabled[kWaterFirst]) {
-        for (const auto& w : g_builtWater) {
-            if (drawn >= maxIcons) break;
+        for (const auto& w : g_builtWater) { // a handful: never capped, like the other point rows
             const float sx = originX + w.x * zoom;
             const float sy = originY + (mapWorldH - w.z) * zoom;
             if (sx < left - size || sx > right + size || sy < top - size || sy > bottom + size) continue;
