@@ -30,7 +30,7 @@ enum class Str : int {
     LootedChests, Hide, GreyedOut, WeatherClear, WeatherRain, WeatherStorm, WeatherSnow, WeatherFog,
     HintClearChest, HintToggleKey, HintFind, CtrlClick, CatMining, CatMaterials, CatPlants, CatBait, CatTrees,
     MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar,
-    FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt,
+    FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show,
     Count
 };
 

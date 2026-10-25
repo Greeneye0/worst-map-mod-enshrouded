@@ -399,6 +399,13 @@ const Row kTable[] = {
      "Не змінюється кнопками Показати все / Сховати все", "Hepsini göster / Hepsini gizle bunu atlar",
      "すべて表示 / すべて非表示の対象外", "모두 표시 / 모두 숨기기에서 제외", "不受全部显示 / 全部隐藏影响",
      "不受全部顯示 / 全部隱藏影響", "ไม่ถูกเปลี่ยนโดยแสดงทั้งหมด / ซ่อนทั้งหมด"},
+    // CompletedPlaces: settings row (places the game shows with a check mark)
+    {"Completed Places", "Erledigte Orte", "Lieux terminés", "Luoghi completati", "Lugares completados",
+     "Locais concluídos", "Ukończone miejsca", "Пройденные места", "Пройдені місця", "Tamamlanan yerler",
+     "完了した場所", "완료한 장소", "已完成的地点", "已完成的地點", "สถานที่ที่สำเร็จแล้ว"},
+    // Show
+    {"Show", "Zeigen", "Afficher", "Mostra", "Mostrar", "Mostrar", "Pokaż", "Показать", "Показати", "Göster",
+     "表示", "표시", "显示", "顯示", "แสดง"},
 };
 // clang-format on
 

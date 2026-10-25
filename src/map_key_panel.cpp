@@ -132,6 +132,7 @@ bool g_minimapInfoBar = true;     // the tray under the minimap (time, weather, 
 bool g_minimapVisible = true;
 bool g_minimapClockWeatherMode = false; // false = Sun/Moon, true = Weather Status
 int g_lootedChestMode = 0;              // 0 = Hide, 1 = Greyed Out
+bool g_hideCompletedPlaces = false;     // places the game shows with a check mark (cleared roots, used obelisks)
 int g_customMarkerScaleIdx = 2;         // Default 1.0x
 PinRevealMode g_pinRevealMode = PinRevealMode::RevealAll;
 bool g_settingsOpen = false;
@@ -2671,7 +2672,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 if (subpinQuestOn || subpinRumor) {
                     applyMarkerVisibility(m, origHash, savedId08, false, true, true);
                     if (subpinRumor) addCountForHash(0x8ba7c122u);
-                } else if (!revealedForPinMode || !poiFilterOn) {
+                } else if (!revealedForPinMode || !poiFilterOn || (g_hideCompletedPlaces && m[0x34] == 3)) {
+                    // (state 3: the game's completed place, drawn with a check mark; hidden with Completed Places: Hide)
                     applyMarkerVisibility(m, origHash, savedId08, false, false, false);
                 } else {
                     applyMarkerVisibility(m, origHash, savedId08, true, false, allowSubpinId);
@@ -4299,14 +4301,14 @@ void DrawGearIconAbs(void* widgetRaw, float cx, float cy, float r, uint32_t col,
 
 const PanelLayout& CurrentPanelLayout();
 
-constexpr float kSettingsCardH = 356.0f;
+constexpr float kSettingsCardH = 386.0f;
 
 float SettingsSegWidth() {
     using umm_lang::Str;
     using umm_lang::T;
     using umm_lang::TextWidth;
     float w0 = std::max(TextWidth(T(Str::SunMoon)), TextWidth(T(Str::Weather))) + 36.0f;
-    float w1 = std::max(TextWidth(T(Str::Hide)), TextWidth(T(Str::GreyedOut))) + 36.0f;
+    float w1 = std::max({TextWidth(T(Str::Hide)), TextWidth(T(Str::GreyedOut)), TextWidth(T(Str::Show))}) + 36.0f;
     float w2 = std::max(TextWidth(T(Str::BorderOrnate)), TextWidth(T(Str::BorderThin))) + 36.0f;
     float w3 = TextWidth(T(Str::RemoveAllLocks)) + 36.0f;
     return std::max(118.0f, std::max({w0, w1, w2, w3}));
@@ -4326,6 +4328,7 @@ float SettingsCardWidth() {
         TextWidth(T(Str::LootedChests)),
         TextWidth(T(Str::MinimapBorder)),
         TextWidth(T(Str::MinimapInfoBar)),
+        TextWidth(T(Str::CompletedPlaces)),
         TextWidth(T(Str::FilterLocks)) + 40.0f // " (12)"
     });
     return std::max(CurrentPanelLayout().panelW, std::min(580.0f, std::max(448.0f, 12.0f + maxLbl + 18.0f + 2.0f * segW + 4.0f + 12.0f)));
@@ -4636,7 +4639,31 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         ry += kRowH;
     }
 
-    // Row 6: Filter Locks (n): [Remove All]
+    // Row 6: Completed Places: [Show] | [Hide] (places the game shows with a check mark)
+    {
+        const float segH = 22.0f, gap = 4.0f;
+        const float btn1X = ctrlRight - segW;
+        const float btn0X = btn1X - gap - segW;
+        const float by = ry + (kRowH - segH) * 0.5f;
+        DrawLabelAbs(sx + 12.0f, ry, btn0X - (sx + 12.0f) - 10.0f, kRowH, T(Str::CompletedPlaces), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        const bool hov0 = isHov(btn0X, by, segW, segH), hov1 = isHov(btn1X, by, segW, segH);
+        const bool act0 = !g_hideCompletedPlaces, act1 = g_hideCompletedPlaces;
+        DrawKeyButtonAbs(widgetRaw, btn0X, by, segW, segH, hov0, act0);
+        DrawLabelAbs(btn0X, by, segW, segH, T(Str::Show), act0 ? kActiveText : (hov0 ? kText : kTextMuted),
+                     act0 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
+        DrawKeyButtonAbs(widgetRaw, btn1X, by, segW, segH, hov1, act1);
+        DrawLabelAbs(btn1X, by, segW, segH, T(Str::Hide), act1 ? kActiveText : (hov1 ? kText : kTextMuted),
+                     act1 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
+        if (clicked && (hov0 || hov1) && g_hideCompletedPlaces != hov1) {
+            g_hideCompletedPlaces = hov1;
+            SaveMinimapConfig();
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Row 7: Filter Locks (n): [Remove All]
     {
         const float segH = 22.0f;
         const float btnX = ctrlRight - segW;
@@ -5998,6 +6025,7 @@ void LoadMinimapConfig() {
     g_minimapVisible = (showMinimap != 0);
     g_minimapClockWeatherMode = (clockWeather != 0);
     g_lootedChestMode = (lootedChestMode != 0) ? 1 : 0;
+    g_hideCompletedPlaces = GetPrivateProfileIntA("MinimapV2", "HideCompletedPlaces", 0, cfg.c_str()) != 0;
     g_customMarkerScaleIdx = std::max(0, std::min(kMarkerScaleCount - 1, markerScaleIdx));
     g_pinRevealMode = static_cast<PinRevealMode>(std::max(0, std::min(2, pinRevealMode)));
     g_chestRespawnMinutes = std::max(1.0f, static_cast<float>(respawnMins));
@@ -6109,6 +6137,7 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "ClockWeather", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_lootedChestMode);
     WritePrivateProfileStringA("MinimapV2", "LootedChestMode", buf, cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "HideCompletedPlaces", g_hideCompletedPlaces ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_customMarkerScaleIdx);
     WritePrivateProfileStringA("MinimapV2", "CustomMarkerScaleIdx", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_pinRevealMode));
@@ -7120,6 +7149,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                                         ? ClassifyQuestOrRumorMarker(savedId08, static_cast<uint8_t>(markerState))
                                         : NormalizeFilterTypeHash(origHash);
                 if (normHash == 0u) continue;
+                if (g_hideCompletedPlaces && markerState == 3u && origHash != 0xafce0c5fu) continue; // Completed Places: Hide
                 if (!IsFilterEnabled(filterEntries, filterCount, normHash)) {
                     uint32_t subpinQuestHash = (origHash != 0xafce0c5fu)
                                                    ? GetQuestFilterHashForMarkerId(savedId08, true)
