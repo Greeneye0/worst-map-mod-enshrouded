@@ -377,6 +377,20 @@ const Row kTable[] = {
      "Barra de info del minimapa", "Barra de info do minimapa", "Pasek info minimapy", "Инфопанель миникарты",
      "Інфопанель мінімапи", "Mini Harita Bilgi Çubuğu", "ミニマップ情報バー", "미니맵 정보 표시줄", "小地图信息栏",
      "小地圖資訊列", "แถบข้อมูลแผนที่ย่อ"},
+    // FilterLocks: the settings row for the Map Key's padlocks
+    {"Filter Locks", "Filtersperren", "Verrous de filtre", "Blocchi filtri", "Bloqueos de filtros",
+     "Bloqueios de filtro", "Blokady filtrów", "Блокировка фильтров", "Блокування фільтрів", "Filtre kilitleri",
+     "フィルターのロック", "필터 잠금", "筛选锁定", "篩選鎖定", "ล็อกตัวกรอง"},
+    // RemoveAllLocks
+    {"Remove All", "Alle entfernen", "Tout retirer", "Rimuovi tutti", "Quitar todos", "Remover todos",
+     "Usuń wszystkie", "Снять все", "Зняти всі", "Tümünü kaldır", "すべて解除", "모두 해제", "全部解除",
+     "全部解除", "ปลดทั้งหมด"},
+    // HoldForLocked: tooltip of Show All / Hide All
+    {"Hold to bypass filter locks", "Halten, um Filtersperren zu umgehen", "Maintenir pour ignorer les verrous",
+     "Tieni premuto per ignorare i blocchi", "Mantén pulsado para omitir bloqueos", "Segure para ignorar os bloqueios",
+     "Przytrzymaj, aby pominąć blokady", "Удерживайте, чтобы обойти блокировки", "Утримуйте, щоб обійти блокування",
+     "Kilitleri atlamak için basılı tutun", "長押しでロックを無視", "길게 눌러 잠금 무시", "长按以忽略锁定",
+     "長按以忽略鎖定", "กดค้างเพื่อข้ามการล็อก"},
 };
 // clang-format on
 

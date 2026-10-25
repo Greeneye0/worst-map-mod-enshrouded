@@ -20,6 +20,7 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "map_key_panel.h"
@@ -689,6 +690,54 @@ void RemoveMapKeyWheelHook() {
 }
 constexpr size_t kCategoryGroupCount = sizeof(kCategoryGroups) / sizeof(kCategoryGroups[0]);
 bool g_categoryCollapsed[kCategoryGroupCount]{};
+
+// Filter locks: a locked row (or every row of a locked category) keeps its ON / OFF through Show All / Hide All, and
+// through reloads, updates and world changes: its state is saved whenever a filter changes and put back once the
+// world is recognised. A locked category's open / closed state is kept the same way. The player can still click
+// them; holding Show All / Hide All passes every lock. Saved in minimap_config.ini [Locks], which updates leave alone.
+constexpr size_t kMaxCategoryId = 16;
+std::unordered_set<uint32_t> g_lockedRows; // row type hashes (a paired hash goes with its row)
+bool g_lockedCategories[kMaxCategoryId]{};
+std::unordered_map<uint32_t, bool> g_lockedStates; // the locked rows' ON / OFF as last saved
+void SaveFilterLocks();
+
+bool IsCategoryLocked(uint8_t category) { return category < kMaxCategoryId && g_lockedCategories[category]; }
+
+// The row a hash belongs to: its own, or the row it is paired with (Flame Altar's second type).
+uint32_t RowHashOf(uint32_t typeHash) {
+    for (const auto& grp : kCategoryGroups) {
+        for (size_t r = 0; r < grp.rowCount; ++r) {
+            if (grp.rows[r].pairedHash != 0u && grp.rows[r].pairedHash == typeHash) return grp.rows[r].typeHash;
+        }
+    }
+    return typeHash;
+}
+
+bool IsRowLocked(uint32_t typeHash) { return !g_lockedRows.empty() && g_lockedRows.count(RowHashOf(typeHash)) != 0; }
+bool IsFilterLocked(uint32_t typeHash, uint8_t category) { return IsCategoryLocked(category) || IsRowLocked(typeHash); }
+
+size_t FilterLockCount() {
+    size_t n = g_lockedRows.size();
+    for (bool locked : g_lockedCategories) n += locked ? 1 : 0;
+    return n;
+}
+
+void ToggleRowLock(uint32_t typeHash) {
+    if (!g_lockedRows.erase(typeHash)) g_lockedRows.insert(typeHash);
+    SaveFilterLocks();
+}
+
+void ToggleCategoryLock(uint8_t category) {
+    if (category >= kMaxCategoryId) return;
+    g_lockedCategories[category] = !g_lockedCategories[category];
+    SaveFilterLocks();
+}
+
+void ClearFilterLocks() {
+    g_lockedRows.clear();
+    for (bool& locked : g_lockedCategories) locked = false;
+    SaveFilterLocks();
+}
 void DrawCategoryBarAbs(void* widgetRaw, float x, float y, float w, float h, bool hovered);
 bool g_leftWasDown = false;
 bool g_toggleKeyWasDown = false;
@@ -953,6 +1002,32 @@ void DrawOnOffBadgeAbs(void* parentWidgetRaw, float rightX, float absY, float ro
                  TextAlignH::Center, TextAlignV::Center, nullptr, kBadgeFontScale);
 }
 
+// The game's padlock (UiTexture "locked"), drawn left of a row's ON / OFF badge.
+constexpr uint8_t kPadlockIcon[16] = {0x22, 0x65, 0x3d, 0xf8, 0xc1, 0xd0, 0xcf, 0x4b,
+                                      0x89, 0x16, 0xe7, 0x94, 0x79, 0xa0, 0x10, 0xaa};
+constexpr float kLockSize = 14.0f, kLockGap = 5.0f;
+float LockSlotWidth() { return kLockSize + kLockGap; }
+float LockLeftX(float badgeRightX) { return badgeRightX - OnOffBadgeWidth() - kLockGap - kLockSize; }
+
+// Gold while locked (dimmer when the lock comes from the row's category), a faint grey one on a hovered row to
+// show where to click; nothing otherwise.
+void DrawFilterLockAbs(void* parentWidgetRaw, float badgeRightX, float absY, float rowH, bool locked, bool inherited,
+                       bool rowHovered, bool lockHovered) {
+    using namespace key_style;
+    if (!locked && !inherited && !rowHovered) return;
+    const float x = LockLeftX(badgeRightX), y = absY + (rowH - kLockSize) * 0.5f;
+    uint32_t tint = 0xff8c9296u;
+    float alpha = lockHovered ? 0.95f : 0.45f;
+    if (locked) {
+        tint = lockHovered ? kActiveText : kTitle;
+        alpha = 1.0f;
+    } else if (inherited) {
+        tint = kGold;
+        alpha = lockHovered ? 0.95f : 0.55f;
+    }
+    DrawIconRectAbs(parentWidgetRaw, kPadlockIcon, x, y, kLockSize, kLockSize, tint, alpha);
+}
+
 // A Map Key category bar in the slate indigo of the game's menu headers: darker at the top, lighter below
 // (the game's gradient texture over a flat fill), in a frame that turns gold on hover.
 void DrawCategoryBarAbs(void* widgetRaw, float x, float y, float w, float h, bool hovered) {
@@ -1015,25 +1090,28 @@ void SetSingleFilterState(uint8_t* client, uint8_t* mapState, uint32_t typeHash,
         }
         ApplyFilterChange(client, typeHash, enable);
     }
+    if (typeHash == kGoldChestTypeHash || typeHash == kSilverChestTypeHash) SaveMinimapConfig();
     if (mapState) {
         *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
         *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
     }
+    if (FilterLockCount() > 0) SaveFilterLocks();
 }
 
+// A category's switch: every row in it except the locked ones.
 void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category, bool enable) {
     if (!client) return;
     if (category == 3) {
-        g_goldChestEnabled = enable;
-        g_silverChestEnabled = enable;
+        if (!IsRowLocked(kGoldChestTypeHash)) g_goldChestEnabled = enable;
+        if (!IsRowLocked(kSilverChestTypeHash)) g_silverChestEnabled = enable;
     } else if (category == 0) {
-        g_otherPlayersEnabled = enable;
+        if (!IsRowLocked(kOtherPlayerTypeHash)) g_otherPlayersEnabled = enable;
         SaveMinimapConfig();
     }
     // Resource rows: the resource groups, and the Return Beacons in Shroud
     bool anyResource = false;
     for (size_t o = 0; o < kOreCount; ++o) {
-        if (kOreCategory[o] == category) {
+        if (kOreCategory[o] == category && !IsRowLocked(OreHash(o))) {
             g_oreEnabled[o] = enable;
             anyResource = true;
         }
@@ -1042,27 +1120,34 @@ void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category
     auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
     size_t count = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
     for (size_t i = 0; i < count; ++i) {
-        if (entries[i].category == category) {
+        if (entries[i].category == category && !IsRowLocked(entries[i].typeHash)) {
             entries[i].enabled = enable ? 1 : 0;
             ApplyFilterChange(client, entries[i].typeHash, enable);
         }
     }
+    if (category == 3) SaveMinimapConfig();
     if (mapState) {
         *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
         *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
     }
+    if (FilterLockCount() > 0) SaveFilterLocks();
 }
 
-void SetAllFiltersState(uint8_t* client, uint8_t* mapState, bool enable) {
+// Show All / Hide All: every row, except the locked rows and categories unless passLocks (the buttons held down).
+void SetAllFiltersState(uint8_t* client, uint8_t* mapState, bool enable, bool passLocks = false) {
     if (!client) return;
-    g_goldChestEnabled = enable;
-    g_silverChestEnabled = enable;
-    g_otherPlayersEnabled = enable;
-    for (bool& on : g_oreEnabled) on = enable;
+    auto open = [&](uint32_t typeHash, uint8_t category) { return passLocks || !IsFilterLocked(typeHash, category); };
+    if (open(kGoldChestTypeHash, 3)) g_goldChestEnabled = enable;
+    if (open(kSilverChestTypeHash, 3)) g_silverChestEnabled = enable;
+    if (open(kOtherPlayerTypeHash, 0)) g_otherPlayersEnabled = enable;
+    for (size_t o = 0; o < kOreCount; ++o) {
+        if (open(OreHash(o), kOreCategory[o])) g_oreEnabled[o] = enable;
+    }
     SaveMinimapConfig();
     auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
     size_t count = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
     for (size_t i = 0; i < count; ++i) {
+        if (!open(entries[i].typeHash, entries[i].category)) continue;
         entries[i].enabled = enable ? 1 : 0;
         ApplyFilterChange(client, entries[i].typeHash, enable);
     }
@@ -1070,6 +1155,38 @@ void SetAllFiltersState(uint8_t* client, uint8_t* mapState, bool enable) {
         *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
         *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
     }
+    if (FilterLockCount() > 0) SaveFilterLocks();
+}
+
+// After a load, a reload or a world change: the locked rows back to their saved ON / OFF.
+void ApplyLockedStates(uint8_t* client) {
+    if (!client) return;
+    if (g_lockedStates.empty()) { // nothing saved yet (locks set before this version): keep the states as they are
+        if (FilterLockCount() > 0) SaveFilterLocks();
+        return;
+    }
+    size_t applied = 0;
+    for (const auto& [hash, on] : g_lockedStates) {
+        uint8_t category = 0xff;
+        uint32_t paired = 0u;
+        for (const auto& grp : kCategoryGroups) {
+            for (size_t r = 0; r < grp.rowCount; ++r) {
+                if (grp.rows[r].typeHash == hash) {
+                    category = grp.category;
+                    paired = grp.rows[r].pairedHash;
+                }
+            }
+            if (grp.category == 4 && std::find(std::begin(kCustomPinHashes), std::end(kCustomPinHashes), hash) !=
+                                         std::end(kCustomPinHashes)) {
+                category = 4;
+            }
+        }
+        if (category == 0xff || !IsFilterLocked(hash, category)) continue;
+        SetSingleFilterState(client, nullptr, hash, on);
+        if (paired != 0u) SetSingleFilterState(client, nullptr, paired, on);
+        ++applied;
+    }
+    if (g_log) g_log("Filter locks: restored %zu locked filters", applied);
 }
 
 bool IsCategoryEnabled(FilterEntry* entries, size_t count, uint8_t category) {
@@ -1555,7 +1672,10 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
         g_lootLastMatchTick = nowTick;
         std::vector<std::pair<int32_t, int32_t>> altars;
         CollectAltarPositions(client, altars);
-        if (!altars.empty()) MatchLootWorld(altars);
+        if (!altars.empty()) {
+            MatchLootWorld(altars);
+            ApplyLockedStates(client); // the world is up: its filters are the game's, put the locked ones back
+        }
     }
 
     // 1. A chest counts as looted when the interact key is pressed next to it and the game switches to its
@@ -3809,7 +3929,7 @@ void DrawGearIconAbs(void* widgetRaw, float cx, float cy, float r, uint32_t col,
 
 const PanelLayout& CurrentPanelLayout();
 
-constexpr float kSettingsCardH = 326.0f;
+constexpr float kSettingsCardH = 356.0f;
 
 float SettingsSegWidth() {
     using umm_lang::Str;
@@ -3818,7 +3938,8 @@ float SettingsSegWidth() {
     float w0 = std::max(TextWidth(T(Str::SunMoon)), TextWidth(T(Str::Weather))) + 36.0f;
     float w1 = std::max(TextWidth(T(Str::Hide)), TextWidth(T(Str::GreyedOut))) + 36.0f;
     float w2 = std::max(TextWidth(T(Str::BorderOrnate)), TextWidth(T(Str::BorderThin))) + 36.0f;
-    return std::max(118.0f, std::max({w0, w1, w2}));
+    float w3 = TextWidth(T(Str::RemoveAllLocks)) + 36.0f;
+    return std::max(118.0f, std::max({w0, w1, w2, w3}));
 }
 
 float SettingsCardWidth() {
@@ -3834,7 +3955,8 @@ float SettingsCardWidth() {
         TextWidth(T(Str::ClockIcon)),
         TextWidth(T(Str::LootedChests)),
         TextWidth(T(Str::MinimapBorder)),
-        TextWidth(T(Str::MinimapInfoBar))
+        TextWidth(T(Str::MinimapInfoBar)),
+        TextWidth(T(Str::FilterLocks)) + 40.0f // " (12)"
     });
     return std::max(CurrentPanelLayout().panelW, std::min(580.0f, std::max(448.0f, 12.0f + maxLbl + 18.0f + 2.0f * segW + 4.0f + 12.0f)));
 }
@@ -4139,6 +4261,28 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
             g_lootedChestMode = 1;
             g_chestLootDirty = true;
             SaveMinimapConfig();
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Row 6: Filter Locks (n): [Remove All]
+    {
+        const float segH = 22.0f;
+        const float btnX = ctrlRight - segW;
+        const float by = ry + (kRowH - segH) * 0.5f;
+        const size_t lockCount = FilterLockCount();
+        char label[128]{};
+        std::snprintf(label, sizeof(label), "%s (%zu)", T(Str::FilterLocks), lockCount);
+        DrawLabelAbs(sx + 12.0f, ry, btnX - (sx + 12.0f) - 10.0f, kRowH, label, 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        const bool any = lockCount > 0;
+        const bool hov = any && isHov(btnX, by, segW, segH);
+        DrawKeyButtonAbs(widgetRaw, btnX, by, segW, segH, hov, false);
+        DrawLabelAbs(btnX, by, segW, segH, T(Str::RemoveAllLocks), any ? (hov ? kActiveText : kText) : kOffText,
+                     any ? 0.95f : 0.7f, TextAlignH::Center, TextAlignV::Center);
+        if (clicked && hov) {
+            ClearFilterLocks();
             changed = true;
         }
     }
@@ -4596,22 +4740,57 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             }
 
             if (!g_panelCollapsed) {
+                bool showHoldHint = false;
+                float holdHintY = 0.0f;
                 // SHOW ALL / HIDE ALL
                 {
                     const float btnY = kTitleBarH + 4.0f, btnH = kActionRowH - 4.0f;
                     const float btnW = (kPanelW - 22.0f) * 0.5f;
                     const float xs[2] = {8.0f, 14.0f + btnW};
                     const umm_lang::Str labels[2] = {umm_lang::Str::ShowAll, umm_lang::Str::HideAll};
+                    // A click (on release) skips the locked filters; holding the button passes them (a gold bar
+                    // fills along its bottom). Hovering either button says so.
+                    static int s_allPress = -1;
+                    static uint64_t s_allPressTick = 0;
+                    static bool s_allPressFired = false;
+                    constexpr uint64_t kHoldMs = 700;
+                    const uint64_t nowTick = GetTickCount64();
+                    bool hovBtn[2]{};
                     for (int i = 0; i < 2; ++i) {
                         const bool hov = !g_findDialogOpen && isHovered(panelX + xs[i], panelY + btnY, btnW, btnH);
-                        DrawKeyButtonAbs(anchor.raw, panelX + xs[i], panelY + btnY, btnW, btnH, hov, false);
+                        hovBtn[i] = hov;
+                        const bool pressing = s_allPress == i && !s_allPressFired;
+                        DrawKeyButtonAbs(anchor.raw, panelX + xs[i], panelY + btnY, btnW, btnH, hov, s_allPress == i);
+                        if (pressing) {
+                            const float held = std::min(1.0f, static_cast<float>(nowTick - s_allPressTick) / kHoldMs);
+                            DrawSolidRectAbs(anchor.raw, panelX + xs[i] + 3.0f, panelY + btnY + btnH - 5.0f,
+                                (btnW - 6.0f) * held, 3.0f, kGold, 0.95f);
+                        }
                         DrawLabelAbs(panelX + xs[i], panelY + btnY, btnW, btnH, umm_lang::T(labels[i]),
                             hov ? kActiveText : kText, hov ? 1.0f : 0.92f, TextAlignH::Center, TextAlignV::Center);
                         if (clicked && hov) {
-                            SetAllFiltersState(client, mapState, i == 0);
-                            SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
+                            s_allPress = i;
+                            s_allPressTick = nowTick;
+                            s_allPressFired = false;
                         }
                     }
+                    if (s_allPress >= 0) {
+                        if (leftDown) {
+                            if (!s_allPressFired && nowTick - s_allPressTick >= kHoldMs) {
+                                SetAllFiltersState(client, mapState, s_allPress == 0, true);
+                                SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
+                                s_allPressFired = true;
+                            }
+                        } else {
+                            if (!s_allPressFired && hovBtn[s_allPress]) {
+                                SetAllFiltersState(client, mapState, s_allPress == 0);
+                                SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
+                            }
+                            s_allPress = -1;
+                        }
+                    }
+                    showHoldHint = (hovBtn[0] || hovBtn[1]) && s_allPress < 0;
+                    holdHintY = panelY + btnY + btnH + 5.0f;
                 }
 
                 auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
@@ -4635,23 +4814,32 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
                     if (inView(curY, kCatRowH)) {
                         const float barW = kPanelW - 8.0f - (rowRight - 6.0f);
+                        const bool catLocked = IsCategoryLocked(grp.category);
+                        const float catLockX = LockLeftX(panelX + kPanelW - rowRight);
+                        const bool hovCatLock = isHovered(catLockX - 3.0f, py + curY, kLockSize + 6.0f, kCatRowH);
                         bool hovCatCollapse = isHovered(panelX + 8.0f, py + curY, 34.0f, kCatRowH);
-                        bool hovCatToggle = isHovered(panelX + 42.0f, py + curY, barW - 34.0f, kCatRowH);
-                        const bool hovCat = hovCatCollapse || hovCatToggle;
+                        bool hovCatToggle = !hovCatLock && isHovered(panelX + 42.0f, py + curY, barW - 34.0f, kCatRowH);
+                        const bool hovCat = hovCatCollapse || hovCatToggle || hovCatLock;
                         DrawCategoryBarAbs(anchor.raw, panelX + 8.0f, py + curY, barW, kCatRowH, hovCat);
 
                         // Collapse marker (+ / -) in gold, then the group's title
                         DrawLabelAbs(panelX + 12.0f, py + curY, 22.0f, kCatRowH,
                             g_categoryCollapsed[c] ? "+" : "-", hovCatCollapse ? kActiveText : kGold, 1.0f,
                             TextAlignH::Center, TextAlignV::Center);
-                        DrawLabelAbs(panelX + 36.0f, py + curY, kPanelW - 50.0f - rowRight - OnOffBadgeWidth(), kCatRowH,
+                        DrawLabelAbs(panelX + 36.0f, py + curY,
+                            kPanelW - 50.0f - rowRight - OnOffBadgeWidth() - LockSlotWidth(), kCatRowH,
                             umm_lang::T(grp.title), catOn ? kTitle : 0xff948c88u, 1.0f,
                             TextAlignH::Left, TextAlignV::Center, nullptr, kCategoryTitleFontScale);
 
+                        DrawFilterLockAbs(anchor.raw, panelX + kPanelW - rowRight, py + curY, kCatRowH, catLocked, false,
+                            hovCat, hovCatLock);
                         DrawOnOffBadgeAbs(anchor.raw, panelX + kPanelW - rowRight, py + curY, kCatRowH, catOn);
 
-                        if (clicked && hovCatCollapse) {
+                        if (clicked && hovCatLock) {
+                            ToggleCategoryLock(grp.category);
+                        } else if (clicked && hovCatCollapse) {
                             g_categoryCollapsed[c] = !g_categoryCollapsed[c];
+                            if (catLocked) SaveFilterLocks();
                         } else if (clicked && hovCatToggle) {
                             SetCategoryFilterState(client, mapState, grp.category, !catOn);
                             filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
@@ -4704,6 +4892,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             bool rowOn = IsFilterEnabled(filterEntries, filterCount, rowSpec.typeHash);
                             const float rowW = kPanelW - 8.0f - (rowRight - 6.0f);
                             bool hovRow = isHovered(panelX + 8.0f, py + curY, rowW, kItemRowH);
+                            const bool rowLocked = IsRowLocked(rowSpec.typeHash);
+                            const bool rowCatLocked = IsCategoryLocked(grp.category);
+                            const float rowLockX = LockLeftX(panelX + kPanelW - rowRight);
+                            const bool hovRowLock = hovRow && isHovered(rowLockX - 3.0f, py + curY, kLockSize + 6.0f, kItemRowH);
 
                             if (hovRow) {
                                 // The game's gold glow box around the row, as Find lights up chests
@@ -4760,14 +4952,19 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             if (rowOn && rowSpec.typeHash == kGoldChestTypeHash) {
                                 textCol = 0xff78dcffu;
                             }
-                            DrawLabelAbs(panelX + 52.0f, py + curY, kPanelW - 46.0f - rowRight - OnOffBadgeWidth(), kItemRowH,
+                            DrawLabelAbs(panelX + 52.0f, py + curY,
+                                kPanelW - 46.0f - rowRight - OnOffBadgeWidth() - LockSlotWidth(), kItemRowH,
                                 rowText, textCol, rowOn ? 0.96f : 0.75f,
                                 TextAlignH::Left, TextAlignV::Center, nullptr, kFilterRowFontScale);
 
+                            DrawFilterLockAbs(anchor.raw, panelX + kPanelW - rowRight, py + curY, kItemRowH, rowLocked,
+                                rowCatLocked, hovRow, hovRowLock);
                             DrawOnOffBadgeAbs(anchor.raw, panelX + kPanelW - rowRight, py + curY, kItemRowH, rowOn,
                                 rowOn ? 1.0f : 0.85f);
 
-                            if (clicked && hovRow) {
+                            if (clicked && hovRowLock) {
+                                ToggleRowLock(rowSpec.typeHash);
+                            } else if (clicked && hovRow) {
                                 bool nextState = !rowOn;
                                 SetSingleFilterState(client, mapState, rowSpec.typeHash, nextState);
                                 if (rowSpec.pairedHash != 0) {
@@ -4811,6 +5008,27 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     const bool lit = g_mapKeyDragging || hovThumb;
                     DrawBoxAbs(anchor.raw, kRoundedBoxPrimitive, trackX, drawThumbY, 6.0f, thumbH,
                         lit ? kTitle : kGold, lit ? 0.95f : 0.8f, 3.0f);
+                }
+                if (showHoldHint) {
+                    // A tooltip strip under the buttons, the panel's full width so every language fits: opaque,
+                    // gold-framed, on a soft shadow, the text centred. It shrinks if a translation is long
+                    // (TextWidth runs ~15% short of the drawn text, hence the 1.15).
+                    const char* hint = umm_lang::T(umm_lang::Str::HoldForLocked);
+                    constexpr float kHintH = 32.0f;
+                    const float hintX = panelX + 8.0f, hintW = kPanelW - 16.0f;
+                    const float rawW = umm_lang::TextWidth(hint) * 1.15f;
+                    const float fit = (hintW - 28.0f) / std::max(1.0f, rawW);
+                    const float scale = std::max(0.6f, std::min(0.92f, fit));
+                    const float textW = rawW * scale;
+                    const float textX = hintX + (hintW - textW) * 0.5f;
+                    DrawAssetRectAbs(anchor.raw, kSoftGlowPrimitive, hintX - 16.0f, holdHintY - 10.0f, hintW + 32.0f,
+                        kHintH + 26.0f, 0xff000000u, 0.8f);
+                    DrawFramedBoxAbs(anchor.raw, hintX, holdHintY, hintW, kHintH, kPanelFill, 1.0f, kGold, 0.95f, 5.0f);
+                    DrawSolidRectAbs(anchor.raw, hintX + 2.0f, holdHintY + 2.0f, hintW - 4.0f, kHintH - 4.0f, kPanelFill, 1.0f);
+                    DrawBoxAbs(anchor.raw, kBoxInnerGlowPrimitive, hintX + 1.0f, holdHintY + 1.0f, hintW - 2.0f, kHintH - 2.0f,
+                        kGold, 0.3f, 6.0f);
+                    DrawLabelAbs(textX, holdHintY, textW + 12.0f, kHintH,
+                        hint, kActiveText, 1.0f, TextAlignH::Left, TextAlignV::Center, nullptr, scale);
                 }
             }
             if (g_settingsOpen && !g_findDialogOpen) {
@@ -5354,6 +5572,8 @@ void LoadMinimapConfig() {
     g_minimapSize = std::max(150.0f, std::min(kMinimapMaxSize, static_cast<float>(sizePx)));
     g_minimapZoomIdx = std::max(0, std::min(kMinimapZoomCount - 1, zoomIdx));
     g_otherPlayersEnabled = (otherPlayers != 0);
+    g_goldChestEnabled = GetPrivateProfileIntA("MinimapV2", "GoldChests", 1, cfg.c_str()) != 0;
+    g_silverChestEnabled = GetPrivateProfileIntA("MinimapV2", "SilverChests", 1, cfg.c_str()) != 0;
     g_minimapShowTerrain = (showTerrain != 0);
     g_minimapThinBorder = (thinBorder != 0);
     g_minimapInfoBar = (infoBar != 0);
@@ -5365,6 +5585,84 @@ void LoadMinimapConfig() {
     g_chestRespawnMinutes = std::max(1.0f, static_cast<float>(respawnMins));
     g_chestResetRadiusMeters = std::max(0.0f, static_cast<float>(resetRadius));
     ApplyCustomMarkerScale();
+
+    // [Locks] Rows = locked rows' type hashes, Categories = locked category ids, Collapsed = which of those are closed
+    char locks[2048]{};
+    GetPrivateProfileStringA("Locks", "Rows", "", locks, sizeof(locks), cfg.c_str());
+    g_lockedRows.clear();
+    for (char *ctx = nullptr, *tok = strtok_s(locks, ", ", &ctx); tok; tok = strtok_s(nullptr, ", ", &ctx)) {
+        const uint32_t hash = static_cast<uint32_t>(std::strtoul(tok, nullptr, 16));
+        if (hash != 0u) g_lockedRows.insert(hash);
+    }
+    char cats[128]{}, collapsed[128]{};
+    GetPrivateProfileStringA("Locks", "Categories", "", cats, sizeof(cats), cfg.c_str());
+    GetPrivateProfileStringA("Locks", "Collapsed", "", collapsed, sizeof(collapsed), cfg.c_str());
+    for (bool& locked : g_lockedCategories) locked = false;
+    for (char *ctx = nullptr, *tok = strtok_s(cats, ", ", &ctx); tok; tok = strtok_s(nullptr, ", ", &ctx)) {
+        const unsigned long id = std::strtoul(tok, nullptr, 10);
+        if (id < kMaxCategoryId) g_lockedCategories[id] = true;
+    }
+    for (char *ctx = nullptr, *tok = strtok_s(collapsed, ", ", &ctx); tok; tok = strtok_s(nullptr, ", ", &ctx)) {
+        const unsigned long id = std::strtoul(tok, nullptr, 10);
+        for (size_t c = 0; c < kCategoryGroupCount; ++c) {
+            if (kCategoryGroups[c].category == id && IsCategoryLocked(kCategoryGroups[c].category)) g_categoryCollapsed[c] = true;
+        }
+    }
+    // RowStates = hash:1 / hash:0 for every locked row
+    char states[4096]{};
+    GetPrivateProfileStringA("Locks", "RowStates", "", states, sizeof(states), cfg.c_str());
+    g_lockedStates.clear();
+    for (char *ctx = nullptr, *tok = strtok_s(states, ", ", &ctx); tok; tok = strtok_s(nullptr, ", ", &ctx)) {
+        char* colon = std::strchr(tok, ':');
+        if (!colon) continue;
+        const uint32_t hash = static_cast<uint32_t>(std::strtoul(tok, nullptr, 16));
+        if (hash != 0u) g_lockedStates[hash] = colon[1] == '1';
+    }
+}
+
+void SaveFilterLocks() {
+    const std::string cfg = GetMinimapConfigPath();
+    std::string rows, cats, collapsed;
+    char buf[16]{};
+    for (uint32_t hash : g_lockedRows) {
+        std::snprintf(buf, sizeof(buf), "%s%08x", rows.empty() ? "" : ",", hash);
+        rows += buf;
+    }
+    for (size_t c = 0; c < kCategoryGroupCount; ++c) {
+        const uint8_t id = kCategoryGroups[c].category;
+        if (!IsCategoryLocked(id)) continue;
+        std::snprintf(buf, sizeof(buf), "%s%u", cats.empty() ? "" : ",", static_cast<unsigned>(id));
+        cats += buf;
+        if (g_categoryCollapsed[c]) {
+            std::snprintf(buf, sizeof(buf), "%s%u", collapsed.empty() ? "" : ",", static_cast<unsigned>(id));
+            collapsed += buf;
+        }
+    }
+    WritePrivateProfileStringA("Locks", "Rows", rows.c_str(), cfg.c_str());
+    WritePrivateProfileStringA("Locks", "Categories", cats.c_str(), cfg.c_str());
+    WritePrivateProfileStringA("Locks", "Collapsed", collapsed.c_str(), cfg.c_str());
+
+    // The locked rows' ON / OFF, read from the live filters (kept as last saved while there is no world)
+    uint8_t* client = GetUiClient();
+    if (!client || *reinterpret_cast<uint8_t*>(client + 0x40ebe0) == 0) return;
+    auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+    const size_t count = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
+    g_lockedStates.clear();
+    for (const auto& grp : kCategoryGroups) {
+        if (grp.category == 4 && IsCategoryLocked(4)) {
+            for (uint32_t pin : kCustomPinHashes) g_lockedStates[pin] = IsFilterEnabled(entries, count, pin);
+        }
+        for (size_t r = 0; r < grp.rowCount; ++r) {
+            const uint32_t hash = grp.rows[r].typeHash;
+            if (IsFilterLocked(hash, grp.category)) g_lockedStates[hash] = IsFilterEnabled(entries, count, hash);
+        }
+    }
+    std::string states;
+    for (const auto& [hash, on] : g_lockedStates) {
+        std::snprintf(buf, sizeof(buf), "%s%08x:%d", states.empty() ? "" : ",", hash, on ? 1 : 0);
+        states += buf;
+    }
+    WritePrivateProfileStringA("Locks", "RowStates", states.c_str(), cfg.c_str());
 }
 
 void SaveMinimapConfig() {
@@ -5396,6 +5694,8 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "CustomMarkerScaleIdx", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_pinRevealMode));
     WritePrivateProfileStringA("MinimapV2", "PinRevealMode", buf, cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "GoldChests", g_goldChestEnabled ? "1" : "0", cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "SilverChests", g_silverChestEnabled ? "1" : "0", cfg.c_str());
     char ores[kOreCount + 1]{};
     for (size_t o = 0; o < kOreCount; ++o) ores[o] = g_oreEnabled[o] ? '1' : '0';
     WritePrivateProfileStringA("Mining", "Ores", ores, cfg.c_str());
