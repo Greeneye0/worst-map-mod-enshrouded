@@ -63,6 +63,8 @@ size_t OreIndexOf(uint32_t h) { return h - kOreTypeHashBase; }
 uint32_t OreHash(size_t ore) { return kOreTypeHashBase + static_cast<uint32_t>(ore); }
 bool g_oreEnabled[kOreCount]{};
 const char* OreName(size_t ore);
+int KnowledgeRemaining(size_t ore); // knowledge.inl
+void UpdateKnowledge();
 
 int OreDepositCount(size_t ore) {
     static int counts[kOreCount]{};
@@ -591,6 +593,8 @@ static_assert(kBeaconsCount == 1, "one Return Beacon row");
 constexpr MarkerRowSpec kCategory3Rows[] = {
     {kGoldChestTypeHash, 0u, 3, "Gold Chest", umm_lang::Str::GoldChest},
     {kSilverChestTypeHash, 0u, 3, "Silver Chest", umm_lang::Str::SilverChest},
+    // Bosses: a resource row (ore_deposits.h), defeated ones hidden or greyed like looted chests
+    {kOreTypeHashBase + static_cast<uint32_t>(kBossesFirst), 0u, 3, kOreLabels[kBossesFirst], umm_lang::Str::CatWorld},
     {0xb5d01766u, 0u, 3, "Town / Settlement", umm_lang::Str::TownSettlement},
     {0x5104e8d1u, 0u, 3, "Farmstead", umm_lang::Str::Farmstead},
     {0x6aaf002cu, 0u, 3, "Survivor Camp", umm_lang::Str::SurvivorCamp},
@@ -604,6 +608,8 @@ constexpr MarkerRowSpec kCategory0Rows[] = {
     {0xa7cadc08u, 0u, 0, "Main Quest", umm_lang::Str::MainQuest},
     {0xc52e92e5u, 0u, 0, "Side Quest", umm_lang::Str::SideQuest},
     {0x8ba7c122u, 0u, 0, "Lore Rumor (?)", umm_lang::Str::LoreRumor},
+    // Lore Notes: a resource row (ore_deposits.h), read ones hidden or greyed like looted chests
+    {kOreTypeHashBase + static_cast<uint32_t>(kLoreFirst), 0u, 0, kOreLabels[kLoreFirst], umm_lang::Str::CatQuests},
     {0x1ad8f96eu, 0u, 0, "Player Grave", umm_lang::Str::PlayerGrave},
     {kOtherPlayerTypeHash, 0u, 0, "Other Players", umm_lang::Str::OtherPlayers},
 };
@@ -630,7 +636,9 @@ constexpr auto kBaitRows = MakeResourceRows<kBaitFirst, kBaitCategory, umm_lang:
 constexpr auto kTreesRows = MakeResourceRows<kTreesFirst, kTreesCategory, umm_lang::Str::CatTrees>(
     std::make_index_sequence<kTreesCount>{});
 static_assert(kWaterCount == 2, "Water Well and Water Barrel rows");
-static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount == kOreCount,
+static_assert(kLoreCount == 1 && kBossesCount == 1, "one Lore Note row, one Boss row");
+static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount +
+                  kLoreCount + kBossesCount == kOreCount,
               "every row in one category");
 
 struct CategoryGroupSpec {
@@ -865,8 +873,254 @@ void DrawAssetRectAbs(void* parentWidgetRaw, size_t assetOffset, float absX, flo
 
 // Draws a 16-byte UiImageReference icon at absolute UI coordinates (absX, absY, w, h)
 // without creating or shifting any child widgets.
+// The boss icon (the user's horned helmet art, reduced to 24x24 and 14 colours with the eyes' red kept), drawn as solid runs:
+// {x, y, width, colour 0xAABBGGRR}.
+constexpr int kBossIconSize = 24;
+struct PixelRun { uint8_t x, y, w; uint32_t color; };
+constexpr PixelRun kBossIconRuns[] = {
+    {3, 1, 1, 0xFFCBDFEBu},
+    {20, 1, 1, 0xFFCBDFEBu},
+    {2, 2, 1, 0xFFE2FAFEu},
+    {3, 2, 1, 0xFFCBDFEBu},
+    {20, 2, 1, 0xFFCBDFEBu},
+    {21, 2, 1, 0xFFE2FAFEu},
+    {1, 3, 1, 0xFFCBDFEBu},
+    {2, 3, 1, 0xFFE2FAFEu},
+    {21, 3, 2, 0xFFE2FAFEu},
+    {0, 4, 1, 0xFFCBDFEBu},
+    {1, 4, 2, 0xFFE2FAFEu},
+    {3, 4, 1, 0xFFCBDFEBu},
+    {20, 4, 1, 0xFFBBCADAu},
+    {21, 4, 2, 0xFFE2FAFEu},
+    {23, 4, 1, 0xFFCBDFEBu},
+    {0, 5, 2, 0xFFCBDFEBu},
+    {2, 5, 1, 0xFFE2FAFEu},
+    {3, 5, 1, 0xFFCBDFEBu},
+    {11, 5, 2, 0xFFCBDFEBu},
+    {20, 5, 1, 0xFFCBDFEBu},
+    {21, 5, 1, 0xFFE2FAFEu},
+    {22, 5, 2, 0xFFCBDFEBu},
+    {0, 6, 1, 0xFFBBCADAu},
+    {1, 6, 1, 0xFFCBDFEBu},
+    {2, 6, 2, 0xFFE2FAFEu},
+    {4, 6, 1, 0xFFCBDFEBu},
+    {6, 6, 1, 0xFF9CA4AFu},
+    {8, 6, 1, 0xFFBBCADAu},
+    {9, 6, 2, 0xFF9CA4AFu},
+    {11, 6, 2, 0xFFBBCADAu},
+    {13, 6, 2, 0xFF9CA4AFu},
+    {15, 6, 1, 0xFFBBCADAu},
+    {17, 6, 1, 0xFF9CA4AFu},
+    {19, 6, 1, 0xFFCBDFEBu},
+    {20, 6, 2, 0xFFE2FAFEu},
+    {22, 6, 1, 0xFFCBDFEBu},
+    {23, 6, 1, 0xFFBBCADAu},
+    {0, 7, 2, 0xFFBBCADAu},
+    {2, 7, 1, 0xFFCBDFEBu},
+    {3, 7, 1, 0xFFE2FAFEu},
+    {4, 7, 1, 0xFFBBCADAu},
+    {5, 7, 1, 0xFF9CA4AFu},
+    {6, 7, 1, 0xFF818286u},
+    {7, 7, 1, 0xFF9CA4AFu},
+    {8, 7, 1, 0xFF818286u},
+    {9, 7, 1, 0xFF625F6Bu},
+    {10, 7, 1, 0xFF818286u},
+    {11, 7, 2, 0xFFBBCADAu},
+    {13, 7, 1, 0xFF818286u},
+    {14, 7, 1, 0xFF625F6Bu},
+    {15, 7, 1, 0xFF818286u},
+    {16, 7, 1, 0xFF9CA4AFu},
+    {17, 7, 1, 0xFF818286u},
+    {18, 7, 1, 0xFF9CA4AFu},
+    {19, 7, 1, 0xFFBBCADAu},
+    {20, 7, 1, 0xFFE2FAFEu},
+    {21, 7, 1, 0xFFCBDFEBu},
+    {22, 7, 2, 0xFFBBCADAu},
+    {0, 8, 1, 0xFF9CA4AFu},
+    {1, 8, 1, 0xFFBBCADAu},
+    {2, 8, 1, 0xFFCBDFEBu},
+    {3, 8, 1, 0xFFBBCADAu},
+    {4, 8, 1, 0xFF818286u},
+    {5, 8, 1, 0xFF625F6Bu},
+    {6, 8, 1, 0xFF818286u},
+    {7, 8, 1, 0xFF717072u},
+    {8, 8, 2, 0xFF625F6Bu},
+    {10, 8, 1, 0xFF818286u},
+    {11, 8, 2, 0xFFBBCADAu},
+    {13, 8, 1, 0xFF818286u},
+    {14, 8, 2, 0xFF625F6Bu},
+    {16, 8, 1, 0xFF717072u},
+    {17, 8, 1, 0xFF818286u},
+    {18, 8, 1, 0xFF625F6Bu},
+    {19, 8, 1, 0xFF818286u},
+    {20, 8, 3, 0xFFBBCADAu},
+    {23, 8, 1, 0xFF9CA4AFu},
+    {1, 9, 1, 0xFF9CA4AFu},
+    {2, 9, 1, 0xFFBBCADAu},
+    {3, 9, 1, 0xFF9CA4AFu},
+    {4, 9, 1, 0xFF3E3C50u},
+    {5, 9, 2, 0xFF585454u},
+    {7, 9, 2, 0xFF625F6Bu},
+    {9, 9, 1, 0xFF585454u},
+    {10, 9, 1, 0xFF818286u},
+    {11, 9, 2, 0xFF9CA4AFu},
+    {13, 9, 1, 0xFF818286u},
+    {14, 9, 1, 0xFF585454u},
+    {15, 9, 2, 0xFF625F6Bu},
+    {17, 9, 2, 0xFF585454u},
+    {19, 9, 1, 0xFF3E3C50u},
+    {20, 9, 1, 0xFF9CA4AFu},
+    {21, 9, 1, 0xFFBBCADAu},
+    {22, 9, 1, 0xFF9CA4AFu},
+    {2, 10, 1, 0xFF818286u},
+    {3, 10, 1, 0xFF3E3C50u},
+    {4, 10, 2, 0xFF1E1B1Cu},
+    {6, 10, 1, 0xFF3E3C50u},
+    {7, 10, 2, 0xFF585454u},
+    {9, 10, 2, 0xFF3E3C50u},
+    {11, 10, 1, 0xFF9CA4AFu},
+    {12, 10, 1, 0xFF818286u},
+    {13, 10, 2, 0xFF3E3C50u},
+    {15, 10, 2, 0xFF585454u},
+    {17, 10, 1, 0xFF3E3C50u},
+    {18, 10, 2, 0xFF1E1B1Cu},
+    {20, 10, 1, 0xFF3E3C50u},
+    {21, 10, 1, 0xFF9CA4AFu},
+    {3, 11, 3, 0xFF1E1B1Cu},
+    {6, 11, 5, 0xFF3E3C50u},
+    {11, 11, 1, 0xFFBBCADAu},
+    {12, 11, 1, 0xFF9CA4AFu},
+    {13, 11, 5, 0xFF3E3C50u},
+    {18, 11, 3, 0xFF1E1B1Cu},
+    {4, 12, 1, 0xFF1E1B1Cu},
+    {5, 12, 1, 0xFF585454u},
+    {6, 12, 1, 0xFF625F6Bu},
+    {7, 12, 1, 0xFF585454u},
+    {8, 12, 1, 0xFF3E3C50u},
+    {9, 12, 1, 0xFF000100u},
+    {10, 12, 1, 0xFF3E3C50u},
+    {11, 12, 2, 0xFF9CA4AFu},
+    {13, 12, 1, 0xFF3E3C50u},
+    {14, 12, 1, 0xFF000100u},
+    {15, 12, 1, 0xFF3E3C50u},
+    {16, 12, 1, 0xFF585454u},
+    {17, 12, 1, 0xFF625F6Bu},
+    {18, 12, 1, 0xFF585454u},
+    {19, 12, 1, 0xFF1E1B1Cu},
+    {5, 13, 2, 0xFF585454u},
+    {7, 13, 2, 0xFF717072u},
+    {9, 13, 1, 0xFF585454u},
+    {10, 13, 1, 0xFF1E1B1Cu},
+    {11, 13, 2, 0xFF818286u},
+    {13, 13, 1, 0xFF1E1B1Cu},
+    {14, 13, 1, 0xFF585454u},
+    {15, 13, 2, 0xFF717072u},
+    {17, 13, 2, 0xFF585454u},
+    {5, 14, 1, 0xFF585454u},
+    {6, 14, 1, 0xFF1E1B1Cu},
+    {7, 14, 1, 0xFF3E3C50u},
+    {8, 14, 1, 0xFF585454u},
+    {9, 14, 1, 0xFF717072u},
+    {10, 14, 1, 0xFF3E3C50u},
+    {11, 14, 1, 0xFF818286u},
+    {12, 14, 1, 0xFF717072u},
+    {13, 14, 1, 0xFF3E3C50u},
+    {14, 14, 1, 0xFF717072u},
+    {15, 14, 1, 0xFF585454u},
+    {16, 14, 1, 0xFF3E3C50u},
+    {17, 14, 1, 0xFF1E1B1Cu},
+    {18, 14, 1, 0xFF585454u},
+    {5, 15, 1, 0xFF625F6Bu},
+    {6, 15, 1, 0xFF000000u},
+    {7, 15, 1, 0xFF2846EBu},
+    {8, 15, 3, 0xFF3E3C50u},
+    {11, 15, 1, 0xFF818286u},
+    {12, 15, 1, 0xFF717072u},
+    {13, 15, 3, 0xFF3E3C50u},
+    {16, 15, 1, 0xFF2846EBu},
+    {17, 15, 1, 0xFF000000u},
+    {18, 15, 1, 0xFF585454u},
+    {4, 16, 1, 0xFF625F6Bu},
+    {5, 16, 1, 0xFF717072u},
+    {6, 16, 2, 0xFF1E1B1Cu},
+    {8, 16, 1, 0xFF2846EBu},
+    {9, 16, 1, 0xFF3E3C50u},
+    {10, 16, 1, 0xFF000100u},
+    {11, 16, 1, 0xFF818286u},
+    {12, 16, 1, 0xFF717072u},
+    {13, 16, 1, 0xFF000100u},
+    {14, 16, 1, 0xFF3E3C50u},
+    {15, 16, 1, 0xFF2846EBu},
+    {16, 16, 2, 0xFF1E1B1Cu},
+    {18, 16, 2, 0xFF625F6Bu},
+    {4, 17, 2, 0xFF625F6Bu},
+    {6, 17, 1, 0xFF717072u},
+    {7, 17, 1, 0xFF3E3C50u},
+    {8, 17, 1, 0xFF000000u},
+    {9, 17, 1, 0xFF000100u},
+    {10, 17, 1, 0xFF000000u},
+    {11, 17, 2, 0xFF585454u},
+    {13, 17, 1, 0xFF000000u},
+    {14, 17, 1, 0xFF000100u},
+    {15, 17, 1, 0xFF000000u},
+    {16, 17, 1, 0xFF3E3C50u},
+    {17, 17, 1, 0xFF717072u},
+    {18, 17, 1, 0xFF585454u},
+    {19, 17, 1, 0xFF625F6Bu},
+    {5, 18, 3, 0xFF625F6Bu},
+    {8, 18, 1, 0xFF000100u},
+    {9, 18, 4, 0xFF000000u},
+    {13, 18, 1, 0xFF3E3C50u},
+    {14, 18, 1, 0xFF717072u},
+    {15, 18, 1, 0xFF000000u},
+    {16, 18, 1, 0xFF717072u},
+    {17, 18, 2, 0xFF625F6Bu},
+    {6, 19, 1, 0xFF625F6Bu},
+    {7, 19, 1, 0xFF717072u},
+    {8, 19, 1, 0xFF1E1B1Cu},
+    {9, 19, 1, 0xFF000100u},
+    {10, 19, 1, 0xFF1E1B1Cu},
+    {11, 19, 1, 0xFF3E3C50u},
+    {12, 19, 1, 0xFF1E1B1Cu},
+    {13, 19, 2, 0xFF9CA4AFu},
+    {15, 19, 1, 0xFF000000u},
+    {16, 19, 1, 0xFF717072u},
+    {17, 19, 1, 0xFF625F6Bu},
+    {7, 20, 1, 0xFF717072u},
+    {8, 20, 1, 0xFF1E1B1Cu},
+    {9, 20, 1, 0xFF3E3C50u},
+    {10, 20, 3, 0xFF585454u},
+    {13, 20, 1, 0xFF625F6Bu},
+    {14, 20, 1, 0xFF585454u},
+    {15, 20, 1, 0xFF1E1B1Cu},
+    {16, 20, 1, 0xFF717072u},
+    {8, 21, 1, 0xFF585454u},
+    {10, 21, 4, 0xFF3E3C50u},
+    {15, 21, 1, 0xFF585454u},
+    {11, 22, 2, 0xFF3E3C50u},
+};
+
+// Multiplies two 0xAABBGGRR colours channel by channel (a tint on the pixel icon).
+uint32_t MultiplyColor(uint32_t a, uint32_t b) {
+    uint32_t out = 0;
+    for (int shift = 0; shift < 32; shift += 8) {
+        const uint32_t ca = (a >> shift) & 0xffu, cb = (b >> shift) & 0xffu;
+        out |= ((ca * cb + 127u) / 255u) << shift;
+    }
+    return out;
+}
+
 void DrawIconRectAbs(void* parentWidgetRaw, const void* iconRef16, float absX, float absY, float w, float h, uint32_t rgba, float alpha, float brightness = 1.0f) {
     if (!parentWidgetRaw || !iconRef16 || w <= 0.0f || h <= 0.0f || alpha <= 0.0f) return;
+    // The Boss row's icon is drawn by the mod from kBossIconRuns (its icon GUID in ore_deposits.h is only a stand-in)
+    if (iconRef16 == static_cast<const void*>(kOreIcons[kBossesFirst])) {
+        const float px = w / kBossIconSize, py = h / kBossIconSize;
+        for (const PixelRun& r : kBossIconRuns) {
+            DrawSolidRectAbs(parentWidgetRaw, absX + r.x * px, absY + r.y * py, r.w * px + 0.35f, py + 0.35f,
+                             rgba == 0xffffffffu ? r.color : MultiplyColor(r.color, rgba), alpha, brightness);
+        }
+        return;
+    }
     const auto* bytes = static_cast<const uint64_t*>(iconRef16);
     if (bytes[0] == 0 && bytes[1] == 0) return;
     float rect[4] = {absX, absY, w, h};
@@ -1717,6 +1971,7 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
         }
     }
     UpdateBuiltWater(client);
+    UpdateKnowledge();
 
     // 1. A chest counts as looted when the interact key is pressed next to it and the game switches to its
     //    chest screen (21) right after. The key alone, or the inventory (9) opened by itself, marks nothing.
@@ -2507,7 +2762,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
         } else if (queryHashes[q] == kOtherPlayerTypeHash) {
             outCounts[q] = otherPlayerCount;
         } else if (IsOreHash(queryHashes[q])) {
-            outCounts[q] = OreDepositCount(OreIndexOf(queryHashes[q]));
+            const size_t ore = OreIndexOf(queryHashes[q]);
+            outCounts[q] = (ore == kLoreFirst || ore == kBossesFirst) ? KnowledgeRemaining(ore) : OreDepositCount(ore);
         }
     }
 
@@ -3476,7 +3732,9 @@ void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vec
     }
 }
 
-bool g_worldMapWasOpen = false;
+// True from load: the per-frame screen check clears it whenever the map is not up, so a map already open when the mod
+// (re)loads is not taken for a new open (which would centre it on the player)
+bool g_worldMapWasOpen = true;
 int g_worldMapOpenCenterFrames = 0;
 uint8_t g_screenBeforeMap = 1; // the last screen before the World Map (1 gameplay, 9 inventory / journal)
 uint64_t g_lastWorldMapFrameTick = 0;
@@ -3802,6 +4060,8 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
     return drawn;
 }
 
+#include "knowledge.inl"
+
 // The enabled ore deposits on the world map, drawn by the mod (the game's marker arrays are far too small for
 // them). Same world -> screen mapping as the Find pulses. Hovering one names it.
 void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState,
@@ -3851,6 +4111,8 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         const bool unexplored = g_pinRevealMode != PinRevealMode::RevealAll &&
                                 !IsPositionExploredByCharacter(client, dep.x, dep.z);
         if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) continue;
+        const bool done = KnowledgeDone(d); // a lore note read / a boss defeated: hidden or greyed like looted chests
+        if (done && g_lootedChestMode == 0) continue;
         {
             const int gx = static_cast<int>((sx - left) / cell), gy = static_cast<int>((sy - top) / cell);
             if (gx >= 0 && gy >= 0 && gx < gridW && gy < gridH) {
@@ -3868,7 +4130,12 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
                              0xff0a0e10u, 0.55f * alpha);
         }
         DrawIconRectAbs(widgetRaw, kOreIcons[dep.ore], sx - half, sy - half, size, size,
-                        unexplored ? 0xff8c9296u : 0xffffffffu, alpha);
+                        (unexplored || done) ? 0xff8c9296u : 0xffffffffu, done ? alpha * 0.6f : alpha);
+        if (done) {
+            const float checkSz = std::max(9.0f, size * 0.6f);
+            DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, sx + half - checkSz * 0.7f, sy + half - checkSz * 0.7f, checkSz,
+                             checkSz, 0xFFFFFFFFu, 0.95f * alpha, 1.12f);
+        }
         if (!underBanner && haveCursor && std::fabs(mx - sx) <= half + 2.0f && std::fabs(my - sy) <= half + 2.0f) {
             hovered = d;
             hoveredSx = sx;
@@ -3876,7 +4143,9 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         }
     }
     // Built water (built_water.inl), with the world's wells and barrels under Water Source
-    const char* hoveredName = hovered < kOreDepositCount ? OreName(kOreDeposits[hovered].ore) : nullptr;
+    const char* hoveredName = hovered >= kOreDepositCount ? nullptr
+                              : IsKnowledgeDeposit(hovered)  ? KnowledgeSpotName(hovered)
+                                                             : OreName(kOreDeposits[hovered].ore);
     if (g_oreEnabled[kWaterFirst]) {
         for (const auto& w : g_builtWater) {
             if (drawn >= maxIcons) break;
@@ -3916,9 +4185,9 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         const float fontScale = 28.0f / 15.0f; // TextWidth is calibrated on the small text
         const float h = 18.0f * fontScale, w = umm_lang::TextWidth(name) * fontScale + 12.0f;
         const float bx = hoveredSx + half + 10.0f, by = hoveredSy - h * 0.5f;
-        // A faint band behind the text, like the game's own hover title (Silver Chest), not a dark oval
-        DrawAssetRectAbs(widgetRaw, kSoftGlowPrimitive, bx - 12.0f, by - h * 0.05f, w + 24.0f, h * 1.1f,
-                         0xff000000u, 0.22f);
+        // No band behind it (the soft glow reads as a dark oval on the map): a faint 1 px drop shadow, like the game's own
+        // hover title (Silver Chest)
+        DrawLabelAbs(bx + 1.0f, by + 1.0f, w, h, name, 0xff000000u, 0.5f, TextAlignH::Left, TextAlignV::Center, titleStyle);
         DrawLabelAbs(bx, by, w, h, name, 0xffffffffu, 1.0f, TextAlignH::Left, TextAlignV::Center, titleStyle);
     }
 }
@@ -4489,7 +4758,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         g_bridgeRecenterMap = false;
     }
     uint64_t nowMapTick = GetTickCount64();
-    if (!g_worldMapWasOpen || (nowMapTick - g_lastWorldMapFrameTick) > 250ULL) {
+    // A new open is only the screen changing to the map (cleared in the per-frame screen check), not a pause in its
+    // frames: Alt-Tab or a hitch while the map stays open used to centre it on the player again
+    if (!g_worldMapWasOpen) {
         g_worldMapWasOpen = true;
         // Center on the player only when opened from play (screen 1, the M key). From any menu (the backpack
         // or journal 9, Show on Map for a quest 7, ...) the game has already centered the map on what was asked
@@ -6982,6 +7253,14 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
 
         // 2c. Ore deposits (Mining), under everything else
         if (AnyOreEnabled()) {
+            // Lore notes and bosses nearby get the chests' height caret (many notes are in cellars, crypts, towers)
+            float knowPlayerY = 0.0f;
+            bool knowHavePlayerY = false;
+            if (uint8_t* clientWorld = GetClientWorld(client)) {
+                const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
+                knowPlayerY = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
+                knowHavePlayerY = rawY != 0 && std::isfinite(knowPlayerY);
+            }
             for (size_t d = 0; d < kOreDepositCount; ++d) {
                 const OreDeposit& dep = kOreDeposits[d];
                 if (!g_oreEnabled[dep.ore]) continue;
@@ -6997,10 +7276,19 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                     sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
                     continue;
                 }
-                // Return Beacons layer with the Shroud pins; deposits stay under everything
+                const bool done = KnowledgeDone(d); // read / defeated: hidden or greyed like looted chests
+                if (done && g_lootedChestMode == 0) continue;
+                int8_t heightDir = 0;
+                if (IsKnowledgeDeposit(d) && knowHavePlayerY && dxMeters * dxMeters + dzMeters * dzMeters <= 75.0f * 75.0f) {
+                    const float dy = static_cast<float>(dep.topY) - knowPlayerY;
+                    if (dy >= 4.0f) heightDir = 1;
+                    else if (dy <= -4.0f) heightDir = -1;
+                }
+                // Return Beacons and the other world rows layer with their pins; deposits stay under everything
                 drawList.push_back(MinimapMarkerDraw{sx, sy, 13.0f * btnScale, kOreIcons[dep.ore],
-                    unexplored ? 0xFF8C9296u : 0xFFFFFFFFu, unexplored ? 0.55f : 0.95f,
-                    IsResourceCategory(kOreCategory[dep.ore]) ? kMiningCategory : kOreCategory[dep.ore], false, false});
+                    (unexplored || done) ? 0xFF8C9296u : 0xFFFFFFFFu, (unexplored || done) ? 0.55f : 0.95f,
+                    IsResourceCategory(kOreCategory[dep.ore]) ? kMiningCategory : kOreCategory[dep.ore], false, done,
+                    heightDir});
             }
         }
 
@@ -7924,6 +8212,7 @@ bool InstallMapKeyPanelHook(LogFn logger) {
             InstallHook(fnChatAppend, reinterpret_cast<void*>(&ChatAppendHook), 13));
     }
     InstallBuiltWaterHooks();
+    FindSave2Block();
     if (!g_sendCommand || !g_origChatAppend) {
         g_sendCommand = nullptr; // never send what we could not receive
         if (g_log) g_log("Looted chests: chat functions not found; looted chests are not shared in multiplayer");

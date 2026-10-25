@@ -499,6 +499,8 @@ const Row kResourceNames[] = {
     {"Return Beacon", "Rückkehrleuchtfeuer", "Balise de retour", "Faro del ritorno", "Baliza de retorno", "Farol de retorno", "Latarnia powrotu", "Маяк возвращения", "Маяк повернення", "Dönüş işareti", "帰還のビーコン", "귀환 신호기", "返回信标", "返回信標", "สัญญาณกลับ"},
     {"Water Well", "Brunnen", "Puits", "Pozzo", "Pozo", "Poço", "Studnia", "Колодец", "Криниця", "Kuyu", "井戸", "우물", "水井", "水井", "บ่อน้ำ"},
     {"Water Barrel", "Wasserfass", "Tonneau d'eau", "Barile d'acqua", "Barril de agua", "Barril de água", "Beczka z wodą", "Бочка с водой", "Бочка з водою", "Su fıçısı", "水樽", "물통", "水桶", "水桶", "ถังน้ำ"},
+    {"Lore Note", "Notiz", "Note", "Nota", "Nota", "Nota", "Notatka", "Записка", "Записка", "Not", "メモ", "쪽지", "笔记", "筆記", "บันทึก"},
+    {"Boss", "Boss", "Boss", "Boss", "Jefe", "Chefe", "Boss", "Босс", "Бос", "Boss", "ボス", "보스", "首领", "首領", "บอส"},
 };
 // clang-format on
 
