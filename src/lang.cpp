@@ -383,6 +383,101 @@ const Row kTable[] = {
 static_assert(sizeof(kTable) / sizeof(kTable[0]) == static_cast<size_t>(Str::Count),
               "one row per Str, in order");
 
+// Resource row names (ore_deposits.h kOreLabels, same order), for when the game's own item name can't be
+// used: a row with no single item (trees), or a language set in the ini that isn't the game's.
+// clang-format off
+const Row kResourceNames[] = {
+    {"Flintstone", "Feuerstein", "Silex", "Selce", "Pedernal", "Sílex", "Krzemień", "Кремень", "Кремінь", "Çakmaktaşı", "火打ち石", "부싯돌", "燧石", "燧石", "หินเหล็กไฟ"},
+    {"Salt", "Salz", "Sel", "Sale", "Sal", "Sal", "Sól", "Соль", "Сіль", "Tuz", "塩", "소금", "盐", "鹽", "เกลือ"},
+    {"Copper", "Kupfer", "Cuivre", "Rame", "Cobre", "Cobre", "Miedź", "Медь", "Мідь", "Bakır", "銅", "구리", "铜", "銅", "ทองแดง"},
+    {"Clay", "Lehm", "Argile", "Argilla", "Arcilla", "Argila", "Glina", "Глина", "Глина", "Kil", "粘土", "점토", "黏土", "黏土", "ดินเหนียว"},
+    {"Amber", "Bernstein", "Ambre", "Ambra", "Ámbar", "Âmbar", "Bursztyn", "Янтарь", "Бурштин", "Kehribar", "琥珀", "호박", "琥珀", "琥珀", "อำพัน"},
+    {"Tin", "Zinn", "Étain", "Stagno", "Estaño", "Estanho", "Cyna", "Олово", "Олово", "Kalay", "錫", "주석", "锡", "錫", "ดีบุก"},
+    {"Limestone", "Kalkstein", "Calcaire", "Calcare", "Caliza", "Calcário", "Wapień", "Известняк", "Вапняк", "Kireçtaşı", "石灰岩", "석회암", "石灰石", "石灰石", "หินปูน"},
+    {"Fossilized Bone", "Versteinerter Knochen", "Os fossilisé", "Osso fossile", "Hueso fosilizado", "Osso fossilizado", "Skamieniała kość", "Окаменелая кость", "Скам'яніла кістка", "Fosilleşmiş kemik", "骨の化石", "화석화된 뼈", "骨化石", "骨化石", "กระดูกฟอสซิล"},
+    {"Sulfur", "Schwefel", "Soufre", "Zolfo", "Azufre", "Enxofre", "Siarka", "Сера", "Сірка", "Kükürt", "硫黄", "유황", "硫磺", "硫磺", "กำมะถัน"},
+    {"Iron", "Eisen", "Fer", "Ferro", "Hierro", "Ferro", "Żelazo", "Железо", "Залізо", "Demir", "鉄", "철", "铁", "鐵", "เหล็ก"},
+    {"Lapis Lazuli", "Lapislazuli", "Lapis-lazuli", "Lapislazzuli", "Lapislázuli", "Lápis-lazúli", "Lazuryt", "Лазурит", "Лазурит", "Lacivert taşı", "ラピスラズリ", "청금석", "青金石", "青金石", "ลาพิสลาซูลี"},
+    {"Coal", "Kohle", "Charbon", "Carbone", "Carbón", "Carvão", "Węgiel", "Уголь", "Вугілля", "Kömür", "石炭", "석탄", "煤炭", "煤炭", "ถ่านหิน"},
+    {"Silver", "Silber", "Argent", "Argento", "Plata", "Prata", "Srebro", "Серебро", "Срібло", "Gümüş", "銀", "은", "银", "銀", "เงิน"},
+    {"Amethyst", "Amethyst", "Améthyste", "Ametista", "Amatista", "Ametista", "Ametyst", "Аметист", "Аметист", "Ametist", "アメジスト", "자수정", "紫水晶", "紫水晶", "อเมทิสต์"},
+    {"Obsidian", "Obsidian", "Obsidienne", "Ossidiana", "Obsidiana", "Obsidiana", "Obsydian", "Обсидиан", "Обсидіан", "Obsidyen", "黒曜石", "흑요석", "黑曜石", "黑曜石", "ออบซิเดียน"},
+    {"Gold", "Gold", "Or", "Oro", "Oro", "Ouro", "Złoto", "Золото", "Золото", "Altın", "金", "금", "金", "金", "ทองคำ"},
+    {"Aquamarine", "Aquamarin", "Aigue-marine", "Acquamarina", "Aguamarina", "Água-marinha", "Akwamaryn", "Аквамарин", "Аквамарин", "Akuamarin", "アクアマリン", "아쿠아마린", "海蓝宝石", "海藍寶石", "อะความารีน"},
+    {"Mother of Pearl", "Perlmutt", "Nacre", "Madreperla", "Nácar", "Madrepérola", "Masa perłowa", "Перламутр", "Перламутр", "Sedef", "真珠層", "자개", "珍珠母", "珍珠母", "มุก"},
+    {"Red Marble", "Roter Marmor", "Marbre rouge", "Marmo rosso", "Mármol rojo", "Mármore vermelho", "Czerwony marmur", "Красный мрамор", "Червоний мармур", "Kırmızı mermer", "赤大理石", "붉은 대리석", "红色大理石", "紅色大理石", "หินอ่อนแดง"},
+    {"Diamond", "Diamant", "Diamant", "Diamante", "Diamante", "Diamante", "Diament", "Алмаз", "Алмаз", "Elmas", "ダイヤモンド", "다이아몬드", "钻石", "鑽石", "เพชร"},
+    {"Celesthium", "Celesthium", "Célesthium", "Celesthium", "Celesthium", "Celesthium", "Celesthium", "Целестиум", "Целестіум", "Celesthium", "セレスティウム", "셀레스티움", "Celesthium", "Celesthium", "Celesthium"},
+    {"Farm Soil", "Ackerboden", "Terre agricole", "Terra coltivabile", "Tierra de cultivo", "Solo agrícola", "Ziemia uprawna", "Пахотная земля", "Орна земля", "Tarım toprağı", "畑の土", "농토", "农田土", "農田土", "ดินเพาะปลูก"},
+    {"Fertilised Farm Soil", "Gedüngter Ackerboden", "Terre agricole fertilisée", "Terra coltivabile fertilizzata", "Tierra de cultivo abonada", "Solo agrícola fertilizado", "Nawożona ziemia uprawna", "Удобренная пахотная земля", "Удобрена орна земля", "Gübrelenmiş tarım toprağı", "肥えた畑の土", "비옥한 농토", "施肥农田土", "施肥農田土", "ดินเพาะปลูกใส่ปุ๋ย"},
+    {"Flower Soil", "Blumenerde", "Terreau", "Terriccio", "Tierra para flores", "Terra para flores", "Ziemia kwiatowa", "Цветочная земля", "Квіткова земля", "Çiçek toprağı", "花の土", "꽃 흙", "花土", "花土", "ดินปลูกดอกไม้"},
+    {"Twigs", "Zweige", "Brindilles", "Ramoscelli", "Ramitas", "Gravetos", "Gałązki", "Ветки", "Гілки", "Dal parçaları", "小枝", "잔가지", "细枝", "細枝", "กิ่งไม้"},
+    {"Bones", "Knochen", "Os", "Ossa", "Huesos", "Ossos", "Kości", "Кости", "Кістки", "Kemikler", "骨", "뼈", "骨头", "骨頭", "กระดูก"},
+    {"Tar", "Teer", "Goudron", "Catrame", "Alquitrán", "Piche", "Smoła", "Смола", "Смола", "Katran", "タール", "타르", "焦油", "焦油", "น้ำมันดิน"},
+    {"Toxic Slime", "Giftschleim", "Bave toxique", "Melma tossica", "Baba tóxica", "Gosma tóxica", "Toksyczny śluz", "Ядовитая слизь", "Отруйний слиз", "Zehirli balçık", "毒スライム", "독성 점액", "毒性黏液", "毒性黏液", "เมือกพิษ"},
+    {"Luminous Growth", "Leuchtgewächs", "Excroissance lumineuse", "Escrescenza luminosa", "Excrecencia luminosa", "Crescimento luminoso", "Świecąca narośl", "Светящийся нарост", "Світний наріст", "Parlayan yumru", "発光体", "빛나는 덩어리", "发光菌丛", "發光菌叢", "สิ่งเรืองแสง"},
+    {"Underwater Luminous Growth", "Unterwasser-Leuchtgewächs", "Excroissance lumineuse sous-marine", "Escrescenza luminosa subacquea", "Excrecencia luminosa submarina", "Crescimento luminoso subaquático", "Podwodna świecąca narośl", "Подводный светящийся нарост", "Підводний світний наріст", "Sualtı parlayan yumru", "水中の発光体", "수중 빛나는 덩어리", "水下发光菌丛", "水下發光菌叢", "สิ่งเรืองแสงใต้น้ำ"},
+    {"Ice", "Eis", "Glace", "Ghiaccio", "Hielo", "Gelo", "Lód", "Лёд", "Лід", "Buz", "氷", "얼음", "冰", "冰", "น้ำแข็ง"},
+    {"Gold Coins", "Goldmünzen", "Pièces d'or", "Monete d'oro", "Monedas de oro", "Moedas de ouro", "Złote monety", "Золотые монеты", "Золоті монети", "Altın paralar", "金貨", "금화", "金币", "金幣", "เหรียญทอง"},
+    {"Archaic Essence", "Archaische Essenz", "Essence archaïque", "Essenza arcaica", "Esencia arcaica", "Essência arcaica", "Archaiczna esencja", "Древняя эссенция", "Давня есенція", "Kadim öz", "古代のエッセンス", "고대의 정수", "远古精华", "遠古精華", "แก่นโบราณ"},
+    {"Corncob", "Maiskolben", "Épi de maïs", "Pannocchia", "Mazorca", "Espiga de milho", "Kolba kukurydzy", "Початок кукурузы", "Качан кукурудзи", "Mısır koçanı", "トウモロコシ", "옥수수", "玉米", "玉米", "ฝักข้าวโพด"},
+    {"Aureolin Flower", "Aureolinblume", "Fleur d'auréoline", "Fiore di aureolina", "Flor de aureolina", "Flor de aureolina", "Kwiat aureoliny", "Ауреолиновый цветок", "Квітка ауреоліну", "Aureolin çiçeği", "オーレオリンの花", "오레올린 꽃", "金黄花", "金黃花", "ดอกออเรโอลิน"},
+    {"Strawberry", "Erdbeere", "Fraise", "Fragola", "Fresa", "Morango", "Truskawka", "Клубника", "Полуниця", "Çilek", "イチゴ", "딸기", "草莓", "草莓", "สตรอว์เบอร์รี"},
+    {"Forest Beet", "Waldrübe", "Betterave des bois", "Barbabietola selvatica", "Remolacha silvestre", "Beterraba silvestre", "Burak leśny", "Лесная свёкла", "Лісовий буряк", "Orman pancarı", "森のビート", "숲 비트", "森林甜菜", "森林甜菜", "บีทรูทป่า"},
+    {"Flax", "Flachs", "Lin", "Lino", "Lino", "Linho", "Len", "Лён", "Льон", "Keten", "亜麻", "아마", "亚麻", "亞麻", "ป่าน"},
+    {"Chamomile", "Kamille", "Camomille", "Camomilla", "Manzanilla", "Camomila", "Rumianek", "Ромашка", "Ромашка", "Papatya", "カモミール", "캐모마일", "洋甘菊", "洋甘菊", "คาโมมายล์"},
+    {"Stinging Nettle", "Brennnessel", "Ortie", "Ortica", "Ortiga", "Urtiga", "Pokrzywa", "Крапива", "Кропива", "Isırgan otu", "イラクサ", "쐐기풀", "荨麻", "蕁麻", "ตำแย"},
+    {"Indigo Plant", "Indigopflanze", "Indigotier", "Pianta d'indaco", "Planta de índigo", "Anileira", "Indygowiec", "Индигоноска", "Індигоноска", "Çivit bitkisi", "藍", "쪽", "木蓝", "木藍", "ต้นคราม"},
+    {"Hazelnut", "Haselnuss", "Noisette", "Nocciola", "Avellana", "Avelã", "Orzech laskowy", "Лесной орех", "Лісовий горіх", "Fındık", "ヘーゼルナッツ", "헤이즐넛", "榛子", "榛果", "เฮเซลนัท"},
+    {"Rooibos", "Rooibos", "Rooibos", "Rooibos", "Rooibos", "Rooibos", "Rooibos", "Ройбуш", "Ройбуш", "Rooibos", "ルイボス", "루이보스", "路易波士", "路易波士", "รอยบอส"},
+    {"Bell Pepper", "Paprika", "Poivron", "Peperone", "Pimiento", "Pimentão", "Papryka", "Сладкий перец", "Солодкий перець", "Dolmalık biber", "ピーマン", "피망", "甜椒", "甜椒", "พริกหยวก"},
+    {"Sage Leaves", "Salbeiblätter", "Feuilles de sauge", "Foglie di salvia", "Hojas de salvia", "Folhas de sálvia", "Liście szałwii", "Листья шалфея", "Листя шавлії", "Adaçayı yaprakları", "セージの葉", "세이지 잎", "鼠尾草叶", "鼠尾草葉", "ใบเสจ"},
+    {"Sugar Cane", "Zuckerrohr", "Canne à sucre", "Canna da zucchero", "Caña de azúcar", "Cana-de-açúcar", "Trzcina cukrowa", "Сахарный тростник", "Цукрова тростина", "Şeker kamışı", "サトウキビ", "사탕수수", "甘蔗", "甘蔗", "อ้อย"},
+    {"Aloe", "Aloe", "Aloès", "Aloe", "Aloe", "Babosa", "Aloes", "Алоэ", "Алое", "Aloe", "アロエ", "알로에", "芦荟", "蘆薈", "ว่านหางจระเข้"},
+    {"Saffron", "Safran", "Safran", "Zafferano", "Azafrán", "Açafrão", "Szafran", "Шафран", "Шафран", "Safran", "サフラン", "사프란", "藏红花", "番紅花", "หญ้าฝรั่น"},
+    {"Grapple Plant", "Greifpflanze", "Plante grappin", "Pianta rampino", "Planta garfio", "Planta-gancho", "Roślina z hakiem", "Растение-крюк", "Рослина-гак", "Kanca bitkisi", "グラップル植物", "갈고리 식물", "钩爪植物", "鉤爪植物", "พืชตะขอ"},
+    {"Shadowbloom", "Schattenblüte", "Fleur d'ombre", "Fiore d'ombra", "Flor de sombra", "Flor-sombria", "Cienisty kwiat", "Теневой цветок", "Тіньовий квіт", "Gölge çiçeği", "影の花", "그림자꽃", "暗影花", "暗影花", "ดอกเงา"},
+    {"Wolfsbane", "Eisenhut", "Aconit", "Aconito", "Acónito", "Acônito", "Tojad", "Аконит", "Аконіт", "Kurtboğan", "トリカブト", "투구꽃", "乌头", "烏頭", "อะโคไนต์"},
+    {"Gentian", "Enzian", "Gentiane", "Genziana", "Genciana", "Genciana", "Goryczka", "Горечавка", "Тирлич", "Centiyan", "リンドウ", "용담", "龙胆", "龍膽", "เจนเชียน"},
+    {"Taro", "Taro", "Taro", "Taro", "Taro", "Inhame", "Taro", "Таро", "Таро", "Gölevez", "タロイモ", "토란", "芋头", "芋頭", "เผือก"},
+    {"Ginger", "Ingwer", "Gingembre", "Zenzero", "Jengibre", "Gengibre", "Imbir", "Имбирь", "Імбир", "Zencefil", "ショウガ", "생강", "生姜", "生薑", "ขิง"},
+    {"Shiitake Mushroom", "Shiitake-Pilz", "Champignon shiitaké", "Fungo shiitake", "Seta shiitake", "Cogumelo shiitake", "Grzyb shiitake", "Гриб шиитаке", "Гриб шиїтаке", "Şitake mantarı", "シイタケ", "표고버섯", "香菇", "香菇", "เห็ดหอม"},
+    {"Papyrus", "Papyrus", "Papyrus", "Papiro", "Papiro", "Papiro", "Papirus", "Папирус", "Папірус", "Papirüs", "パピルス", "파피루스", "纸莎草", "紙莎草", "ต้นปาปิรัส"},
+    {"Algae", "Algen", "Algues", "Alghe", "Algas", "Algas", "Glony", "Водоросли", "Водорості", "Yosun", "藻", "해조류", "藻类", "藻類", "สาหร่าย"},
+    {"Daylily", "Taglilie", "Hémérocalle", "Emerocallide", "Lirio de día", "Lírio-de-um-dia", "Liliowiec", "Лилейник", "Лілійник", "Gün zambağı", "デイリリー", "원추리", "萱草", "萱草", "เดย์ลิลลี่"},
+    {"Thyme", "Thymian", "Thym", "Timo", "Tomillo", "Tomilho", "Tymianek", "Тимьян", "Чебрець", "Kekik", "タイム", "타임", "百里香", "百里香", "ไธม์"},
+    {"Aurora Beans", "Aurorabohnen", "Haricots aurore", "Fagioli aurora", "Judías aurora", "Feijões aurora", "Fasola zorzy", "Бобы авроры", "Боби аврори", "Aurora fasulyesi", "オーロラ豆", "오로라 콩", "极光豆", "極光豆", "ถั่วออโรรา"},
+    {"Prickle Pearl", "Stachelperle", "Perle épineuse", "Perla spinosa", "Perla espinosa", "Pérola espinhosa", "Kolczasta perła", "Колючая жемчужина", "Колюча перлина", "Dikenli inci", "トゲ真珠", "가시 진주", "刺珍珠", "刺珍珠", "ไข่มุกหนาม"},
+    {"Grandleaf Cabbage", "Großblattkohl", "Chou à grandes feuilles", "Cavolo a foglia grande", "Col de hoja grande", "Repolho de folha grande", "Kapusta wielkolistna", "Крупнолистная капуста", "Великолиста капуста", "Büyük yapraklı lahana", "大葉キャベツ", "큰잎 양배추", "大叶卷心菜", "大葉高麗菜", "กะหล่ำใบใหญ่"},
+    {"Bloomheart Fruit", "Blütenherzfrucht", "Fruit coeur-de-fleur", "Frutto cuorfiore", "Fruta corazón de flor", "Fruta coração-de-flor", "Owoc kwietnego serca", "Плод цветочного сердца", "Плід квіткового серця", "Çiçek kalbi meyvesi", "ブルームハートの実", "블룸하트 열매", "花心果", "花心果", "ผลบลูมฮาร์ท"},
+    {"Fire Fly", "Glühwürmchen", "Luciole", "Lucciola", "Luciérnaga", "Vaga-lume", "Świetlik", "Светлячок", "Світлячок", "Ateş böceği", "ホタル", "반딧불이", "萤火虫", "螢火蟲", "หิ่งห้อย"},
+    {"Grasshoppers", "Grashüpfer", "Sauterelles", "Cavallette", "Saltamontes", "Gafanhotos", "Koniki polne", "Кузнечики", "Коники", "Çekirgeler", "バッタ", "메뚜기", "蚱蜢", "蚱蜢", "ตั๊กแตน"},
+    {"Scarab", "Skarabäus", "Scarabée", "Scarabeo", "Escarabajo", "Escaravelho", "Skarabeusz", "Скарабей", "Скарабей", "Bok böceği", "スカラベ", "스카라베", "圣甲虫", "聖甲蟲", "แมลงสคารับ"},
+    {"Pillbug", "Rollassel", "Cloporte", "Porcellino di terra", "Cochinilla", "Tatuzinho", "Prosionek", "Мокрица", "Мокриця", "Tespih böceği", "ダンゴムシ", "공벌레", "鼠妇", "鼠婦", "แมลงม้วนตัว"},
+    {"Frog", "Frosch", "Grenouille", "Rana", "Rana", "Rã", "Żaba", "Лягушка", "Жаба", "Kurbağa", "カエル", "개구리", "青蛙", "青蛙", "กบ"},
+    {"Maggots", "Maden", "Asticots", "Larve", "Gusanos", "Larvas", "Larwy", "Личинки", "Личинки", "Kurtçuklar", "ウジ", "구더기", "蛆", "蛆", "หนอนแมลงวัน"},
+    {"Springlands Trees", "Frühlingsland-Bäume", "Arbres des Terres printanières", "Alberi delle Terre Primaverili", "Árboles de las Tierras Primaverales", "Árvores das Terras Primaveris", "Drzewa Wiosennych Ziem", "Деревья Весенних земель", "Дерева Весняних земель", "Bahar Toprakları ağaçları", "春の地の木", "봄의 땅 나무", "春之地树木", "春之地樹木", "ต้นไม้ดินแดนวสันต์"},
+    {"Resin Trees", "Harzbäume", "Arbres à résine", "Alberi da resina", "Árboles de resina", "Árvores de resina", "Drzewa żywiczne", "Смолистые деревья", "Смолисті дерева", "Reçine ağaçları", "樹脂の木", "수지 나무", "树脂树", "樹脂樹", "ต้นยางไม้"},
+    {"Hornbeam", "Hainbuche", "Charme", "Carpino", "Carpe", "Carpino", "Grab", "Граб", "Граб", "Gürgen", "シデ", "서어나무", "鹅耳枥", "鵝耳櫪", "ต้นฮอร์นบีม"},
+    {"Revelwood Trees", "Revelwood-Bäume", "Arbres de Revelwood", "Alberi di Revelwood", "Árboles de Revelwood", "Árvores de Revelwood", "Drzewa Revelwood", "Деревья Ревелвуда", "Дерева Ревелвуду", "Revelwood ağaçları", "レベルウッドの木", "레벨우드 나무", "Revelwood 树木", "Revelwood 樹木", "ต้นไม้เรเวลวูด"},
+    {"Giant Trees", "Riesenbäume", "Arbres géants", "Alberi giganti", "Árboles gigantes", "Árvores gigantes", "Olbrzymie drzewa", "Гигантские деревья", "Гігантські дерева", "Dev ağaçlar", "巨木", "거대한 나무", "巨树", "巨樹", "ต้นไม้ยักษ์"},
+    {"Highlands Trees", "Hochlandbäume", "Arbres des Hautes-Terres", "Alberi degli Altopiani", "Árboles de las Tierras Altas", "Árvores das Terras Altas", "Drzewa wyżynne", "Деревья нагорья", "Дерева нагір'я", "Yayla ağaçları", "高地の木", "고지대 나무", "高地树木", "高地樹木", "ต้นไม้ที่ราบสูง"},
+    {"Date Palms", "Dattelpalmen", "Palmiers dattiers", "Palme da dattero", "Palmeras datileras", "Tamareiras", "Palmy daktylowe", "Финиковые пальмы", "Фінікові пальми", "Hurma ağaçları", "ナツメヤシ", "대추야자", "椰枣树", "椰棗樹", "ต้นอินทผลัม"},
+    {"Albaneve Trees", "Albaneve-Bäume", "Arbres d'Albaneve", "Alberi di Albaneve", "Árboles de Albaneve", "Árvores de Albaneve", "Drzewa Albaneve", "Деревья Албанева", "Дерева Албанева", "Albaneve ağaçları", "アルバネーベの木", "알바네베 나무", "Albaneve 树木", "Albaneve 樹木", "ต้นไม้อัลบาเนเว"},
+    {"Juniper", "Wacholder", "Genévrier", "Ginepro", "Enebro", "Zimbro", "Jałowiec", "Можжевельник", "Ялівець", "Ardıç", "ネズ", "노간주나무", "杜松", "杜松", "จูนิเปอร์"},
+    {"Mountain Pine", "Bergkiefer", "Pin de montagne", "Pino mugo", "Pino de montaña", "Pinheiro-da-montanha", "Kosodrzewina", "Горная сосна", "Гірська сосна", "Dağ çamı", "ハイマツ", "산소나무", "山松", "山松", "สนภูเขา"},
+    {"Birch", "Birke", "Bouleau", "Betulla", "Abedul", "Bétula", "Brzoza", "Берёза", "Береза", "Huş", "シラカバ", "자작나무", "桦树", "樺樹", "ต้นเบิร์ช"},
+    {"Deadwood", "Totholz", "Bois mort", "Legno morto", "Madera muerta", "Madeira morta", "Martwe drewno", "Сухостой", "Сухостій", "Ölü ağaç", "枯れ木", "고사목", "枯木", "枯木", "ไม้ตาย"},
+    {"Veilwater Trees", "Veilwater-Bäume", "Arbres de Veilwater", "Alberi di Veilwater", "Árboles de Veilwater", "Árvores de Veilwater", "Drzewa Veilwater", "Деревья Вейлвотера", "Дерева Вейлвотера", "Veilwater ağaçları", "ヴェイルウォーターの木", "베일워터 나무", "Veilwater 树木", "Veilwater 樹木", "ต้นไม้เวลวอเทอร์"},
+    {"Mangrove", "Mangroven", "Palétuviers", "Mangrovie", "Manglares", "Mangues", "Namorzyny", "Мангровые деревья", "Мангрові дерева", "Mangrov", "マングローブ", "맹그로브", "红树", "紅樹", "ต้นโกงกาง"},
+    {"Coconut Palms", "Kokospalmen", "Cocotiers", "Palme da cocco", "Cocoteros", "Coqueiros", "Palmy kokosowe", "Кокосовые пальмы", "Кокосові пальми", "Hindistan cevizi ağaçları", "ココヤシ", "코코넛 야자", "椰子树", "椰子樹", "ต้นมะพร้าว"},
+    {"Licuala Palms", "Licuala-Palmen", "Palmiers licuala", "Palme licuala", "Palmeras licuala", "Palmeiras licuala", "Palmy licuala", "Пальмы ликуала", "Пальми лікуала", "Licuala palmiyeleri", "リクアラヤシ", "리쿠알라 야자", "圆叶轴榈", "圓葉軸櫚", "ปาล์มพัด"},
+    {"Bamboo", "Bambus", "Bambou", "Bambù", "Bambú", "Bambu", "Bambus", "Бамбук", "Бамбук", "Bambu", "竹", "대나무", "竹子", "竹子", "ไผ่"},
+    {"Coffee Trees", "Kaffeebäume", "Caféiers", "Piante di caffè", "Cafetos", "Cafeeiros", "Kawowce", "Кофейные деревья", "Кавові дерева", "Kahve ağaçları", "コーヒーの木", "커피나무", "咖啡树", "咖啡樹", "ต้นกาแฟ"},
+    {"Return Beacon", "Rückkehrleuchtfeuer", "Balise de retour", "Faro del ritorno", "Baliza de retorno", "Farol de retorno", "Latarnia powrotu", "Маяк возвращения", "Маяк повернення", "Dönüş işareti", "帰還のビーコン", "귀환 신호기", "返回信标", "返回信標", "สัญญาณกลับ"},
+};
+// clang-format on
+
 // Steam's language codes, by Lang.
 const char* const kSteamCodes[kLangs] = {
     "english", "german", "french", "italian", "spanish", "brazilian", "polish", "russian", "ukrainian", "turkish",
@@ -467,6 +562,26 @@ void EnsureLanguage(const char* configPath) {
 bool Decided() { return g_decided; }
 
 bool FollowsGame() { return g_followsGame; }
+
+bool GameTextInCurrentLanguage() {
+    if (g_followsGame) return true;
+    static int known = -1; // -1 not asked yet (Steam not up), else 0 / 1
+    if (known < 0) {
+        const char* steam = SteamGameLanguage();
+        if (!steam) return false;
+        Lang game{};
+        known = (LangFromCode(steam, game) ? game : Lang::English) == g_lang ? 1 : 0;
+    }
+    return known == 1;
+}
+
+size_t ResourceNameCount() { return sizeof(kResourceNames) / sizeof(kResourceNames[0]); }
+
+const char* ResourceName(size_t index) {
+    if (index >= ResourceNameCount()) return nullptr;
+    const char* text = kResourceNames[index][static_cast<int>(g_lang)];
+    return (text && *text) ? text : kResourceNames[index][0];
+}
 
 Lang Current() { return g_lang; }
 

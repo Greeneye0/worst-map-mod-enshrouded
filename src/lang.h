@@ -38,11 +38,18 @@ void EnsureLanguage(const char* configPath);
 bool Decided();
 // True when the language came from the game (Steam), not from Language= in the ini.
 bool FollowsGame();
+// True when the game's own text (item names) is in the mod's language: it follows the game, or the ini names
+// the game's language.
+bool GameTextInCurrentLanguage();
 Lang Current();
 const char* SteamCode(Lang lang);
 
 // The text for the current language (English when a translation is missing).
 const char* T(Str s);
+
+// A resource row's name (ore_deposits.h kOreLabels order) in the current language.
+size_t ResourceNameCount();
+const char* ResourceName(size_t index);
 
 // "1 match" / "12 matches" in English, "Treffer: 12" style elsewhere (no plural rules needed).
 std::string FormatMatches(size_t count);

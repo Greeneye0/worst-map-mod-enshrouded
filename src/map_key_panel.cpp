@@ -56,7 +56,7 @@ static_assert(sizeof(kOreCategory) / sizeof(kOreCategory[0]) == static_cast<size
 static_assert(sizeof(kOreAreaColors) / sizeof(kOreAreaColors[0]) == static_cast<size_t>(Ore::Count), "one colour per row");
 static_assert(sizeof(kOreLabels) / sizeof(kOreLabels[0]) == kOreCount, "one label per ore");
 static_assert(sizeof(kOreIcons) / sizeof(kOreIcons[0]) == kOreCount, "one icon per ore");
-static_assert(sizeof(kOreNameTags) / sizeof(kOreNameTags[0]) == kOreCount, "one name per ore");
+static_assert(sizeof(kOreNameLocaIds) / sizeof(kOreNameLocaIds[0]) == kOreCount, "one name per ore");
 bool IsOreHash(uint32_t h) { return h >= kOreTypeHashBase && h < kOreTypeHashBase + kOreCount; }
 size_t OreIndexOf(uint32_t h) { return h - kOreTypeHashBase; }
 uint32_t OreHash(size_t ore) { return kOreTypeHashBase + static_cast<uint32_t>(ore); }
@@ -578,7 +578,10 @@ constexpr MarkerRowSpec kCategory2Rows[] = {
     {0x2756cf65u, 0u, 2, "Shroud Lair", umm_lang::Str::ShroudLair},
     {0x4ece72ccu, 0u, 2, "Hollow Halls", umm_lang::Str::HollowHalls},
     {0x41a86870u, 0u, 2, "Hidden Tomb", umm_lang::Str::HiddenTomb},
+    // Return Beacons: a resource row (ore_deposits.h), drawn by the mod like the deposits; text from OreName
+    {kOreTypeHashBase + static_cast<uint32_t>(kBeaconsFirst), 0u, 2, kOreLabels[kBeaconsFirst], umm_lang::Str::CatShroud},
 };
+static_assert(kBeaconsCount == 1, "one Return Beacon row");
 
 constexpr MarkerRowSpec kCategory3Rows[] = {
     {kGoldChestTypeHash, 0u, 3, "Gold Chest", umm_lang::Str::GoldChest},
@@ -621,7 +624,8 @@ constexpr auto kBaitRows = MakeResourceRows<kBaitFirst, kBaitCategory, umm_lang:
     std::make_index_sequence<kBaitCount>{});
 constexpr auto kTreesRows = MakeResourceRows<kTreesFirst, kTreesCategory, umm_lang::Str::CatTrees>(
     std::make_index_sequence<kTreesCount>{});
-static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount == kOreCount, "every row in one category");
+static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount == kOreCount,
+              "every row in one category");
 
 struct CategoryGroupSpec {
     uint8_t category;
@@ -1025,12 +1029,16 @@ void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category
     } else if (category == 0) {
         g_otherPlayersEnabled = enable;
         SaveMinimapConfig();
-    } else if (IsResourceCategory(category)) {
-        for (size_t o = 0; o < kOreCount; ++o) {
-            if (kOreCategory[o] == category) g_oreEnabled[o] = enable;
-        }
-        SaveMinimapConfig();
     }
+    // Resource rows: the resource groups, and the Return Beacons in Shroud
+    bool anyResource = false;
+    for (size_t o = 0; o < kOreCount; ++o) {
+        if (kOreCategory[o] == category) {
+            g_oreEnabled[o] = enable;
+            anyResource = true;
+        }
+    }
+    if (anyResource) SaveMinimapConfig();
     auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
     size_t count = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
     for (size_t i = 0; i < count; ++i) {
@@ -1071,12 +1079,10 @@ bool IsCategoryEnabled(FilterEntry* entries, size_t count, uint8_t category) {
     if (category == 0 && g_otherPlayersEnabled) {
         return true;
     }
-    if (IsResourceCategory(category)) {
-        for (size_t o = 0; o < kOreCount; ++o) {
-            if (kOreCategory[o] == category && g_oreEnabled[o]) return true;
-        }
-        return false;
+    for (size_t o = 0; o < kOreCount; ++o) {
+        if (kOreCategory[o] == category && g_oreEnabled[o]) return true;
     }
+    if (IsResourceCategory(category)) return false;
     for (size_t i = 0; i < count; ++i) {
         if (entries[i].category == category && entries[i].enabled != 0) {
             return true;
@@ -3493,8 +3499,8 @@ bool ReadLocaText(uint32_t locaId, char* out, size_t cap) {
     }
 }
 
-// An ore's name: the game's own item name ("Kupfererz") when the mod follows the game's language,
-// otherwise (English, or a language set in the ini) the mod's English row name.
+// An ore's name: the game's own item name ("Kupfererz") when the game's text is in the mod's language,
+// otherwise (no single item, the lookup failed, or the ini names another language) the mod's translation.
 const char* OreName(size_t ore) {
     if (ore >= kOreCount) return "";
     static char names[kOreCount][96]{};
@@ -3505,13 +3511,21 @@ const char* OreName(size_t ore) {
         std::memset(state, 0, sizeof(state));
         builtFor = lang;
     }
-    if (umm_lang::FollowsGame() && umm_lang::Current() != umm_lang::Lang::English) {
+    if (umm_lang::Current() == umm_lang::Lang::English) return kOreLabels[ore];
+    if (umm_lang::GameTextInCurrentLanguage() && kOreNameLocaIds[ore] != 0u) {
         if (state[ore] == 0 && GetUiClient()) {
-            state[ore] = ReadLocaText(GuidToLocaId(kOreNameTags[ore]), names[ore], sizeof(names[ore])) ? 1 : 2;
+            state[ore] = ReadLocaText(kOreNameLocaIds[ore], names[ore], sizeof(names[ore])) ? 1 : 2;
+            static bool loggedMiss = false;
+            if (state[ore] == 2 && g_log && !loggedMiss) {
+                loggedMiss = true;
+                g_log("Resource names: the game has no %s text for %s, using the mod's", umm_lang::SteamCode(umm_lang::Current()),
+                      kOreLabels[ore]);
+            }
         }
         if (state[ore] == 1) return names[ore];
     }
-    return kOreLabels[ore];
+    const char* own = umm_lang::ResourceName(ore);
+    return own ? own : kOreLabels[ore];
 }
 
 // The enabled tree areas on the World Map: each forest as one filled shape, named in the bigger ones.
@@ -5311,11 +5325,13 @@ void LoadMinimapConfig() {
     char ores[512]{};
     GetPrivateProfileStringA("Mining", "Ores", "", ores, sizeof(ores), cfg.c_str());
     // 1.3.3 split Fertilised Farm Soil off Farm Soil, one row after it: an older 86-row string gets that row's bit
-    // copied from Farm Soil so every later row keeps its setting.
-    if (std::strlen(ores) == kOreCount - 1) {
+    // copied from Farm Soil so every later row keeps its setting. Rows added at the end since (Return Beacon) are
+    // simply off in an older, shorter string.
+    constexpr size_t kRowsBefore133 = 86;
+    if (std::strlen(ores) == kRowsBefore133) {
         constexpr size_t kFertilised = static_cast<size_t>(Ore::FertilisedFarmSoil);
         static_assert(kFertilised == static_cast<size_t>(Ore::FarmSoil) + 1, "Fertilised follows Farm Soil");
-        std::memmove(ores + kFertilised + 1, ores + kFertilised, kOreCount - 1 - kFertilised + 1);
+        std::memmove(ores + kFertilised + 1, ores + kFertilised, kRowsBefore133 - kFertilised + 1);
         ores[kFertilised] = ores[kFertilised - 1];
     }
     for (size_t o = 0; o < kOreCount; ++o) g_oreEnabled[o] = ores[o] == '1';
@@ -6592,8 +6608,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                     sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
                     continue;
                 }
+                // Return Beacons layer with the Shroud pins; deposits stay under everything
                 drawList.push_back(MinimapMarkerDraw{sx, sy, 13.0f * btnScale, kOreIcons[dep.ore],
-                    unexplored ? 0xFF8C9296u : 0xFFFFFFFFu, unexplored ? 0.55f : 0.95f, kMiningCategory, false, false});
+                    unexplored ? 0xFF8C9296u : 0xFFFFFFFFu, unexplored ? 0.55f : 0.95f,
+                    IsResourceCategory(kOreCategory[dep.ore]) ? kMiningCategory : kOreCategory[dep.ore], false, false});
             }
         }
 
