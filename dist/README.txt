@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.5
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.6
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, a
@@ -34,7 +34,6 @@ On the right of the world map.
   MATERIALS, PLANTS, BAIT, TREES, QUESTS & RUMORS) to switch the whole category, or + / - to
   fold it.
 - The mouse wheel or the scroll bar scrolls the list.
-- COMPLETED QUESTS (off at first) shows the quests you've finished.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
 - Every gold and silver chest in the world is included: all 448 gold and 1032 silver
@@ -164,6 +163,12 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.6
+- Finished quests leave the map: a quest you've completed no longer keeps its pin, a main
+  quest's area circle goes with it, and a lore rumor about something you've already found is
+  gone too (reported by inShaneity).
+- The Completed Quests filter is removed: finished quests are always hidden, as in the game.
+
 1.3.5
 - Minimap weather now shows the game's real weather: Rain, Snow, and Storm for a blizzard (it
   always said Clear). The game has no fog weather.
