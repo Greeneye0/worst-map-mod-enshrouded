@@ -90,8 +90,8 @@ void WriteFiltersJson(uint8_t* client, JsonOut& j) {
     j.Raw("]}");
 }
 
-// A row: its English label, "pin1".."pin10" or "0x<typeHash>". Sets rowHash (+ pairedHash).
-bool FindFilterRow(const char* target, uint32_t& rowHash, uint32_t& pairedHash) {
+// A row: its English label, "pin1".."pin10" or "0x<typeHash>". Sets rowHash (+ pairedHash, pairedHash2).
+bool FindFilterRow(const char* target, uint32_t& rowHash, uint32_t& pairedHash, uint32_t& pairedHash2) {
     uint32_t hash = 0;
     if ((target[0] == '0') && (target[1] == 'x' || target[1] == 'X')) hash = std::strtoul(target, nullptr, 16);
     for (size_t p = 0; p < 10; ++p) {
@@ -100,6 +100,7 @@ bool FindFilterRow(const char* target, uint32_t& rowHash, uint32_t& pairedHash) 
         if (EqualsNoCase(target, name) || hash == kCustomPinHashes[p]) {
             rowHash = kCustomPinHashes[p];
             pairedHash = 0;
+            pairedHash2 = 0;
             return true;
         }
     }
@@ -108,6 +109,7 @@ bool FindFilterRow(const char* target, uint32_t& rowHash, uint32_t& pairedHash) 
             if ((hash && grp.rows[r].typeHash == hash) || EqualsNoCase(target, grp.rows[r].label)) {
                 rowHash = grp.rows[r].typeHash;
                 pairedHash = grp.rows[r].pairedHash;
+                pairedHash2 = grp.rows[r].pairedHash2;
                 return true;
             }
         }
@@ -145,12 +147,13 @@ extern "C" __declspec(dllexport) int MapNativeFilters(const char* action, const 
             else if (cat < kCategoryGroupCount) g_categoryCollapsed[cat] = collapse;
             else return -3;
         } else {
-            uint32_t rowHash = 0, pairedHash = 0;
+            uint32_t rowHash = 0, pairedHash = 0, pairedHash2 = 0;
             if (all) SetAllFiltersState(client, nullptr, on);
             else if (cat < kCategoryGroupCount) SetCategoryFilterState(client, nullptr, kCategoryGroups[cat].category, on);
-            else if (FindFilterRow(target, rowHash, pairedHash)) {
+            else if (FindFilterRow(target, rowHash, pairedHash, pairedHash2)) {
                 SetSingleFilterState(client, nullptr, rowHash, on);
                 if (pairedHash) SetSingleFilterState(client, nullptr, pairedHash, on);
+                if (pairedHash2) SetSingleFilterState(client, nullptr, pairedHash2, on);
             } else return -3;
             g_bridgeRefreshMap = true;
         }

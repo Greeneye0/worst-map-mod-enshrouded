@@ -559,6 +559,7 @@ struct MarkerRowSpec {
     uint8_t category;
     const char* label;       // English: logs and English searches
     umm_lang::Str text;      // what the panel shows
+    uint32_t pairedHash2 = 0u; // a second type the row switches with it (Water Source: the world's water)
 };
 
 constexpr MarkerRowSpec kCategory1Rows[] = {
@@ -568,7 +569,10 @@ constexpr MarkerRowSpec kCategory1Rows[] = {
     {0x6df85109u, 0u, 1, "Night Sanctum", umm_lang::Str::NightSanctum},
     {0xf455a765u, 0u, 1, "Gem Forge", umm_lang::Str::GemForge},
     {0xad6a9d9fu, 0u, 1, "Ancient Obelisk", umm_lang::Str::AncientObelisk},
-    {0x4293eae5u, 0u, 1, "Water Source", umm_lang::Str::WaterSource},
+    // The game's Water Source marker is only the water players build; the row also switches the world's Water Wells
+    // and Water Barrels (resource rows in ore_deposits.h, drawn by the mod) and counts them
+    {0x4293eae5u, kOreTypeHashBase + static_cast<uint32_t>(kWaterFirst), 1, "Water Source", umm_lang::Str::WaterSource,
+     kOreTypeHashBase + static_cast<uint32_t>(kWaterFirst + 1)},
     {0x1095684eu, 0u, 1, "Fast Travel Point", umm_lang::Str::FastTravelPoint},
 };
 
@@ -625,7 +629,8 @@ constexpr auto kBaitRows = MakeResourceRows<kBaitFirst, kBaitCategory, umm_lang:
     std::make_index_sequence<kBaitCount>{});
 constexpr auto kTreesRows = MakeResourceRows<kTreesFirst, kTreesCategory, umm_lang::Str::CatTrees>(
     std::make_index_sequence<kTreesCount>{});
-static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount == kOreCount,
+static_assert(kWaterCount == 2, "Water Well and Water Barrel rows");
+static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount == kOreCount,
               "every row in one category");
 
 struct CategoryGroupSpec {
@@ -699,6 +704,7 @@ constexpr size_t kMaxCategoryId = 16;
 std::unordered_set<uint32_t> g_lockedRows; // row type hashes (a paired hash goes with its row)
 bool g_lockedCategories[kMaxCategoryId]{};
 std::unordered_map<uint32_t, bool> g_lockedStates; // the locked rows' ON / OFF as last saved
+bool g_applyingLockedStates = false;               // ApplyLockedStates saves once, at the end
 void SaveFilterLocks();
 
 bool IsCategoryLocked(uint8_t category) { return category < kMaxCategoryId && g_lockedCategories[category]; }
@@ -708,6 +714,7 @@ uint32_t RowHashOf(uint32_t typeHash) {
     for (const auto& grp : kCategoryGroups) {
         for (size_t r = 0; r < grp.rowCount; ++r) {
             if (grp.rows[r].pairedHash != 0u && grp.rows[r].pairedHash == typeHash) return grp.rows[r].typeHash;
+            if (grp.rows[r].pairedHash2 != 0u && grp.rows[r].pairedHash2 == typeHash) return grp.rows[r].typeHash;
         }
     }
     return typeHash;
@@ -1158,6 +1165,25 @@ void SetAllFiltersState(uint8_t* client, uint8_t* mapState, bool enable, bool pa
     if (FilterLockCount() > 0) SaveFilterLocks();
 }
 
+// Resource rows a game row switches with it (Water Source's wells and barrels) follow that row's state, which the
+// game keeps; called once the world is up.
+void SyncLinkedResourceRows(uint8_t* client) {
+    if (!client) return;
+    auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+    const size_t count = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
+    if (count == 0) return;
+    for (const auto& grp : kCategoryGroups) {
+        for (size_t r = 0; r < grp.rowCount; ++r) {
+            const auto& row = grp.rows[r];
+            if (IsOreHash(row.typeHash)) continue;
+            const bool on = IsFilterEnabled(entries, count, row.typeHash);
+            for (uint32_t linked : {row.pairedHash, row.pairedHash2}) {
+                if (IsOreHash(linked)) g_oreEnabled[OreIndexOf(linked)] = on;
+            }
+        }
+    }
+}
+
 // After a load, a reload or a world change: the locked rows back to their saved ON / OFF.
 void ApplyLockedStates(uint8_t* client) {
     if (!client) return;
@@ -1166,14 +1192,18 @@ void ApplyLockedStates(uint8_t* client) {
         return;
     }
     size_t applied = 0;
-    for (const auto& [hash, on] : g_lockedStates) {
+    // A copy: each SetSingleFilterState below saves the locks, which rebuilds g_lockedStates
+    const auto states = g_lockedStates;
+    g_applyingLockedStates = true;
+    for (const auto& [hash, on] : states) {
         uint8_t category = 0xff;
-        uint32_t paired = 0u;
+        uint32_t paired = 0u, paired2 = 0u;
         for (const auto& grp : kCategoryGroups) {
             for (size_t r = 0; r < grp.rowCount; ++r) {
                 if (grp.rows[r].typeHash == hash) {
                     category = grp.category;
                     paired = grp.rows[r].pairedHash;
+                    paired2 = grp.rows[r].pairedHash2;
                 }
             }
             if (grp.category == 4 && std::find(std::begin(kCustomPinHashes), std::end(kCustomPinHashes), hash) !=
@@ -1184,8 +1214,11 @@ void ApplyLockedStates(uint8_t* client) {
         if (category == 0xff || !IsFilterLocked(hash, category)) continue;
         SetSingleFilterState(client, nullptr, hash, on);
         if (paired != 0u) SetSingleFilterState(client, nullptr, paired, on);
+        if (paired2 != 0u) SetSingleFilterState(client, nullptr, paired2, on);
         ++applied;
     }
+    g_applyingLockedStates = false;
+    SaveFilterLocks();
     if (g_log) g_log("Filter locks: restored %zu locked filters", applied);
 }
 
@@ -1420,6 +1453,8 @@ std::vector<std::pair<int32_t, int32_t>> ParseAltars(const char* text) {
     return out;
 }
 
+#include "built_water.inl"
+
 void SaveLootedChests() {
     g_lootSaveDirty = false;
     g_lootLastSaveTick = GetTickCount64();
@@ -1439,6 +1474,7 @@ void SaveLootedChests() {
     }
     WritePrivateProfileStringA(g_lootSection.c_str(), "Altars", altars.c_str(), path.c_str());
     WritePrivateProfileStringA(g_lootSection.c_str(), "Looted", looted.c_str(), path.c_str());
+    SaveBuiltWater(path);
 }
 
 // Finds this world's saved record (or starts one) and merges its looted chests into the current state.
@@ -1453,6 +1489,7 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
         if (!AltarsShared(saved, altars)) continue;
         g_lootSection = name;
         g_lootAltars = saved;
+        LoadBuiltWater(name, path);
         GetPrivateProfileStringA(name, "Looted", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
         const char* t = text.data();
         size_t idx = 0;
@@ -1625,6 +1662,7 @@ void ResetLootWorld(const char* why) {
     if (g_log && !g_lootSection.empty()) g_log("Looted chests: left world %s (%s)", g_lootSection.c_str(), why);
     g_lootSection.clear();
     g_lootAltars.clear();
+    ResetBuiltWater();
     for (auto& s : g_chestLootStates) s = ChestLootState{};
     g_chestLootDirty = true;
     g_lootLastMatchTick = 0;
@@ -1674,9 +1712,11 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
         CollectAltarPositions(client, altars);
         if (!altars.empty()) {
             MatchLootWorld(altars);
+            SyncLinkedResourceRows(client);
             ApplyLockedStates(client); // the world is up: its filters are the game's, put the locked ones back
         }
     }
+    UpdateBuiltWater(client);
 
     // 1. A chest counts as looted when the interact key is pressed next to it and the game switches to its
     //    chest screen (21) right after. The key alone, or the inventory (9) opened by itself, marks nothing.
@@ -3835,7 +3875,30 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
             hoveredSy = sy;
         }
     }
-    if (hovered < kOreDepositCount) {
+    // Built water (built_water.inl), with the world's wells and barrels under Water Source
+    const char* hoveredName = hovered < kOreDepositCount ? OreName(kOreDeposits[hovered].ore) : nullptr;
+    if (g_oreEnabled[kWaterFirst]) {
+        for (const auto& w : g_builtWater) {
+            if (drawn >= maxIcons) break;
+            const float sx = originX + w.x * zoom;
+            const float sy = originY + (mapWorldH - w.z) * zoom;
+            if (sx < left - size || sx > right + size || sy < top - size || sy > bottom + size) continue;
+            const bool underBanner = sy < top + kMapBannerBottom;
+            const float alpha = underBanner ? 0.22f : 1.0f;
+            ++drawn;
+            if (backing) {
+                DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - half - 2.0f, sy - half - 2.0f, size + 4.0f, size + 4.0f,
+                                 0xff0a0e10u, 0.55f * alpha);
+            }
+            DrawIconRectAbs(widgetRaw, kOreIcons[kWaterFirst], sx - half, sy - half, size, size, 0xffffffffu, alpha);
+            if (!underBanner && haveCursor && std::fabs(mx - sx) <= half + 2.0f && std::fabs(my - sy) <= half + 2.0f) {
+                hoveredName = umm_lang::T(umm_lang::Str::WaterSource);
+                hoveredSx = sx;
+                hoveredSy = sy;
+            }
+        }
+    }
+    if (hoveredName) {
         // Like the game's own hover title ("Gem Forge"): bold and large, right of the icon, on a soft shadow.
         // A copy of the game's bold h3 style at 28 px (its identifier string dropped: it is a relative pointer).
         static uint8_t titleStyle[kUiCharacterStyleSize]{};
@@ -3849,12 +3912,13 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
             std::memcpy(titleStyle + kStyleFontSize, &titleSize, sizeof(titleSize));
             titleStyleFor = assets;
         }
-        const char* name = OreName(kOreDeposits[hovered].ore);
+        const char* name = hoveredName;
         const float fontScale = 28.0f / 15.0f; // TextWidth is calibrated on the small text
         const float h = 18.0f * fontScale, w = umm_lang::TextWidth(name) * fontScale + 12.0f;
         const float bx = hoveredSx + half + 10.0f, by = hoveredSy - h * 0.5f;
-        DrawAssetRectAbs(widgetRaw, kSoftGlowPrimitive, bx - 24.0f, by - h * 0.35f, w + 48.0f, h * 1.7f,
-                         0xff000000u, 0.45f);
+        // A faint band behind the text, like the game's own hover title (Silver Chest), not a dark oval
+        DrawAssetRectAbs(widgetRaw, kSoftGlowPrimitive, bx - 12.0f, by - h * 0.05f, w + 24.0f, h * 1.1f,
+                         0xff000000u, 0.22f);
         DrawLabelAbs(bx, by, w, h, name, 0xffffffffu, 1.0f, TextAlignH::Left, TextAlignV::Center, titleStyle);
     }
 }
@@ -4885,6 +4949,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         for (size_t r = 0; r < grp.rowCount; ++r) {
                             const auto& rowSpec = grp.rows[r];
                             int count = hashCounts[hashIdx++];
+                            for (uint32_t linked : {rowSpec.pairedHash, rowSpec.pairedHash2}) {
+                                if (IsOreHash(linked)) count += OreDepositCount(OreIndexOf(linked));
+                                if (linked == OreHash(kWaterFirst)) count += static_cast<int>(g_builtWater.size());
+                            }
                             if (!inView(curY, kItemRowH)) {
                                 curY += kItemRowH;
                                 continue;
@@ -4969,6 +5037,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                 SetSingleFilterState(client, mapState, rowSpec.typeHash, nextState);
                                 if (rowSpec.pairedHash != 0) {
                                     SetSingleFilterState(client, mapState, rowSpec.pairedHash, nextState);
+                                }
+                                if (rowSpec.pairedHash2 != 0) {
+                                    SetSingleFilterState(client, mapState, rowSpec.pairedHash2, nextState);
                                 }
                             }
 
@@ -5621,6 +5692,7 @@ void LoadMinimapConfig() {
 }
 
 void SaveFilterLocks() {
+    if (g_applyingLockedStates) return;
     const std::string cfg = GetMinimapConfigPath();
     std::string rows, cats, collapsed;
     char buf[16]{};
@@ -6915,6 +6987,23 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             }
         }
 
+        // 2d. Built water (built_water.inl), with the world's wells and barrels under Water Source
+        if (g_oreEnabled[kWaterFirst]) {
+            for (const auto& w : g_builtWater) {
+                const float dxMeters = w.x - playerX;
+                const float dzMeters = w.z - playerZ;
+                if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) continue;
+                const float sx = vcx + dxMeters * pxPerMeterX;
+                const float sy = vcy - dzMeters * pxPerMeterY;
+                if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f ||
+                    sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
+                    continue;
+                }
+                drawList.push_back(MinimapMarkerDraw{sx, sy, 13.0f * btnScale, kOreIcons[kWaterFirst], 0xFFFFFFFFu, 0.95f,
+                                                     kOreCategory[kWaterFirst], false, false});
+            }
+        }
+
         // Sort so POIs/Chests (cat 3) render below Vaults (cat 2), Fast Travel/Spires (cat 1), Quests (cat 0), Custom Pins (cat 4)
         auto catPriority = [](uint8_t cat) -> int {
             switch (cat) {
@@ -6967,13 +7056,25 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                                  0xFFFFFFFFu, 0.98f, 1.12f);
             }
             if (md.heightDir != 0) {
+                // A squat caret, wider than tall, flat filled on a dark edge: unlike the players' slender pointers.
                 // Up: green, at the icon's top-right corner. Down: orange, at its bottom-right corner.
                 const bool up = md.heightDir > 0;
-                const float ax = md.sx + md.size * 0.5f;
+                const float k = btnScale, alpha = std::max(0.7f, md.alpha);
+                // Beside the icon; a looted chest's check mark (bottom right) pushes it past the icon's edge
+                const float ax = md.sx + md.size * 0.5f + (md.isCleared ? 4.5f : 1.0f) * k;
                 const float ay = md.sy + (up ? -0.32f : 0.32f) * md.size;
-                DrawPlayerTriangle(anchor.raw, ax, ay, 0.0f, up ? 1.0f : -1.0f, 0.62f * btnScale,
-                                   up ? 0xFF6CC87Cu : 0xFF3C88E8u, up ? 0xFF9CF0ACu : 0xFF64B4FFu,
-                                   std::max(0.6f, md.alpha));
+                const uint32_t col = up ? 0xFF7CE08Cu : 0xFF4C9CF0u;
+                auto drawCaret = [&](float halfBase, float height, uint32_t c, float a) {
+                    constexpr int kRows = 6;
+                    const float rowH = height / kRows;
+                    for (int row = 0; row < kRows; ++row) {
+                        const float w = 2.0f * halfBase * (row + 1) / kRows; // narrow at the point
+                        const float y = up ? ay - height * 0.5f + row * rowH : ay + height * 0.5f - (row + 1) * rowH;
+                        DrawSolidRectAbs(anchor.raw, ax - w * 0.5f, y, w, rowH + 0.25f, c, a);
+                    }
+                };
+                drawCaret(5.6f * k, 5.4f * k, 0xFF0A0E10u, 0.9f * alpha); // the dark edge
+                drawCaret(4.2f * k, 3.8f * k, col, alpha);
             }
         }
 
@@ -7805,6 +7906,7 @@ bool InstallMapKeyPanelHook(LogFn logger) {
         g_origChatAppend = reinterpret_cast<ChatAppendFn>(
             InstallHook(fnChatAppend, reinterpret_cast<void*>(&ChatAppendHook), 13));
     }
+    InstallBuiltWaterHooks();
     if (!g_sendCommand || !g_origChatAppend) {
         g_sendCommand = nullptr; // never send what we could not receive
         if (g_log) g_log("Looted chests: chat functions not found; looted chests are not shared in multiplayer");
