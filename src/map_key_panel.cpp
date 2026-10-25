@@ -1780,7 +1780,7 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
 }
 
 size_t NearestChestTo(float px, float py, float pz) {
-    float bestDistSq = 18.0f; // 4.24m
+    float bestDistSq = 42.25f; // 4.24 m, or 6.5 m for a locked chest (below)
     size_t bestChest = kTotalChestCount;
     for (size_t c = 0; c < kTotalChestCount; ++c) {
         const ChestSpawn& sp = kChestSpawns[c];
@@ -1789,6 +1789,10 @@ size_t NearestChestTo(float px, float py, float pz) {
         float cz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
         if (std::abs(cy - py) > 4.5f) continue;
         float d2 = (cx - px) * (cx - px) + (cz - pz) * (cz - pz);
+        // A locked chest opens from farther away (chest 567 from 5.5 m), so it counts up to 6.5 m
+        const bool locked = sp.subtype == 2 || sp.subtype == 5;
+        if (locked && d2 >= 42.25f) continue;
+        if (!locked && d2 >= 18.0f) continue;
         if (d2 < bestDistSq) {
             bestDistSq = d2;
             bestChest = c;
@@ -1983,6 +1987,8 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
 
     // 1. A chest counts as looted when the interact key is pressed next to it and the game switches to its
     //    chest screen (21) right after. The key alone, or the inventory (9) opened by itself, marks nothing.
+    //    A locked chest is unlocked first, so its chest screen can come several seconds later: the wait is
+    //    10 s, starts over while the key is held, and the chest screen can come after another screen.
     const bool interactDown = appFocused && screen == 1 && (GetAsyncKeyState(g_interactVk) & 0x8000) != 0;
     if (interactDown && !g_interactKeyWasDown) {
         g_lootPendingChest = kTotalChestCount;
@@ -1995,12 +2001,32 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
                                                     static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10),
                                                     static_cast<float>(static_cast<double>(rawZ) * 2.3283064365386963e-10));
                 g_lootPendingTick = nowTick;
+                if (g_lootPendingChest < kTotalChestCount && g_log)
+                    g_log("Looted chests: interact next to chest %zu, waiting for its chest screen", g_lootPendingChest);
+                if (g_lootPendingChest == kTotalChestCount && g_log) {
+                    // No chest close enough: name the nearest one within 15 m, to see how far off it is
+                    const float px = static_cast<float>(static_cast<double>(rawX) * 2.3283064365386963e-10);
+                    const float py = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
+                    const float pz = static_cast<float>(static_cast<double>(rawZ) * 2.3283064365386963e-10);
+                    for (size_t c = 0; c < kTotalChestCount; ++c) {
+                        const ChestSpawn& sp = kChestSpawns[c];
+                        const float dx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f - px;
+                        const float dy = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f - py;
+                        const float dz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f - pz;
+                        if (dx * dx + dz * dz < 225.0f)
+                            g_log("Looted chests: interact at %.1f,%.1f,%.1f; chest %zu is %.1f m off, %.1f m up",
+                                  px, py, pz, c, std::sqrt(dx * dx + dz * dz), dy);
+                    }
+                }
             }
         }
     }
+    if (interactDown && g_interactKeyWasDown && g_lootPendingChest < kTotalChestCount) g_lootPendingTick = nowTick;
     g_interactKeyWasDown = interactDown;
     if (g_lootPendingChest < kTotalChestCount) {
-        if (screen == 21 && g_lootPrevScreen == 1) {
+        if (screen != g_lootPrevScreen && g_log)
+            g_log("Looted chests: screen %u -> %u near chest %zu", g_lootPrevScreen, screen, g_lootPendingChest);
+        if (screen == 21 && g_lootPrevScreen != 21) {
             auto& st = g_chestLootStates[g_lootPendingChest];
             if (!st.looted) {
                 if (g_log) g_log("Looted chests: chest %zu opened", g_lootPendingChest);
@@ -2011,7 +2037,8 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
             st.elapsedOutOfBuildZoneSec = 0.0;
             ShareChestState(g_lootPendingChest, true);
             g_lootPendingChest = kTotalChestCount;
-        } else if (nowTick - g_lootPendingTick > 2000ULL) {
+        } else if (nowTick - g_lootPendingTick > 10000ULL) {
+            if (g_log) g_log("Looted chests: no chest screen for chest %zu, stopped waiting", g_lootPendingChest);
             g_lootPendingChest = kTotalChestCount;
         }
     }

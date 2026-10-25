@@ -1,0 +1,2 @@
+1.3.9
+- Reported bug fixed: a locked chest wasn't marked looted after you picked its lock and looted it (reported by izisot).

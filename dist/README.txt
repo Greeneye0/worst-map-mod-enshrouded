@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.8
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.9
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
@@ -188,6 +188,10 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.9
+- Reported bug fixed: a locked chest wasn't marked looted after you picked its lock and looted
+  it (reported by izisot).
+
 1.3.8
 - Reported bug fixed: the quest circle for your first base stayed on the minimap (and in Find)
   after that quest was done (reported by izisot).
