@@ -1,0 +1,15 @@
+1.3.7
+- Press G twice while playing: everything near you that isn't done yet glows through walls and floors for 14 seconds (unlooted gold and silver chests, unread lore notes, bosses you haven't beaten), and pulses on the map and minimap. Requested by nys4nd3r.
+- Lore Notes: every note and diary in the world on the map (574); the ones you've read are hidden or grayed out like looted chests. Hover one for its title. Requested by Azirael.
+- Bosses: the world's bosses on the map, named like their health bar; beaten ones are hidden or grayed out. Requested by apcallover.
+- Return Beacons: all 282 in the Shroud group. Requested by MrKrabbe.
+- Water Source now also shows the world's wells and water barrels you can drink from, and the ones you build.
+- Filter locks: a padlock next to each switch keeps that filter (and a category's open or closed state) through Show All / Hide All, reloads and updates. Hold Show All or Hide All to change locked filters too. Settings > Filter Locks removes them all.
+- Settings > Completed Places: hide the places the game marks done, like cleared roots and used obelisks. Requested by DrSmiley79.
+- Find: picking a result a filter hides (F2) opens its row in the Map Key and flashes it; lore notes and bosses are found by their own names.
+- Lore notes and bosses get the minimap's up or down arrow too, now a small caret instead of a triangle like the players'.
+- Reported bugs fixed:
+  - Mining, material and plant names were in English in other languages (reported by apcallover).
+  - The World Map jumped back to you after Alt-Tab or a short hitch.
+  - Looted chests carried over into a new world.
+  - Gold and Silver Chest filters turned back on after a restart.

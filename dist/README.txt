@@ -1,9 +1,9 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.6
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.7
 =========================================================================================
 
-Every marker on the world map, every ore deposit, material, plant, bait spot and forest, a
-Map Key & Filters panel, Find on the map, fog and pin modes, looted chests and a minimap on
-your HUD.
+Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
+notes and bosses, a Map Key & Filters panel, Find on the map, fog and pin modes, looted chests,
+a minimap on your HUD, and G G to make what's nearby glow through walls.
 
 
 INSTALL
@@ -38,6 +38,25 @@ On the right of the world map.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
 - Every gold and silver chest in the world is included: all 448 gold and 1032 silver
   chests have their own filter rows.
+- FILTER LOCKS: the padlock left of a switch locks that filter. A locked filter keeps its ON
+  or OFF through SHOW ALL / HIDE ALL, reloads and updates (a locked category also keeps it
+  open or closed); you can still click it. Hold SHOW ALL or HIDE ALL to change locked
+  filters too. Settings > Filter Locks > Remove All unlocks everything.
+- LORE NOTES (QUESTS & RUMORS): every note and diary in the world, 574. Notes you've read
+  are hidden or grayed out (Settings > Looted Chests). Hover one for its title.
+- BOSSES (WORLD & RESOURCES): the world's bosses, named like their health bar; beaten ones
+  are hidden or grayed out.
+- RETURN BEACONS (SHROUD & VAULTS): all 282.
+- WATER SOURCE also shows the world's wells and water barrels you can drink from, and the
+  wells and barrels you build (remembered per world).
+
+
+G G: WHAT'S NEARBY GLOWS
+------------------------
+Press G twice quickly while playing. For 14 seconds everything within 75 m that isn't done
+yet glows through walls and floors: unlooted gold and silver chests (in gold and silver),
+unread lore notes and bosses you haven't beaten, while their filters are on. They pulse on
+the world map and the minimap too.
 
 
 MINING, MATERIALS, PLANTS, BAIT AND TREES
@@ -63,6 +82,8 @@ and [Locked] if you haven't unlocked it yet. Click a result twice, double-click 
 Enter, and the map moves to show it. "All Matching Places - Zoom to fit" (or Enter with
 nothing selected) shows every match at once.
 - F2 (or Ctrl+F) switches whether Find skips marker types you've hidden with the filters.
+  Pick a result a filter hides and the Map Key opens its row and flashes it.
+- Lore notes and bosses are found by their own names.
 - Esc or Shift+F closes it.
 
 
@@ -83,7 +104,10 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
 - Minimap Info Bar: off hides the bar under the minimap; the cog moves to the map's
   bottom-left corner, and [ and ] still zoom. With Show Minimap off and the info bar on, the
   bar (time, weather, cog) stays on screen by itself.
-- Looted Chests        hide them or gray them out.
+- Looted Chests        hide them or gray them out (read lore notes and beaten bosses too).
+- Completed Places     SHOW or HIDE the places the game marks done (cleared roots, used
+                       obelisks, cleared vaults).
+- Filter Locks         how many filters are locked; REMOVE ALL unlocks them.
 Everything is remembered.
 
 
@@ -106,8 +130,8 @@ MINIMAP
 -------
 A minimap with the World Map's terrain, a compass, the time of day (or the weather) and its
 zoom level on your HUD, under the Journal [J] tab at first. Cleared places and looted chests
-show a check mark. A gold or silver chest within 75 m that is 4 m or more above or below you
-gets a green up or orange down arrow.
+show a check mark. A gold or silver chest, lore note or boss within 75 m that is 4 m or more
+above or below you gets a small green up or orange down caret.
 - Hold Shift + Alt: the mouse cursor appears and the camera stops turning, so you can use
   the minimap without swinging your view or attacking.
     drag the minimap                 move it anywhere on screen
@@ -163,6 +187,24 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.7
+- Press G twice while playing: everything near you that isn't done yet glows through walls
+  and floors for 14 seconds (unlooted gold and silver chests, unread lore notes, bosses you
+  haven't beaten), and pulses on the map and minimap. Requested by nys4nd3r.
+- Lore Notes: every note and diary in the world on the map (574); the ones you've read are
+  hidden or grayed out like looted chests. Requested by Azirael.
+- Bosses: the world's bosses on the map, named like their health bar; beaten ones are hidden
+  or grayed out. Requested by apcallover.
+- Return Beacons: all 282 in the Shroud group. Requested by MrKrabbe.
+- Water Source now also shows the world's wells and water barrels, and the ones you build.
+- Filter locks: a padlock keeps a filter through Show All / Hide All, reloads and updates.
+- Settings > Completed Places: hide places the game marks done. Requested by DrSmiley79.
+- Find: picking a hidden result flashes its row in the Map Key; notes and bosses by name.
+- Lore notes and bosses get the minimap's up or down caret too.
+- Reported bugs fixed: mining, material and plant names were in English in other languages
+  (reported by apcallover); the World Map jumped back to you after Alt-Tab; looted chests
+  carried over into a new world; the chest filters turned back on after a restart.
+
 1.3.6
 - Finished quests leave the map: a quest you've completed no longer keeps its pin, a main
   quest's area circle goes with it, and a lore rumor about something you've already found is
