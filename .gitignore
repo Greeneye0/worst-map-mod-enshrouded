@@ -13,3 +13,5 @@ dist/*.zip
 
 # reverse engineering notes, AI session transcripts and dev-only tools
 tools/
+build-dev/
+bin-dev/

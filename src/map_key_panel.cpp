@@ -7337,6 +7337,7 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
     return 1;
 }
 #endif
+#include "map_native_filters.inl"
 
 bool InstallMapKeyPanelHook(LogFn logger) {
     g_log = logger;
