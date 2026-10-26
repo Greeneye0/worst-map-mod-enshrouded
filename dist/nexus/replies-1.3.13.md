@@ -14,3 +14,6 @@ Thank you, glad the mods are what you were after! I'll look into both. The uniqu
 
 ## apcallover: "Thank you! I really like your mod" (thread reply, 26 Oct 12:48 AM)
 You're welcome, glad you like it! It's a labor of love.
+
+## ryuskyn: Auto Loot Plus looted chests don't gray out (thread with HadToRegister, 26 Oct 11:34 AM)
+@ryuskyn Since 1.3.12 the mod reads whether a chest near you is empty straight from the game, so chests Auto Loot Plus empties should gray out or hide too once you've been near them. If they don't, please post greeneye\unlock-map-markers\unlock_map_markers.log and greeneye\loader.log from the game folder.
