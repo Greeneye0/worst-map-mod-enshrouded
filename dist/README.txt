@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.10
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.11
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
@@ -32,7 +32,9 @@ On the right of the world map.
 - SHOW ALL / HIDE ALL at the top switch every marker type at once.
 - Click a category header (FAST TRAVEL & ALTARS, SHROUD & VAULTS, WORLD & RESOURCES, MINING,
   MATERIALS, PLANTS, BAIT, TREES, QUESTS & RUMORS) to switch the whole category, or + / - to
-  fold it.
+  fold it. Drag a category header up or down to move the category; the order is
+  remembered.
+- The rows in each category are sorted by name in your language.
 - The mouse wheel or the scroll bar scrolls the list.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
@@ -43,12 +45,13 @@ On the right of the world map.
   open or closed); you can still click it. Hold SHOW ALL or HIDE ALL to change locked
   filters too. Settings > Filter Locks > Remove All unlocks everything.
 - LORE NOTES (QUESTS & RUMORS): every note and diary in the world, 574. Notes you've read
-  are hidden or grayed out (Settings > Looted Chests). Hover one for its title.
+  are hidden or grayed out (Settings > Looted Chests); unread ones are drawn bigger on an
+  amber ring so they stand out. Hover one for its title.
 - BOSSES (WORLD & RESOURCES): the world's bosses, named like their health bar; beaten ones
   are hidden or grayed out.
 - RETURN BEACONS (SHROUD & VAULTS): all 282.
-- WATER SOURCE also shows the world's wells and water barrels you can drink from, and the
-  wells and barrels you build (remembered per world).
+- WATER SOURCE (WORLD & RESOURCES) also shows the world's wells and water barrels you can
+  drink from, and the wells and barrels you build (remembered per world).
 
 
 G G: WHAT'S NEARBY GLOWS
@@ -84,7 +87,13 @@ nothing selected) shows every match at once.
 - F2 (or Ctrl+F) switches whether Find skips marker types you've hidden with the filters.
   Pick a result a filter hides and the Map Key opens its row and flashes it.
 - Lore notes and bosses are found by their own names.
-- Esc or Shift+F closes it.
+- Esc closes it (Shift+F types a capital F in the search).
+
+
+WORLD MAP ZOOM KEYS
+-------------------
+On the world map, Page Up / Page Down (or numpad + and -) zoom in and out one step, keeping
+the map where it is.
 
 
 SETTINGS
@@ -100,13 +109,15 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
     REVEAL ALL   every pin.
 - Custom Marker Size   the size of your own pins.
 - Show Minimap, Minimap Terrain, Minimap Icon (sun/moon or weather).
+- Time Format: 1:00 PM or 13:00 for the minimap's clock (at first it follows Windows).
 - Minimap Border: ORNATE or THIN (a fine line, so the map takes less room).
 - Minimap Info Bar: off hides the bar under the minimap; the cog moves to the map's
   bottom-left corner, and [ and ] still zoom. With Show Minimap off and the info bar on, the
   bar (time, weather, cog) stays on screen by itself.
 - Looted Chests        hide them or gray them out (read lore notes and beaten bosses too).
 - Completed Places     SHOW or HIDE the places the game marks done (cleared roots, used
-                       obelisks, cleared vaults).
+                       obelisks, cleared vaults) and the Flame and Night Sanctums you've
+                       visited. Shown, visited sanctums get a check mark.
 - Filter Locks         how many filters are locked; REMOVE ALL unlocks them.
 Everything is remembered.
 
@@ -133,7 +144,7 @@ MINIMAP
 A minimap with the World Map's terrain, a compass, the time of day (or the weather) and its
 zoom level on your HUD, under the Journal [J] tab at first. Cleared places and looted chests
 show a check mark. A gold or silver chest, lore note or boss within 75 m that is 4 m or more
-above or below you gets a small green up or orange down caret.
+above or below you gets a small green up or orange down caret, and so does another player.
 - Hold Shift + Alt: the mouse cursor appears and the camera stops turning, so you can use
   the minimap without swinging your view or attacking.
     drag the minimap                 move it anywhere on screen
@@ -189,6 +200,22 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.11
+- World map: Page Up / Page Down (or numpad + and -) zoom in and out one step.
+- Map Key: drag a category header to move the category; the rows in each category are sorted
+  by name in your language. Water Source moved to World & Resources.
+- Settings > Time Format: 1:00 PM or 13:00 for the minimap's clock. Requested by Kriiks.
+- Unread lore notes are drawn bigger on an amber ring so they stand out, and Flame and Night
+  Sanctums you've visited get a check mark (hidden with Completed Places: HIDE). Requested by
+  TheSefer.
+- Minimap: another player 4 m or more above or below you gets the up or down caret.
+- Reported bugs fixed:
+  - The active quest's marker (like the Crucible) hid under Fog: EXPLORED (reported by
+    HadToRegister).
+  - Shift+F closed Find while typing a capital F, and typing it into the game's text boxes
+    (like a pin's name) opened Find (reported by HadToRegister).
+  - The Fog Dragon didn't show as beaten.
+
 1.3.10
 - Read lore notes and beaten bosses now show on a dedicated server too (they were only
   tracked in single player and when you host).

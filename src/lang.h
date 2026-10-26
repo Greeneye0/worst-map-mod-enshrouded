@@ -30,7 +30,7 @@ enum class Str : int {
     LootedChests, Hide, GreyedOut, WeatherClear, WeatherRain, WeatherStorm, WeatherSnow, WeatherFog,
     HintClearChest, HintToggleKey, HintFind, CtrlClick, CatMining, CatMaterials, CatPlants, CatBait, CatTrees,
     MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar,
-    FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show,
+    FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show, TimeFormat,
     Count
 };
 
@@ -55,8 +55,9 @@ const char* ResourceName(size_t index);
 // "1 match" / "12 matches" in English, "Treffer: 12" style elsewhere (no plural rules needed).
 std::string FormatMatches(size_t count);
 
-// English shows 12-hour time with AM/PM; every other language 24-hour.
+// English shows 12-hour time with AM/PM; every other language 24-hour (unless Settings > Time Format picks one).
 bool Uses12HourClock();
+void SetClockFormat(int format); // -1 by language, 0 12-hour, 1 24-hour
 
 // Japanese, Korean, Chinese and Thai glyphs stand taller than Latin ones: the panel's rows get more height.
 bool TallScript();

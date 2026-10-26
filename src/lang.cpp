@@ -406,6 +406,10 @@ const Row kTable[] = {
     // Show
     {"Show", "Zeigen", "Afficher", "Mostra", "Mostrar", "Mostrar", "Pokaż", "Показать", "Показати", "Göster",
      "表示", "표시", "显示", "顯示", "แสดง"},
+    // TimeFormat: settings row, 12-hour (1:00 PM) or 24-hour (13:00) clock
+    {"Time Format", "Zeitformat", "Format de l'heure", "Formato ora", "Formato de hora", "Formato de hora",
+     "Format czasu", "Формат времени", "Формат часу", "Saat biçimi", "時刻表示", "시간 형식", "时间格式", "時間格式",
+     "รูปแบบเวลา"},
 };
 // clang-format on
 
@@ -639,7 +643,9 @@ std::string FormatMatches(size_t count) {
     return buf;
 }
 
-bool Uses12HourClock() { return g_lang == Lang::English; }
+int g_clockFormat = -1;
+void SetClockFormat(int format) { g_clockFormat = format; }
+bool Uses12HourClock() { return g_clockFormat < 0 ? g_lang == Lang::English : g_clockFormat == 0; }
 
 bool TallScript() {
     return g_lang == Lang::Japanese || g_lang == Lang::Korean || g_lang == Lang::SChinese ||

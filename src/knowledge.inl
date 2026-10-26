@@ -119,6 +119,18 @@ void UpdateKnowledge() {
     if (!ok) g_knownKnowledge.clear();
 }
 
+// A Flame or Night Sanctum marker near (x, z) that this character has visited (sanctum_spots.h; false while untracked).
+bool SanctumVisitedNear(float x, float z) {
+    if (!g_knowledgeValid) return false;
+    for (const SanctumSpot& sp : kSanctumSpots) {
+        if (std::fabs(sp.x - x) > 6.0f || std::fabs(sp.z - z) > 6.0f) continue;
+        for (uint32_t id : sp.id) {
+            if (id != 0 && g_knownKnowledge.count(id) != 0) return true;
+        }
+    }
+    return false;
+}
+
 bool IsKnowledgeDeposit(size_t d) {
     return d >= kKnowledgeFirstDeposit && d < kKnowledgeFirstDeposit + kKnowledgeSpotCount;
 }

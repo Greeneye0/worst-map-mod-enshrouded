@@ -104,7 +104,7 @@ enum class Ore : uint8_t {
 
 // Map Key category of each row (0 Quests, 1 Fast Travel, 2 Shroud, 3 World, 5 Mining, 6 Materials, 7 Plants,
 // 8 Bait, 9 Trees).
-constexpr uint8_t kOreCategory[] = {5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 2, 1, 1, 0, 3};
+constexpr uint8_t kOreCategory[] = {5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 2, 3, 3, 0, 3};
 
 // English row names (other languages use the game's text from kOreNameLocaIds where it has one).
 constexpr const char* kOreLabels[] = {"Flintstone", "Salt", "Copper", "Clay", "Amber", "Tin", "Limestone", "Fossilized Bone", "Sulfur", "Iron", "Lapis Lazuli", "Coal", "Silver", "Amethyst", "Obsidian", "Gold", "Aquamarine", "Mother of Pearl", "Red Marble", "Diamond", "Celesthium", "Farm Soil", "Fertilised Farm Soil", "Flower Soil", "Twigs", "Bones", "Tar", "Toxic Slime", "Luminous Growth", "Underwater Luminous Growth", "Ice", "Gold Coins", "Archaic Essence", "Corncob", "Aureolin Flower", "Strawberry", "Forest Beet", "Flax", "Chamomile", "Stinging Nettle", "Indigo Plant", "Hazelnut", "Rooibos", "Bell Pepper", "Sage Leaves", "Sugar Cane", "Aloe", "Saffron", "Grapple Plant", "Shadowbloom", "Wolfsbane", "Gentian", "Taro", "Ginger", "Shiitake Mushroom", "Papyrus", "Algae", "Daylily", "Thyme", "Aurora Beans", "Prickle Pearl", "Grandleaf Cabbage", "Bloomheart Fruit", "Fire Fly", "Grasshoppers", "Scarab", "Pillbug", "Frog", "Maggots", "Springlands Trees", "Resin Trees", "Hornbeam", "Revelwood Trees", "Giant Trees", "Highlands Trees", "Date Palms", "Albaneve Trees", "Juniper", "Mountain Pine", "Birch", "Deadwood", "Veilwater Trees", "Mangrove", "Coconut Palms", "Licuala Palms", "Bamboo", "Coffee Trees", "Return Beacon", "Water Well", "Water Barrel", "Lore Note", "Boss"};
@@ -30241,7 +30241,7 @@ constexpr KnowledgeSpot kKnowledgeSpots[kKnowledgeSpotCount] = {
     {0xfbf5e88eu, 0x7fd412a9u},
     {0x00000000u, 0x875a0d52u},
     {0x77b76f76u, 0x3c347932u},
-    {0xbf0321c3u, 0x294f0546u},
+    {0xe1baf1f0u, 0x294f0546u},
     {0x4dca4590u, 0x875a0d52u},
     {0x00000000u, 0x875a0d52u},
     {0x15691c3cu, 0x00000000u},

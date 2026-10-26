@@ -1,0 +1,7 @@
+1.3.11
+- World map: Page Up / Page Down (or numpad + and -) zoom in and out one step.
+- Map Key: drag a category header to move the category; the rows in each category are sorted by name in your language. Water Source moved to World & Resources.
+- Settings > Time Format: 1:00 PM or 13:00 for the minimap's clock. Requested by Kriiks.
+- Unread lore notes are drawn bigger on an amber ring so they stand out, and Flame and Night Sanctums you've visited get a check mark (hidden with Completed Places: HIDE). Requested by TheSefer.
+- Minimap: another player 4 m or more above or below you gets the up or down caret.
+- Reported bugs fixed: the active quest's marker (like the Crucible) hid under Fog: EXPLORED (reported by HadToRegister); Shift+F closed Find while typing a capital F, and typing it into the game's text boxes (like a pin's name) opened Find (reported by HadToRegister); the Fog Dragon didn't show as beaten.
