@@ -180,10 +180,26 @@ bool IsKnowledgeDeposit(size_t d) {
 // the character's name (Bosses = beaten by hand, NotBeaten = not beaten by hand), by knowledge spot index.
 std::unordered_set<uint16_t> g_manualBosses;
 std::unordered_set<uint16_t> g_notBeatenBosses;
+// Unique items not in a chest the mod tracks (barrels, crates, lying in the world): marked found by hand, by spot index
+std::unordered_set<uint16_t> g_uniqueFound;
 std::string g_bossCharacter; // empty: not known yet (marks not loaded)
 
 bool IsBossSpot(size_t d) {
     return IsKnowledgeDeposit(d) && kOreDeposits[d].ore == kBossesFirst;
+}
+
+bool IsUniqueSpot(size_t d) {
+    return IsKnowledgeDeposit(d) && kOreDeposits[d].ore >= kUniqueFirst && kOreDeposits[d].ore < kUniqueFirst + kUniqueCount;
+}
+
+const void* DepositIcon(size_t d) {
+    if (IsUniqueSpot(d)) {
+        const uint8_t* icon = kKnowledgeIcon[d - kKnowledgeFirstDeposit];
+        for (size_t i = 0; i < 16; ++i) {
+            if (icon[i]) return icon;
+        }
+    }
+    return kOreIcons[kOreDeposits[d].ore];
 }
 
 void SaveManualBosses() {
@@ -198,6 +214,7 @@ void SaveManualBosses() {
     };
     save("Bosses", g_manualBosses);
     save("NotBeaten", g_notBeatenBosses);
+    save("UniqueFound", g_uniqueFound);
 }
 
 // Once a second: loads the marks when the local character's name is first known (or changes).
@@ -228,7 +245,8 @@ void UpdateManualBosses(uint8_t* client) {
         GetPrivateProfileStringA(("Character_" + name).c_str(), key, "", text, sizeof(text), path.c_str());
         for (const char* t = text; *t;) {
             const int s = std::atoi(t);
-            if (s >= 0 && static_cast<size_t>(s) < kKnowledgeSpotCount && IsBossSpot(kKnowledgeFirstDeposit + s))
+            const size_t d = kKnowledgeFirstDeposit + static_cast<size_t>(s);
+            if (s >= 0 && static_cast<size_t>(s) < kKnowledgeSpotCount && (IsBossSpot(d) || IsUniqueSpot(d)))
                 set.insert(static_cast<uint16_t>(s));
             while (*t && *t != ';') ++t;
             if (*t == ';') ++t;
@@ -236,9 +254,10 @@ void UpdateManualBosses(uint8_t* client) {
     };
     load("Bosses", g_manualBosses);
     load("NotBeaten", g_notBeatenBosses);
+    load("UniqueFound", g_uniqueFound);
     if (g_log)
-        g_log("Bosses: character %s, %zu marked defeated by hand, %zu not beaten by hand", name.c_str(),
-              g_manualBosses.size(), g_notBeatenBosses.size());
+        g_log("Bosses: character %s, %zu marked defeated by hand, %zu not beaten by hand, %zu unique items found by hand",
+              name.c_str(), g_manualBosses.size(), g_notBeatenBosses.size(), g_uniqueFound.size());
 }
 
 // What the game's own knowledge says: a lore note read / a boss defeated (false while untracked).
@@ -248,8 +267,15 @@ bool KnowledgeDoneInGame(size_t d) {
     return id != 0 && g_knownKnowledge.count(id) != 0;
 }
 
-// The game's answer, or for a boss the character's mark by hand when there is one.
+// The game's answer, or for a boss the character's mark by hand when there is one. A unique item is found once its
+// chest is looted, or (in no chest the mod tracks) once marked found by hand.
 bool KnowledgeDone(size_t d) {
+    if (IsUniqueSpot(d)) {
+        const size_t i = d - kKnowledgeFirstDeposit;
+        const uint16_t chest = kKnowledgeChest[i];
+        if (chest < kTotalChestCount) return g_chestLootStates[chest].looted;
+        return g_uniqueFound.count(static_cast<uint16_t>(i)) != 0;
+    }
     if (IsBossSpot(d)) {
         const auto s = static_cast<uint16_t>(d - kKnowledgeFirstDeposit);
         if (g_manualBosses.count(s)) return true;
@@ -258,9 +284,56 @@ bool KnowledgeDone(size_t d) {
     return KnowledgeDoneInGame(d);
 }
 
+// A unique item stands on its chest's spot, and one in a boss's chest on the boss's spot. While the other icon shows
+// too they are drawn apart so either can be hovered and clicked: the item half an icon to the right (+1), a boss half
+// an icon to the left (-1); a chest marker stays put. 0: drawn where it is.
+int StackSide(size_t d) {
+    static int16_t bossPartner[kKnowledgeSpotCount];
+    static bool built = false;
+    if (!built) {
+        for (auto& p : bossPartner) p = -1;
+        for (size_t b = 0; b < kKnowledgeSpotCount; ++b) {
+            if (!IsBossSpot(kKnowledgeFirstDeposit + b)) continue;
+            const OreDeposit& boss = kOreDeposits[kKnowledgeFirstDeposit + b];
+            for (size_t u = 0; u < kKnowledgeSpotCount; ++u) {
+                const OreDeposit& item = kOreDeposits[kKnowledgeFirstDeposit + u];
+                if (!IsUniqueSpot(kKnowledgeFirstDeposit + u) || std::abs(item.x - boss.x) > 10 ||
+                    std::abs(item.z - boss.z) > 10)
+                    continue;
+                bossPartner[b] = static_cast<int16_t>(u);
+                bossPartner[u] = static_cast<int16_t>(b);
+            }
+        }
+        built = true;
+    }
+    if (!IsKnowledgeDeposit(d)) return 0;
+    const size_t i = d - kKnowledgeFirstDeposit;
+    bool partnerShown = false;
+    if (bossPartner[i] >= 0) {
+        const size_t other = kKnowledgeFirstDeposit + static_cast<size_t>(bossPartner[i]);
+        partnerShown = g_oreEnabled[kOreDeposits[other].ore] && !(g_lootedChestMode == 0 && KnowledgeDone(other));
+    }
+    if (IsUniqueSpot(d) && kKnowledgeChest[i] < kTotalChestCount)
+        partnerShown = partnerShown || (kKnowledgeChest[i] < kGoldChestCount ? g_goldChestEnabled : g_silverChestEnabled);
+    if (!partnerShown) return 0;
+    return IsBossSpot(d) ? -1 : 1;
+}
+
+// A shown unique item as close to (wx, wz) as distSq or closer: the Ctrl + click is for it, not for a boss next to it.
+bool UniqueSpotCloser(float wx, float wz, float distSq, float shiftMeters) {
+    for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
+        const size_t d = kKnowledgeFirstDeposit + i;
+        if (!IsUniqueSpot(d) || !g_oreEnabled[kOreDeposits[d].ore]) continue;
+        if (g_lootedChestMode == 0 && KnowledgeDone(d)) continue; // hidden
+        const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
+        if (dx * dx + dz * dz <= distSq) return true;
+    }
+    return false;
+}
+
 // Ctrl + left click near (wx, wz): flips the nearest shown boss between beaten and not beaten. A mark by hand is kept
-// only where it differs from the game's own record.
-bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters) {
+// only where it differs from the game's own record. shiftMeters: how far a stacked icon is drawn aside (StackSide).
+bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters, float shiftMeters) {
     if (g_bossCharacter.empty() || !g_oreEnabled[kBossesFirst]) return false;
     float best = maxRadiusMeters * maxRadiusMeters;
     size_t bestSpot = kKnowledgeSpotCount;
@@ -268,13 +341,13 @@ bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters) {
         const size_t d = kKnowledgeFirstDeposit + i;
         if (!IsBossSpot(d)) continue;
         if (g_lootedChestMode == 0 && KnowledgeDone(d)) continue; // hidden
-        const float dx = kOreDeposits[d].x - wx, dz = kOreDeposits[d].z - wz;
+        const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
         if (dx * dx + dz * dz < best) {
             best = dx * dx + dz * dz;
             bestSpot = i;
         }
     }
-    if (bestSpot == kKnowledgeSpotCount) return false;
+    if (bestSpot == kKnowledgeSpotCount || UniqueSpotCloser(wx, wz, best, shiftMeters)) return false;
     const auto s = static_cast<uint16_t>(bestSpot);
     const size_t d = kKnowledgeFirstDeposit + bestSpot;
     const bool beaten = !KnowledgeDone(d);
@@ -283,6 +356,42 @@ bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters) {
     if (beaten != KnowledgeDoneInGame(d)) (beaten ? g_manualBosses : g_notBeatenBosses).insert(s);
     SaveManualBosses();
     if (g_log) g_log("Bosses: boss spot %u marked %s by hand", s, beaten ? "beaten" : "not beaten");
+    return true;
+}
+
+// Ctrl + left click near (wx, wz): marks the nearest shown unique item found, or clears the mark. One in a tracked chest
+// follows the chest, so the click marks that chest looted (or not), even with the chest rows off.
+bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shiftMeters) {
+    if (g_bossCharacter.empty()) return false;
+    float best = maxRadiusMeters * maxRadiusMeters;
+    size_t bestSpot = kKnowledgeSpotCount;
+    for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
+        const size_t d = kKnowledgeFirstDeposit + i;
+        if (!IsUniqueSpot(d) || !g_oreEnabled[kOreDeposits[d].ore]) continue;
+        if (g_lootedChestMode == 0 && KnowledgeDone(d)) continue; // hidden
+        const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
+        if (dx * dx + dz * dz < best) {
+            best = dx * dx + dz * dz;
+            bestSpot = i;
+        }
+    }
+    if (bestSpot == kKnowledgeSpotCount) return false;
+    const uint16_t chest = kKnowledgeChest[bestSpot];
+    if (chest < kTotalChestCount) {
+        ChestLootState& st = g_chestLootStates[chest];
+        st.looted = !st.looted;
+        st.elapsedOutOfBuildZoneSec = 0.0;
+        g_chestLootDirty = true;
+        g_lootSaveDirty = true;
+        ShareChestState(chest, st.looted);
+        if (g_log) g_log("Unique items: spot %zu, chest %u marked %s by hand", bestSpot, chest, st.looted ? "looted" : "not looted");
+        return true;
+    }
+    const auto s = static_cast<uint16_t>(bestSpot);
+    const bool found = g_uniqueFound.erase(s) == 0;
+    if (found) g_uniqueFound.insert(s);
+    SaveManualBosses();
+    if (g_log) g_log("Unique items: spot %u marked %s by hand", s, found ? "found" : "not found");
     return true;
 }
 
@@ -300,6 +409,19 @@ const char* KnowledgeSpotName(size_t d) {
     const size_t i = d - kKnowledgeFirstDeposit;
     if (state[i] == 0 && kKnowledgeSpots[i].nameLoca != 0u && GetUiClient()) {
         state[i] = ReadLocaText(kKnowledgeSpots[i].nameLoca, names[i], sizeof(names[i])) ? 1 : 2;
+        // Item names can carry markup ("<lorename>Jezmina</lorename>'s Apotheosis"): drop the tags
+        char* out = names[i];
+        for (const char* in = names[i]; *in; ++in) {
+            if (*in == '<') {
+                const char* close = std::strchr(in, '>');
+                if (close) {
+                    in = close;
+                    continue;
+                }
+            }
+            *out++ = *in;
+        }
+        *out = 0;
     }
     return state[i] == 1 ? names[i] : OreName(kOreDeposits[d].ore);
 }

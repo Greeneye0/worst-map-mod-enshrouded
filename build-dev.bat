@@ -17,4 +17,6 @@ cl /nologo /std:c++20 /O2 /EHsc /MT /LD /W4 /utf-8 /DUMM_DEV_BRIDGE /I "%GREENEY
 if errorlevel 1 exit /b 1
 copy /y mod.json bin-dev\loader\mod.json >nul
 if errorlevel 1 exit /b 1
+copy /y data\veins.bin bin-dev\loader\veins.bin >nul
+if errorlevel 1 exit /b 1
 echo Built bin-dev\loader\unlock-map-markers.dll (DEV - bridge exports included)

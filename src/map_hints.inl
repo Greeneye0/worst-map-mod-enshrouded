@@ -14,8 +14,11 @@ uint8_t* MapHintBinding(uint8_t action) {
     return ui ? ui + 0xf27c + action * kMapBindingSize : nullptr;
 }
 
-// Ctrl+click and Shift+F, then the panel key unless it is set to None
-int MapHintCount() { return g_panelToggleVk ? 3 : 2; }
+// Ctrl+click and Shift+F, then the panel key unless it is set to None, then middle click (copy X, Z) with Settings >
+// Advanced > Position on
+int MapHintCount() { return 2 + (g_panelToggleVk ? 1 : 0) + (g_minimapShowPosition ? 1 : 0); }
+// What the i-th of them is: 0 Ctrl+click, 1 Shift+F, 2 the panel key, 3 middle click
+int MapHintKind(int i) { return i < 2 ? i : (i == 2 && g_panelToggleVk) ? 2 : 3; }
 
 uint64_t DrawMapHintWithBinding(uint8_t* entry, void* params, int index) {
     uint8_t* binding = MapHintBinding(entry[0]);
@@ -25,9 +28,11 @@ uint64_t DrawMapHintWithBinding(uint8_t* entry, void* params, int index) {
     // The first 16 bytes describe the keyboard/mouse input and its modifier.
     std::memset(binding, 0, 16);
     auto* words = reinterpret_cast<uint16_t*>(binding);
-    words[0] = index == 0 ? 2 : 1; // mouse or keyboard
+    index = MapHintKind(index);
+    words[0] = (index == 0 || index == 3) ? 2 : 1; // mouse or keyboard
     words[1] = index == 1 ? 0x09 : index == 2 ? g_panelToggleHid : 0; // F, the panel key (Tab)
     if (index == 0) *reinterpret_cast<uint32_t*>(binding + 4) = 1; // left mouse
+    if (index == 3) *reinterpret_cast<uint32_t*>(binding + 4) = 3; // middle mouse
     if (index < 2) {
         words[6] = 1;
         words[7] = index == 0 ? 0xe0 : 0xe1; // Ctrl, Shift
@@ -56,12 +61,13 @@ void DrawCombinedMapHints(MapHintSpan* span, void* options) {
         if ((e[0x1a] & 7) == 7) { model = e; break; }
     }
     if (!model) { g_originalMapHints(span, options); return; }
-    const umm_lang::Str labels[] = {umm_lang::Str::HintClearChest, umm_lang::Str::HintFind, umm_lang::Str::HintToggleKey};
+    const umm_lang::Str labels[] = {umm_lang::Str::HintClearChest, umm_lang::Str::HintFind, umm_lang::Str::HintToggleKey,
+                                    umm_lang::Str::HintCopyPosition};
     const int count = MapHintCount();
     for (int i = 0; i < count; ++i) {
         uint8_t* e = entries + i * kMapHintSize;
         std::memcpy(e, model, kMapHintSize);
-        UiText text = MakeUiText(umm_lang::T(labels[i]));
+        UiText text = MakeUiText(umm_lang::T(labels[MapHintKind(i)]));
         std::memcpy(e + 0x20, &text, sizeof(text));
         e[0x1b] = 1;
     }

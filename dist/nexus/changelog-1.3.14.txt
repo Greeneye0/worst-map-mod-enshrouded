@@ -1,0 +1,13 @@
+- Unique Weapons (40) and Unique Equipment (16): every one-of-a-kind weapon, ring and piece of gear at the chest or place it is in, with its own icon and name; found once its chest is looted, or Ctrl + left click to mark it found. Requested by Gadn.
+- Collectibles (101): the journal's fossils, skeleton pieces, the bard's paintings, Drak reliefs, mosaic pieces, meteorites and more, each with its own icon and name; Ctrl + left click to mark one found. Requested by TheSefer and BlaineCraner.
+- Fell Summoning Stones (45): where Shroud Spores conjure a Fell enemy, one tier per region.
+- Night plants: each region's plants that grow only at night (Midnight Lily, Gloomberry, Calla Luna, Glimmer Gentian, Stapelia Starflower, Passionflower, Gleam Root, and Shadowbloom's night spots).
+- Settings > Advanced > Region Filter (off at first): a Region row in the Map Key shows one region, the others dimmed or hidden, with its border drawn. Requested by VintageMarble.
+- Settings > Advanced > Region Colors (off at first): each region tinted in its own colour on the world map. Requested by izisot.
+- Settings > Advanced > Position (off at first): your X, Y and Z under the minimap, the X and Z under the cursor on the world map, and a button to copy them. Requested by Loling91.
+- G G vein sight: the ore of the Mining and Materials rows you have on is outlined for 30 seconds, on the rock itself within 12 m and on screen out to 50 m.
+- On the minimap, a mining or materials deposit 4 m or more above or below you gets the up or down caret.
+- A boss and the unique item in its chest are drawn side by side, so either can be hovered and clicked.
+- Fixed: the mod's icons showed on top of a marker's menu (Fast Travel / Send Ping / Set as Waypoint).
+- Fixed: typing a capital F into a custom pin's name opened Find and closed the name box. Reported by dremen.
+- The new rows and settings start off.

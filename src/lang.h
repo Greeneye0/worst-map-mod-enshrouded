@@ -31,6 +31,7 @@ enum class Str : int {
     HintClearChest, HintToggleKey, HintFind, CtrlClick, CatMining, CatMaterials, CatPlants, CatBait, CatTrees,
     MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar,
     FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show, TimeFormat,
+    Advanced, ShowPosition, AllRegions, Dim, HintCopyPosition, RegionFilter, RegionColors,
     Count
 };
 

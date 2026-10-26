@@ -398,6 +398,7 @@ void UpdateKey(uint8_t* client, bool appFocused) {
     if (firstTick && now - firstTick <= 500ULL) {
         firstTick = 0;
         LightNearbyChests(client);
+        vein_sight::LightNearby(client); // and the veins of the Mining / Materials rows that are on
     } else {
         firstTick = now;
     }
@@ -408,10 +409,7 @@ void UpdateKey(uint8_t* client, bool appFocused) {
 // the UI window's viewport); behind the camera or looted since: not drawn.
 void DrawMarkersInner(uint8_t* client, void* widgetRaw) {
     const uint64_t now = GetTickCount64();
-    if (g_markers.empty() || now >= g_markersUntil) {
-        g_markers.clear();
-        return;
-    }
+    if (now >= g_markersUntil) g_markers.clear();
     auto* root = static_cast<uint8_t*>(GetUiG());
     uint8_t* window = root ? *reinterpret_cast<uint8_t**>(root + 0x10) : nullptr;
     if (!window) return;
@@ -420,6 +418,8 @@ void DrawMarkersInner(uint8_t* client, void* widgetRaw) {
     std::memcpy(proj, client + 0x1d60, sizeof(proj));
     std::memcpy(viewport, window + 0x18, sizeof(viewport));
     if (viewport[2] < 1.0f || viewport[3] < 1.0f) return;
+    vein_sight::Draw(client, widgetRaw, view, proj, viewport); // under the chests' rings
+    if (g_markers.empty()) return;
     float px = 0.0f, pz = 0.0f;
     GetHudPlayerWorldPos(client, px, pz);
     const float elapsed = static_cast<float>(now - g_markersStart) * 0.001f;
@@ -473,7 +473,7 @@ void DrawMarkersInner(uint8_t* client, void* widgetRaw) {
         DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - size * 0.5f, sy - size * 0.5f, size, size, 0xff0a0e10u,
                          0.6f * fadeOut);
         const void* icon = c.chest < kTotalChestCount ? GetIconRefForType(client, gold ? kGoldChestTypeHash : kSilverChestTypeHash)
-                                                      : static_cast<const void*>(kOreIcons[kOreDeposits[c.deposit].ore]);
+                                                      : DepositIcon(c.deposit);
         if (icon) {
             DrawIconRectAbs(widgetRaw, icon, sx - size * 0.4f, sy - size * 0.4f, size * 0.8f, size * 0.8f, tint, fadeOut);
         }
@@ -491,7 +491,7 @@ bool SafeDrawMarkersInner(uint8_t* client, void* widgetRaw) {
 
 // Its own HUD layer while playing (the minimap's only exists while the minimap shows).
 void DrawMarkers(uint8_t* client) {
-    if (g_markers.empty() || !client || client[0x1cd8] != 1) return;
+    if ((g_markers.empty() && !vein_sight::Active()) || !client || client[0x1cd8] != 1) return;
     static const UiText kLayerName = MakeUiText("chestGlowLayer");
     alignas(16) uint8_t layer[0x400]{};
     g_beginLayer(layer, &kLayerName, 1, 2, -1, 0);

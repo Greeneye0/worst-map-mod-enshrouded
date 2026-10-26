@@ -410,6 +410,32 @@ const Row kTable[] = {
     {"Time Format", "Zeitformat", "Format de l'heure", "Formato ora", "Formato de hora", "Formato de hora",
      "Format czasu", "Формат времени", "Формат часу", "Saat biçimi", "時刻表示", "시간 형식", "时间格式", "時間格式",
      "รูปแบบเวลา"},
+    // Advanced: the settings card's last section
+    {"Advanced", "Erweitert", "Avancé", "Avanzate", "Avanzado", "Avançado", "Zaawansowane", "Дополнительно",
+     "Додатково", "Gelişmiş", "詳細設定", "고급", "高级", "進階", "ขั้นสูง"},
+    // ShowPosition: settings row, your position under the minimap (Y is the height)
+    {"Position (X, Y, Z)", "Position (X, Y, Z)", "Position (X, Y, Z)", "Posizione (X, Y, Z)", "Posición (X, Y, Z)",
+     "Posição (X, Y, Z)", "Pozycja (X, Y, Z)", "Позиция (X, Y, Z)", "Позиція (X, Y, Z)", "Konum (X, Y, Z)",
+     "位置 (X, Y, Z)", "위치 (X, Y, Z)", "位置 (X, Y, Z)", "位置 (X, Y, Z)", "ตำแหน่ง (X, Y, Z)"},
+    // AllRegions: Map Key > Region, no region picked
+    {"All Regions", "Alle Regionen", "Toutes les régions", "Tutte le regioni", "Todas las regiones",
+     "Todas as regiões", "Wszystkie regiony", "Все регионы", "Усі регіони", "Tüm bölgeler", "すべての地域", "모든 지역",
+     "所有地区", "所有地區", "ทุกภูมิภาค"},
+    // Dim: Map Key > Region, pins outside the region drawn faint (the other choice is Hide)
+    {"Dim", "Abblenden", "Atténuer", "Attenua", "Atenuar", "Esmaecer", "Przyciemnij", "Приглушить", "Приглушити",
+     "Soluklaştır", "薄く表示", "흐리게", "淡化", "淡化", "จาง"},
+    // HintCopyPosition (middle click): the World Map hint bar, copies the X and Z under the cursor
+    {"Copy X, Z", "X, Z kopieren", "Copier X, Z", "Copia X, Z", "Copiar X, Z", "Copiar X, Z", "Kopiuj X, Z",
+     "Копировать X, Z", "Копіювати X, Z", "X, Z kopyala", "X, Z をコピー", "X, Z 복사", "复制 X, Z", "複製 X, Z",
+     "คัดลอก X, Z"},
+    // RegionFilter: Settings > Advanced, the Map Key's Region row (show one region, the rest dimmed or hidden)
+    {"Region Filter", "Regionsfilter", "Filtre de région", "Filtro regione", "Filtro de región", "Filtro de região",
+     "Filtr regionu", "Фильтр регионов", "Фільтр регіонів", "Bölge filtresi", "地域フィルター", "지역 필터", "地区筛选",
+     "地區篩選", "ตัวกรองภูมิภาค"},
+    // RegionColors: Settings > Advanced, each region tinted in its own colour on the World Map
+    {"Region Colors", "Regionsfarben", "Couleurs des régions", "Colori delle regioni", "Colores de región",
+     "Cores das regiões", "Kolory regionów", "Цвета регионов", "Кольори регіонів", "Bölge renkleri", "地域の色分け",
+     "지역 색상", "地区颜色", "地區顏色", "สีภูมิภาค"},
 };
 // clang-format on
 
@@ -512,6 +538,17 @@ const Row kResourceNames[] = {
     {"Water Barrel", "Wasserfass", "Tonneau d'eau", "Barile d'acqua", "Barril de agua", "Barril de água", "Beczka z wodą", "Бочка с водой", "Бочка з водою", "Su fıçısı", "水樽", "물통", "水桶", "水桶", "ถังน้ำ"},
     {"Lore Note", "Notiz", "Note", "Nota", "Nota", "Nota", "Notatka", "Записка", "Записка", "Not", "メモ", "쪽지", "笔记", "筆記", "บันทึก"},
     {"Boss", "Boss", "Boss", "Boss", "Jefe", "Chefe", "Boss", "Босс", "Бос", "Boss", "ボス", "보스", "首领", "首領", "บอส"},
+    {"Unique Weapons", "Einzigartige Waffen", "Armes uniques", "Armi uniche", "Armas únicas", "Armas únicas", "Unikatowa broń", "Уникальное оружие", "Унікальна зброя", "Eşsiz silahlar", "ユニーク武器", "고유 무기", "独特武器", "獨特武器", "อาวุธพิเศษ"},
+    {"Unique Equipment", "Einzigartige Ausrüstung", "Équipement unique", "Equipaggiamento unico", "Equipo único", "Equipamento único", "Unikatowy ekwipunek", "Уникальное снаряжение", "Унікальне спорядження", "Eşsiz ekipman", "ユニーク装備", "고유 장비", "独特装备", "獨特裝備", "อุปกรณ์พิเศษ"},
+    {"Collectibles", "Sammlerstücke", "Objets de collection", "Collezionabili", "Coleccionables", "Colecionáveis", "Przedmioty kolekcjonerskie", "Коллекционные предметы", "Колекційні предмети", "Koleksiyon parçaları", "コレクション品", "수집품", "收藏品", "收藏品", "ของสะสม"},
+    {"Fell Summoning Stone", "Fell-Beschwörungsstein", "Pierre d'invocation de Fell", "Pietra di evocazione Fell", "Piedra de invocación Fell", "Pedra de invocação Fell", "Kamień przywołania Fell", "Камень призыва Fell", "Камінь виклику Fell", "Fell çağırma taşı", "フェル召喚石", "펠 소환석", "邪物召唤石", "邪物召喚石", "หินอัญเชิญเฟลล์"},
+    {"Gloomberry", "Düsterbeere", "Baie lugubre", "Bacca cupa", "Baya lúgubre", "Baga sombria", "Mroczna jagoda", "Мрачная ягода", "Похмура ягода", "Kasvet meyvesi", "グルームベリー", "음울한 열매", "幽暗浆果", "幽暗漿果", "เบอร์รีมืดมน"},
+    {"Midnight Lily", "Mitternachtslilie", "Lys de minuit", "Giglio di mezzanotte", "Lirio de medianoche", "Lírio da meia-noite", "Lilia północy", "Полуночная лилия", "Опівнічна лілія", "Gece yarısı zambağı", "真夜中の百合", "한밤의 백합", "午夜百合", "午夜百合", "ลิลลี่เที่ยงคืน"},
+    {"Calla Luna", "Calla Luna", "Calla Luna", "Calla Luna", "Calla Luna", "Calla Luna", "Calla Luna", "Калла Луна", "Калла Луна", "Calla Luna", "カラ・ルナ", "칼라 루나", "月光马蹄莲", "月光馬蹄蓮", "คาลลาลูนา"},
+    {"Glimmer Gentian", "Schimmerenzian", "Gentiane scintillante", "Genziana luccicante", "Genciana destellante", "Genciana cintilante", "Migoczący goryczka", "Мерцающая горечавка", "Мерехтлива тирлич", "Pırıltılı centiyane", "きらめくリンドウ", "반짝이는 용담", "微光龙胆", "微光龍膽", "เจนเชียนระยิบระยับ"},
+    {"Stapelia Starflower", "Stapelia-Sternblume", "Stapélie étoilée", "Stapelia stellata", "Estapelia estrellada", "Estapélia estrelada", "Stapelia gwiaździsta", "Звёздная стапелия", "Зоряна стапелія", "Yıldız stapelya", "スタペリアの星花", "스타펠리아 별꽃", "星花犀角", "星花犀角", "สตาเพเลียดาว"},
+    {"Passionflower", "Passionsblume", "Passiflore", "Passiflora", "Pasionaria", "Maracujá-flor", "Męczennica", "Пассифлора", "Пасифлора", "Çarkıfelek", "トケイソウ", "시계꽃", "西番莲", "西番蓮", "เสาวรส"},
+    {"Gleam Root", "Glanzwurzel", "Racine lumineuse", "Radice lucente", "Raíz brillante", "Raiz cintilante", "Lśniący korzeń", "Сияющий корень", "Сяючий корінь", "Parıltı kökü", "グリームルート", "빛나는 뿌리", "微光根", "微光根", "รากเรืองแสง"},
 };
 // clang-format on
 

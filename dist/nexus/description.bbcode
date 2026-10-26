@@ -8,7 +8,9 @@
 [*][b]Every marker on the world map[/b]: spires, altars, sanctums, vaults, lairs, towns, camps, mines, caves, garrisons, quests, lore rumors, graves, and all 448 gold and 1032 silver chests.
 [*][b]Mining, Materials, Plants, Bait and Trees[/b]: every ore deposit, material, plant patch and bait spot, read from the game's own world files, and every forest drawn in its tree type's colour.
 [*][b]Lore Notes and Bosses[/b]: every note and diary and every boss, with the ones you've read or beaten grayed out or hidden. Return Beacons and every well and water barrel too.
-[*][b]G G: what's nearby glows[/b]: press G twice and the chests, notes and bosses near you glow through walls and floors.
+[*][b]Unique gear and collectibles[/b]: every unique weapon, ring and piece of gear, the journal's collectibles (fossils, paintings, mosaic pieces...), Fell Summoning Stones and each region's night plants.
+[*][b]Regions[/b]: tint each region in its own colour, or show just one (the rest dimmed or hidden) with its border drawn.
+[*][b]G G: what's nearby glows[/b]: press G twice and the chests, notes and bosses near you glow through walls and floors, and the ore you track is outlined on the rock.
 [*][b]A Map Key & Filters panel[/b] built from the game's own UI art: an icon, a count and an ON/OFF switch for every marker type, whole categories at a click, filters for your custom pins, and padlocks that keep a filter as you set it.
 [*][b]Two more zoom steps out[/b] on the world map, and [b]Page Up / Page Down[/b] (or numpad + and -) to zoom a step at a time.
 [*][b]Find on the map[/b]: press [b]Shift+F[/b], type a name or a kind of place, and the map moves to show it.
@@ -31,6 +33,7 @@
 [*][b]Every gold and silver chest in the world is included[/b]: all 448 gold chests and 1032 silver chests have their own rows in the filter, so you can show just the chests you're hunting.
 [*]Click a row to show or hide that marker type.
 [*][b]SHOW ALL / HIDE ALL[/b] at the top switch every marker type at once.
+[*][b]REGION[/b], under them (with Settings > Advanced > Region Filter on): the arrows step through All Regions and the world's regions in level order (Springlands, Revelwood, Blackmire, Nomad Highlands, Kindlewastes, Albaneve Summits, Veilwater Basin, Cinder's Cradle); click the name to jump to the region you're in. Pins outside the region are dimmed ([b]DIM[/b]) or not shown at all ([b]HIDE[/b]), and its border is drawn as a dotted gold line. Quest pins, lore rumors and your own pins always show. Requested by VintageMarble.
 [*]Click a category header to switch the whole category; [b]+ / -[/b] folds it, and it stays folded the next time you play. [b]Drag a category header[/b] up or down to move the category; the order is remembered.
 [*]The rows in each category are sorted by name in your language.
 [*]The mouse wheel or the scroll bar scrolls the list.
@@ -38,6 +41,9 @@
 [*][b]Tab[/b] (or the - button at the top) folds the panel away; to use another key, set [i]PanelToggle=[/i] under [i][Keys][/i] in [i]minimap_config.ini[/i] (a letter, a digit, F1 to F12, CapsLock, Home, End... or None). The [b]cog[/b] opens Settings.
 [*][b]Filter locks[/b]: the padlock left of a switch locks that filter. A locked filter keeps its ON or OFF through SHOW ALL / HIDE ALL, reloads and updates, and a locked category also stays open or closed; you can still click it. [b]Hold[/b] SHOW ALL or HIDE ALL to change locked filters too.
 [*][b]Lore Notes[/b] (Quests & Rumors): every note and diary in the world, 574. Notes you've read are grayed out or hidden, like looted chests; unread ones are drawn bigger on an amber ring so they stand out. Hover one for its title.
+[*][b]Unique Weapons[/b] and [b]Unique Equipment[/b] (World & Resources): the one-of-a-kind weapons (40, like the Wailing Blade and Talion's Bow) and rings and gear (16, like the Gemini Ring and the Flaming Gauntlets), each at the chest or place it is in, with its own icon and name. One in a gold or silver chest counts as found once that chest is looted; for the others [b]Ctrl + left click[/b] it to mark it found, saved per character. [b]Find[/b] finds them by name. Requested by Gadn.
+[*][b]Collectibles[/b] (World & Resources): the journal's collectibles lying in the world, 101: fossils, skeleton pieces, the bard's paintings, Drak reliefs, mosaic pieces, meteorites and more, each with its own icon and name. [b]Ctrl + left click[/b] one to mark it found, saved per character; [b]Find[/b] finds them by name.
+[*][b]Fell Summoning Stones[/b] (World & Resources): the 45 stones where Shroud Spores conjure a Fell enemy, one tier per region.
 [*][b]Bosses[/b] (World & Resources): the world's bosses, named like their health bar; beaten ones are grayed out or hidden. The game keeps no record of beating some of them (the Dire Wolf, the Critter Queens, the Fog Predator...): [b]Ctrl + left click[/b] one on the map to mark it beaten or clear the mark; Ctrl + left click a beaten one to mark it not beaten (with Looted Chests: Grayed Out, beaten bosses show to click). Saved per character.
 [*][b]Return Beacons[/b] (Shroud & Vaults): all 282.
 [*][b]Water Source[/b] (World & Resources) also shows the world's wells and water barrels you can drink from, and the ones you build.
@@ -57,6 +63,8 @@ Press [b]G[/b] twice quickly while playing. For 14 seconds everything within 75 
 
 On the minimap, the ones 4 m or more above or below you get a green up or orange down caret, so you know whether to go up or down.
 
+[b]Vein sight[/b]: the ore and materials of the Mining and Materials rows you have on show for 30 seconds too, for the deposits the map shows near you. Within 12 m their edges glow on the rock itself, in the game's build zone colour; dig in and the glow on the walls of your hole shows where the ore ends. Farther out (50 m) each vein is outlined on screen in its ore's colour, with the deposit's icon in its middle.
+
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792873369-183261406.jpg[/img][/center]
 
 [line]
@@ -69,7 +77,7 @@ Read from the game's own world files, so every spot is where the game put it. Ea
 [list]
 [*][b]MINING[/b]: every ore deposit, 21 kinds (copper, iron, silver, gold, sulfur, salt...), 7,452 in all.
 [*][b]MATERIALS[/b]: farm soil, fertilised farm soil, flower soil, twigs, bones, tar, toxic slime, luminous growth, ice, gold coins, archaic essence.
-[*][b]PLANTS[/b]: 30 harvestable plants, as patches.
+[*][b]PLANTS[/b]: 30 harvestable plants, as patches, and each region's night plants (Midnight Lily, Gloomberry, Calla Luna, Shadowbloom, Glimmer Gentian, Stapelia Starflower, Passionflower, Gleam Root) where they grow at night.
 [*][b]BAIT[/b]: fireflies, grasshoppers, pillbugs, frogs and more.
 [*][b]TREES[/b]: each forest drawn as one shape in its tree type's colour, 18 types; the big ones carry their name.
 [/list]
@@ -116,6 +124,9 @@ The [b]cog[/b] on the Map Key (and the one under the minimap) opens Settings:
 [*][b]Looted Chests[/b]: hide them or gray them out (read lore notes and beaten bosses too).
 [*][b]Completed Places[/b]: show or hide the places the game marks done, like cleared roots, used obelisks and cleared vaults, and the Flame and Night Sanctums you've visited. Shown, visited sanctums get a check mark.
 [*][b]Filter Locks[/b]: how many filters are locked; [b]Remove All[/b] unlocks them.
+[*][b]Advanced > Position (X, Y, Z)[/b], off at first: your position under the minimap (Y is your height) and, on the world map, the X and Z under the cursor. Click the copy button (or middle click the world map) to copy them. Requested by Loling91.
+[*][b]Advanced > Region Filter[/b], off at first: the Map Key's REGION row.
+[*][b]Advanced > Region Colors[/b], off at first: each region tinted in its own colour on the world map. Requested by izisot.
 [/list]
 Everything is remembered.
 
@@ -135,7 +146,7 @@ If you open chests with another key than E, set [i]InteractKey=[/i] under [i][Ch
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792845219-19805001.jpg[/img][/center]
 
-A minimap on your HUD with the World Map's terrain, a compass, the time of day (or the weather) and its zoom level, placed under the Journal [J] tab at first. Cleared places and looted chests show a check mark.
+A minimap on your HUD with the World Map's terrain, a compass, the time of day (or the weather) and its zoom level, placed under the Journal [J] tab at first. Cleared places and looted chests show a check mark. A mining or materials deposit within 75 m that is 4 m or more above or below you gets a green up or orange down caret.
 
 [b]Hold Shift + Alt[/b] to set it up. The mouse cursor appears and the camera stops turning, so you won't swing your view or attack. While you hold them:
 [list]
@@ -203,6 +214,23 @@ If something doesn't work, please post these files with your report. Both are in
 [line]
 
 [size=4][b]Changelog[/b][/size]
+
+[b]1.3.14[/b]
+[list]
+[*][b]Unique Weapons[/b] (40) and [b]Unique Equipment[/b] (16): every one-of-a-kind weapon, ring and piece of gear at the chest or place it is in, with its own icon and name; found once its chest is looted, or [b]Ctrl + left click[/b] to mark it found. Requested by Gadn.
+[*][b]Collectibles[/b] (101): the journal's fossils, skeleton pieces, the bard's paintings, Drak reliefs, mosaic pieces, meteorites and more, each with its own icon and name. Requested by TheSefer and BlaineCraner.
+[*][b]Fell Summoning Stones[/b] (45): where Shroud Spores conjure a Fell enemy, one tier per region.
+[*][b]Night plants[/b]: each region's plants that grow only at night (Midnight Lily, Gloomberry, Calla Luna, Glimmer Gentian, Stapelia Starflower, Passionflower, Gleam Root, and Shadowbloom's night spots).
+[*][b]Settings > Advanced > Region Filter[/b] (off at first): a Region row in the Map Key shows one region, the others dimmed or hidden, with its border drawn. Requested by VintageMarble.
+[*][b]Settings > Advanced > Region Colors[/b] (off at first): each region tinted in its own colour on the world map. Requested by izisot.
+[*][b]Settings > Advanced > Position[/b] (off at first): your X, Y and Z under the minimap, the X and Z under the cursor on the world map, and a button to copy them. Requested by Loling91.
+[*][b]G G vein sight[/b]: the ore of the Mining and Materials rows you have on is outlined for 30 seconds, on the rock itself within 12 m and on screen out to 50 m.
+[*]On the minimap, a mining or materials deposit 4 m or more above or below you gets the up or down caret.
+[*]A boss and the unique item in its chest are drawn side by side, so either can be hovered and clicked.
+[*]Fixed: the mod's icons showed on top of a marker's menu (Fast Travel / Send Ping / Set as Waypoint).
+[*]Fixed: typing a capital F into a custom pin's name opened Find and closed the name box. Reported by dremen.
+[*]The new rows and settings start off.
+[/list]
 
 [b]1.3.13[/b]
 [list]

@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.13
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.14
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
@@ -30,6 +30,11 @@ On the right of the world map.
 - Every marker type has a row with its icon, how many there are, and an ON/OFF switch.
   Click a row to show or hide that type.
 - SHOW ALL / HIDE ALL at the top switch every marker type at once.
+- REGION, under them (with Settings > Advanced > Region Filter on): the arrows step through All Regions and the world's regions in level
+  order (Springlands, Revelwood, Blackmire, Nomad Highlands, Kindlewastes, Albaneve Summits,
+  Veilwater Basin, Cinder's Cradle); click the name to jump to the region you're in. Pins
+  outside the region are dimmed (DIM) or not shown at all (HIDE), and its border is drawn as a
+  dotted gold line. Quest pins, lore rumors and your own pins always show.
 - Click a category header (FAST TRAVEL & ALTARS, SHROUD & VAULTS, WORLD & RESOURCES, MINING,
   MATERIALS, PLANTS, BAIT, TREES, QUESTS & RUMORS) to switch the whole category, or + / - to
   fold it; folded categories stay folded the next time you play. Drag a category header up
@@ -55,6 +60,18 @@ On the right of the world map.
   the Critter Queens, the Fog Predator...): Ctrl + left click one on the map to mark it beaten
   or clear the mark. Ctrl + left click a beaten one to mark it not beaten (with Looted Chests:
   Grayed Out, beaten bosses show to click). These marks are saved per character.
+- UNIQUE WEAPONS and UNIQUE EQUIPMENT (WORLD & RESOURCES): the one-of-a-kind weapons (40, like
+  the Wailing Blade and Talion's Bow) and rings and gear (16, like the Gemini Ring and the
+  Flaming Gauntlets), each at the chest or place it is in, with its own icon and name. One in
+  a gold or silver chest counts as found once that chest is looted; for the others (in
+  barrels, crates or lying in the world) Ctrl + left click it to mark it found, saved per
+  character. Find (Shift + F) finds them by name.
+- COLLECTIBLES (WORLD & RESOURCES): the journal's collectibles lying in the world, 101: fossils,
+  skeleton pieces, the bard's paintings, Drak reliefs, mosaic pieces, meteorites and more,
+  each with its own icon and name. Ctrl + left click one to mark it found (saved per
+  character); Find finds them by name.
+- FELL SUMMONING STONES (WORLD & RESOURCES): the 45 stones where Shroud Spores conjure a Fell
+  enemy, one tier per region.
 - RETURN BEACONS (SHROUD & VAULTS): all 282.
 - WATER SOURCE (WORLD & RESOURCES) also shows the world's wells and water barrels you can
   drink from, and the wells and barrels you build (remembered per world).
@@ -66,6 +83,11 @@ Press G twice quickly while playing. For 14 seconds everything within 75 m that 
 yet glows through walls and floors: unlooted gold and silver chests (in gold and silver),
 unread lore notes and bosses you haven't beaten, while their filters are on. They pulse on
 the world map and the minimap too.
+Vein sight: the ore and materials of the Mining and Materials rows you have on show for 30
+seconds too, for the deposits the map shows near you. Within 12 m their edges glow on the
+rock itself, in the game's build zone colour (dig in and the glow on the walls of your hole
+shows where the ore ends); farther out (50 m) each vein is outlined on screen in its ore's
+colour, with the deposit's icon in its middle.
 
 
 MINING, MATERIALS, PLANTS, BAIT AND TREES
@@ -75,7 +97,9 @@ Read from the game's own world files, so every spot is where the game put it.
   all.
 - MATERIALS: farm soil, fertilised farm soil, flower soil, twigs, bones, tar, toxic slime, luminous growth, ice,
   gold coins, archaic essence.
-- PLANTS: 30 harvestable plants, as patches.
+- PLANTS: 30 harvestable plants, as patches, and each region's night plants (Midnight Lily,
+  Gloomberry, Calla Luna, Shadowbloom, Glimmer Gentian, Stapelia Starflower, Passionflower,
+  Gleam Root) where they grow at night.
 - BAIT: fireflies, grasshoppers, pillbugs, frogs and more.
 - TREES: each forest drawn as one shape in its tree type's colour, 18 types; the big ones
   carry their name.
@@ -127,6 +151,11 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
                        obelisks, cleared vaults) and the Flame and Night Sanctums you've
                        visited. Shown, visited sanctums get a check mark.
 - Filter Locks         how many filters are locked; REMOVE ALL unlocks them.
+- ADVANCED > Position (X, Y, Z), off at first: your position under the minimap (Y is your
+  height) and, on the world map, the X and Z under the cursor. Click the copy button (or
+  middle click the world map) to copy them, like "X 3215, Z 2051".
+- ADVANCED > Region Filter, off at first: the Map Key's REGION row (see above).
+- ADVANCED > Region Colors, off at first: each region tinted in its own colour on the world map.
 Everything is remembered.
 
 
@@ -152,9 +181,9 @@ MINIMAP
 -------
 A minimap with the World Map's terrain, a compass, the time of day (or the weather) and its
 zoom level on your HUD, under the Journal [J] tab at first. Cleared places and looted chests
-show a check mark. A gold or silver chest, lore note or boss within 75 m that is 4 m or more
-above or below you gets a small green up or orange down caret, and so do another player and
-a player grave (on the world map too).
+show a check mark. A gold or silver chest, lore note, boss or mining or materials deposit
+within 75 m that is 4 m or more above or below you gets a small green up or orange down caret,
+and so do another player and a player grave (on the world map too).
 - Hold Shift + Alt: the mouse cursor appears and the camera stops turning, so you can use
   the minimap without swinging your view or attacking.
     drag the minimap                 move it anywhere on screen
@@ -210,6 +239,27 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.14
+- Unique Weapons (40) and Unique Equipment (16): every one-of-a-kind weapon, ring and piece of
+  gear at the chest or place it is in. Requested by Gadn.
+- Collectibles (101): fossils, skeleton pieces, the bard's paintings, Drak reliefs, mosaic
+  pieces, meteorites and more. Requested by TheSefer and BlaineCraner.
+- Fell Summoning Stones (45): where Shroud Spores conjure a Fell enemy.
+- Night plants: each region's plants that grow only at night, as Plants rows.
+- Settings > Advanced > Region Filter: a Region row in the Map Key shows one region, the others
+  dimmed or hidden, with its border drawn. Requested by VintageMarble.
+- Settings > Advanced > Region Colors: each region tinted on the world map. Requested by izisot.
+- Settings > Advanced > Position: your X, Y and Z under the minimap, the X and Z under the
+  cursor on the world map, with a copy button. Requested by Loling91.
+- G G vein sight: the ore of the Mining and Materials rows you have on is outlined, on the rock
+  within 12 m and on screen out to 50 m.
+- On the minimap, a mining or materials deposit above or below you gets the up or down caret.
+- A boss and the unique item in its chest are drawn side by side.
+- Fixed: the mod's icons showed on top of a marker's menu.
+- Fixed: a capital F typed into a custom pin's name opened Find and closed the name box.
+  Reported by dremen.
+- The new rows and settings start off.
+
 1.3.13
 - Folded Map Key categories stay folded the next time you play. Requested by HadToRegister.
 - Ctrl + left click works on every boss: a beaten one can be marked not beaten (with Looted

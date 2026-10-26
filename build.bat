@@ -31,6 +31,8 @@ cl /nologo /std:c++20 /O2 /EHsc /MT /LD /W4 /utf-8 /I "%GREENEYE_COMMON%" ^
 if errorlevel 1 exit /b 1
 copy /y mod.json bin\loader\mod.json >nul
 if errorlevel 1 exit /b 1
+copy /y data\veins.bin bin\loader\veins.bin >nul
+if errorlevel 1 exit /b 1
 
 echo Compiling test_patches.exe...
 cl /nologo /std:c++20 /O2 /EHsc /MT /W4 ^
