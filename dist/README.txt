@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.12
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.13
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
@@ -32,8 +32,8 @@ On the right of the world map.
 - SHOW ALL / HIDE ALL at the top switch every marker type at once.
 - Click a category header (FAST TRAVEL & ALTARS, SHROUD & VAULTS, WORLD & RESOURCES, MINING,
   MATERIALS, PLANTS, BAIT, TREES, QUESTS & RUMORS) to switch the whole category, or + / - to
-  fold it. Drag a category header up or down to move the category; the order is
-  remembered.
+  fold it; folded categories stay folded the next time you play. Drag a category header up
+  or down to move the category; the order is remembered.
 - The rows in each category are sorted by name in your language.
 - The mouse wheel or the scroll bar scrolls the list.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
@@ -53,7 +53,8 @@ On the right of the world map.
 - BOSSES (WORLD & RESOURCES): the world's bosses, named like their health bar; beaten ones
   are hidden or grayed out. The game keeps no record of beating some of them (the Dire Wolf,
   the Critter Queens, the Fog Predator...): Ctrl + left click one on the map to mark it beaten
-  or clear the mark. These marks are saved per character.
+  or clear the mark. Ctrl + left click a beaten one to mark it not beaten (with Looted Chests:
+  Grayed Out, beaten bosses show to click). These marks are saved per character.
 - RETURN BEACONS (SHROUD & VAULTS): all 282.
 - WATER SOURCE (WORLD & RESOURCES) also shows the world's wells and water barrels you can
   drink from, and the wells and barrels you build (remembered per world).
@@ -112,6 +113,8 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
     EXPLORED     pins only where you've been.
     HYBRID       pins in unexplored land are grayed out.
     REVEAL ALL   every pin.
+  In every mode, a place you haven't discovered yet (the game would hide it) is grayed out,
+  on the world map and the minimap, even where the fog is cleared.
 - Custom Marker Size   the size of your own pins.
 - Show Minimap, Minimap Terrain, Minimap Icon (sun/moon or weather).
 - Time Format: 1:00 PM or 13:00 for the minimap's clock (at first it follows Windows).
@@ -136,7 +139,8 @@ until you open them again or Ctrl + left click them. Players who have the mod sh
 looted chests: open one and it's marked on their maps too. A looted chest comes back after
 30 minutes of play with every player at least 500 m away (coming closer starts the 30 minutes
 over), unless it's in a Flame Altar's build zone. On a dedicated server the time you're away
-counts too, since the server keeps running. Looted chests are saved per world in
+counts too, if the server's clock kept running (one that stands still while nobody is on
+counts nothing). Looted chests are saved per world in
 greeneye\unlock-map-markers\looted_chests.ini. In minimap_config.ini:
     [Chests]
     InteractKey=E          the key you open chests with
@@ -206,6 +210,17 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.13
+- Folded Map Key categories stay folded the next time you play. Requested by HadToRegister.
+- Ctrl + left click works on every boss: a beaten one can be marked not beaten (with Looted
+  Chests: Grayed Out they show to click). Requested by Delacroix.
+- Places you haven't discovered yet are grayed out, even where the fog is cleared, so you can
+  tell which ones you still have to find. Requested by Delacroix.
+- On a dedicated server, a lore note you read hides right away, from what the server sends,
+  instead of after the server saves.
+- On a dedicated server, time away only brings chests back if the server's clock kept
+  running: one that stands still while nobody is on no longer clears your looted chests.
+
 1.3.12
 - The key that folds the Map Key panel can be changed: PanelToggle= under [Keys] in
   minimap_config.ini (Tab at first; None for no key). Requested by KazarusKain.

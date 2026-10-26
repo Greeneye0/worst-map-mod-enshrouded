@@ -101,7 +101,31 @@ inline constexpr uint8_t kSite2LegacyV1[58] = {
     0x48, 0x8b, 0x08,                   // mov rcx, [rax]
     0x48, 0x89, 0x4e, 0x40              // .done: mov [rsi + 0x40], rcx
 };
+// Also keeps the character's own visibility byte (0 not discovered, 2 discovered, 3 checked) as 0x10 | it at
+// [rsi + 0x35], a byte the game never writes (0x10: not discovered; 0xff: a marker without one; anything else, stale
+// or zero, means nothing), so undiscovered places can be drawn faded.
 inline constexpr uint8_t kSite2Replacement[58] = {
+    0x48, 0x8b, 0x44, 0x24, 0x58,       // mov rax, [rsp + 0x58]
+    0x48, 0x85, 0xc0,                   // test rax, rax
+    0x74, 0x1b,                         // je .no_vis (+0x25)
+    0x48, 0x8b, 0x48, 0x08,             // mov rcx, [rax + 8]
+    0x48, 0x89, 0x4e, 0x40,             // mov [rsi + 0x40], rcx
+    0x0f, 0xb6, 0x08,                   // movzx ecx, byte ptr [rax]
+    0x80, 0xf9, 0x03,                   // cmp cl, 3
+    0x75, 0x03,                         // jne +3
+    0x88, 0x4e, 0x34,                   // mov [rsi + 0x34], cl
+    0x80, 0xc9, 0x10,                   // or cl, 0x10
+    0x88, 0x4e, 0x35,                   // mov [rsi + 0x35], cl
+    0xeb, 0x15,                         // jmp .done (+0x3a)
+    0xc6, 0x46, 0x35, 0xff,             // .no_vis: mov byte ptr [rsi + 0x35], 0xff
+    0x48, 0x8b, 0x44, 0x24, 0x70,       // mov rax, [rsp + 0x70]
+    0x48, 0x85, 0xc0,                   // test rax, rax
+    0x74, 0x03,                         // je +3 (rax 0: lastChange 0)
+    0x48, 0x8b, 0x00,                   // mov rax, [rax]
+    0x48, 0x89, 0x46, 0x40              // mov [rsi + 0x40], rax
+};
+// The patch before 1.3.13 (no visibility byte), replaced when found in a running game
+inline constexpr uint8_t kSite2LegacyV2[58] = {
     0x48, 0x8b, 0x44, 0x24, 0x58,
     0x48, 0x85, 0xc0,
     0x74, 0x15,
@@ -227,7 +251,8 @@ inline bool MatchSiteAt(const uint8_t* candidate, const PatchSiteSpec& spec, Sit
         return true;
     }
     if (spec.patchSize == sizeof(kSite2LegacyV1) &&
-        std::memcmp(candidate + spec.patchOffset, kSite2LegacyV1, sizeof(kSite2LegacyV1)) == 0) {
+        (std::memcmp(candidate + spec.patchOffset, kSite2LegacyV1, sizeof(kSite2LegacyV1)) == 0 ||
+         std::memcmp(candidate + spec.patchOffset, kSite2LegacyV2, sizeof(kSite2LegacyV2)) == 0)) {
         *outState = SiteMatchState::Unpatched;
         return true;
     }

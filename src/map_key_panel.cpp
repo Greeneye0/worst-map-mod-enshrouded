@@ -86,6 +86,9 @@ bool IsVisitedSanctumMarker(const uint8_t* m, uint32_t origHash) {
 }
 extern int g_worldHostState; // knowledge.inl: 1 hosted here, 0 on a server, -1 not known yet
 extern bool g_worldHostRecheck;
+extern bool g_knowledgeValid;
+extern uint32_t g_knowledgeReplicated;
+extern uint64_t g_knowledgeSlotKeys;
 
 int OreDepositCount(size_t ore) {
     static int counts[kOreCount]{};
@@ -774,6 +777,7 @@ bool g_lockedCategories[kMaxCategoryId]{};
 std::unordered_map<uint32_t, bool> g_lockedStates; // the locked rows' ON / OFF as last saved
 bool g_applyingLockedStates = false;               // ApplyLockedStates saves once, at the end
 void SaveFilterLocks();
+void SaveCollapsedSections();
 
 bool IsCategoryLocked(uint8_t category) { return category < kMaxCategoryId && g_lockedCategories[category]; }
 
@@ -1661,6 +1665,7 @@ void WriteChestMarkerSlot(uint8_t* m, size_t chestIdx) {
     // MapMarkerType* before 0x140c24bf0 dereferences [r15 + 0x42]. Instead, omit disabled chests from arr1/arr2.
     *reinterpret_cast<uint32_t*>(m + 0x30) = typeHash;
     m[0x34] = cleared ? 3 : 0;
+    m[0x35] = 0xff; // no discovery state (patches.h site 2)
     *reinterpret_cast<uint32_t*>(m + 0x3c) = typeHash;
     *reinterpret_cast<UiText*>(m + 0x68) = GetChestSubtypeTitle(sp.subtype);
     m[0x80] = isGold ? 4 : 0; // 4 = Yellow/Gold, 0 = White/Silver
@@ -1756,6 +1761,20 @@ bool g_lootSaveDirty = false;
 uint64_t g_lootLastSaveTick = 0;
 double g_lootOfflineSec = 0.0;          // time since this world was last played here, not yet counted (LastPlayed)
 uint64_t g_lootOfflineTick = 0;         // when that was read
+// The world's time of day (seconds into the game's day) when it was last left (TimeOfDay), read on joining, and now.
+// A server nobody is on can stand still: then the time of day picks up where it was left and no time is counted.
+double g_lootLeftDaySec = -1.0, g_lootJoinDaySec = -1.0, g_lootDaySec = -1.0;
+
+// The game's time of day in this world, in seconds into its day (it runs about 32 times real time).
+bool WorldTimeOfDaySec(uint8_t* client, double& outSec) {
+    uint8_t* daytime = *reinterpret_cast<uint8_t**>(client + 0x466ff0);
+    if (!daytime) return false;
+    constexpr int64_t kDayNanoseconds = 86400000000000LL;
+    const int64_t ns = *reinterpret_cast<int64_t*>(daytime + 0x48);
+    if (ns < 0 || ns > kDayNanoseconds * 2) return false;
+    outSec = static_cast<double>(ns % kDayNanoseconds) / 1e9;
+    return true;
+}
 uint64_t g_lootLastMatchTick = 0;
 uint8_t g_lootPrevScreen = 0;
 uint8_t* g_lootClientWorld = nullptr;   // the game's world object the state belongs to
@@ -1829,6 +1848,10 @@ void SaveLootedChests() {
     WritePrivateProfileStringA(g_lootSection.c_str(), "Looted", looted.c_str(), path.c_str());
     std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(std::time(nullptr)));
     WritePrivateProfileStringA(g_lootSection.c_str(), "LastPlayed", buf, path.c_str());
+    if (g_lootDaySec >= 0.0) {
+        std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_lootDaySec));
+        WritePrivateProfileStringA(g_lootSection.c_str(), "TimeOfDay", buf, path.c_str());
+    }
     SaveBuiltWater(path);
 }
 
@@ -1850,6 +1873,8 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
         const long long away = static_cast<long long>(std::time(nullptr)) - lastPlayed;
         g_lootOfflineSec = lastPlayed > 0 && away > 0 ? static_cast<double>(away) : 0.0;
         g_lootOfflineTick = GetTickCount64();
+        g_lootLeftDaySec = static_cast<double>(GetPrivateProfileIntA(name, "TimeOfDay", -1, path.c_str()));
+        g_lootJoinDaySec = g_lootDaySec = -1.0;
         g_worldHostState = -1; // the last world's answer does not hold here
         g_worldHostRecheck = true;
         GetPrivateProfileStringA(name, "Looted", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
@@ -2028,6 +2053,7 @@ void ResetLootWorld(const char* why) {
     if (g_log && !g_lootSection.empty()) g_log("Looted chests: left world %s (%s)", g_lootSection.c_str(), why);
     g_lootSection.clear();
     g_lootAltars.clear();
+    g_lootJoinDaySec = g_lootDaySec = -1.0;
     ResetBuiltWater();
     for (auto& s : g_chestLootStates) s = ChestLootState{};
     g_chestLootDirty = true;
@@ -2186,10 +2212,31 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
             return false;
         };
         const double respawnSec = std::max(1.0, static_cast<double>(g_chestRespawnMinutes) * 60.0);
+        double daySec = 0.0;
+        if (!g_lootSection.empty() && WorldTimeOfDaySec(client, daySec)) {
+            g_lootDaySec = daySec;
+            if (g_lootJoinDaySec < 0.0) {
+                g_lootJoinDaySec = daySec;
+                if (g_log && g_lootLeftDaySec >= 0.0)
+                    g_log("Looted chests: world clock %02d:%02d when last left, %02d:%02d now (%.0f min of real time)",
+                          static_cast<int>(g_lootLeftDaySec) / 3600, static_cast<int>(g_lootLeftDaySec) / 60 % 60,
+                          static_cast<int>(daySec) / 3600, static_cast<int>(daySec) / 60 % 60, g_lootOfflineSec / 60.0);
+            }
+        }
         // Time away from a world on someone else's server counts too, everyone away: it ran on without us. A world
         // hosted here was stopped meanwhile. Not known within three minutes: not counted.
         if (g_lootOfflineSec > 0.0 && (g_worldHostState != -1 || nowTick - g_lootOfflineTick > 180000ULL)) {
-            if (g_worldHostState == 0) {
+            // The server stood still while everyone was away: the time of day went on from where it was left (at
+            // most two game hours on, about four minutes of saving and loading)
+            const double dayMoved = g_lootLeftDaySec >= 0.0 && g_lootJoinDaySec >= 0.0
+                                        ? std::fmod(g_lootJoinDaySec - g_lootLeftDaySec + 86400.0, 86400.0)
+                                        : -1.0;
+            if (g_worldHostState == 0 && dayMoved >= 0.0 && dayMoved <= 7200.0) {
+                if (g_log)
+                    g_log("Looted chests: away from this server world for %.0f min, but its clock moved only %.0f game "
+                          "min: it stood still meanwhile; no chests came back",
+                          g_lootOfflineSec / 60.0, dayMoved / 60.0);
+            } else if (g_worldHostState == 0) {
                 size_t back = 0;
                 for (size_t c = 0; c < kTotalChestCount; ++c) {
                     auto& st = g_chestLootStates[c];
@@ -2206,6 +2253,11 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
                 if (g_log) g_log("Looted chests: away from this server world for %.0f min; %zu chests came back meanwhile",
                                  g_lootOfflineSec / 60.0, back);
             }
+            if (g_worldHostState == -1 && g_log)
+                g_log("Looted chests: after 3 min still not known whether this world is on a server (knowledge %s, "
+                      "player slot %llu keys, replicated %u); the %.0f min away not counted",
+                      g_knowledgeValid ? "read" : "not read", static_cast<unsigned long long>(g_knowledgeSlotKeys),
+                      g_knowledgeReplicated, g_lootOfflineSec / 60.0);
             g_lootOfflineSec = 0.0;
         }
         for (size_t c = 0; c < kTotalChestCount; ++c) {
@@ -2514,6 +2566,19 @@ bool IsMarkerTypeAlwaysRevealed(uint32_t origHash, uint8_t b48, uint64_t lastChg
         return true;
     }
     return false;
+}
+
+// A place this character hasn't discovered yet: the game would hide it (patches.h site 2 keeps its visibility byte at
+// +0x35 as 0x10 | state, 0x10 not discovered). Quests and rumors, and a place an active quest points to, stand out
+// as they are.
+bool IsMarkerUndiscovered(const uint8_t* m, uint32_t origHash) {
+    if (!m || m[0x35] != 0x10) return false;
+    for (const auto& row : kCategory0Rows) {
+        if (row.typeHash == origHash) return false;
+    }
+    uint32_t id08 = IsSlotSaved(m) ? *reinterpret_cast<const uint32_t*>(m + 0x4c) : 0u;
+    if (id08 == 0u) id08 = *reinterpret_cast<const uint32_t*>(m + 0x08);
+    return id08 == 0u || GetQuestFilterHashForMarkerId(id08, true) == 0u;
 }
 
 bool IsMarkerExplored(uint8_t* client, const uint8_t* m, uint32_t origHash) {
@@ -5657,6 +5722,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             ToggleCategoryLock(grp.category);
                         } else if (clicked && hovCatCollapse) {
                             g_categoryCollapsed[c] = !g_categoryCollapsed[c];
+                            SaveCollapsedSections();
                             if (catLocked) SaveFilterLocks();
                         } else if (clicked && hovCatToggle) {
                             catPressed = static_cast<int>(c);
@@ -6527,6 +6593,19 @@ void LoadMinimapConfig() {
             if (kCategoryGroups[c].category == id && IsCategoryLocked(kCategoryGroups[c].category)) g_categoryCollapsed[c] = true;
         }
     }
+    // Closed sections (before 1.3.13 only a locked category's were kept, above)
+    char closedSections[128]{};
+    GetPrivateProfileStringA("MinimapV2", "CollapsedSections", "", closedSections, sizeof(closedSections), cfg.c_str());
+    if (closedSections[0]) {
+        for (bool& closed : g_categoryCollapsed) closed = false;
+        for (char *ctx = nullptr, *tok = strtok_s(closedSections, ", ", &ctx); tok; tok = strtok_s(nullptr, ", ", &ctx)) {
+            if (*tok < '0' || *tok > '9') continue; // "none"
+            const unsigned long id = std::strtoul(tok, nullptr, 10);
+            for (size_t c = 0; c < kCategoryGroupCount; ++c) {
+                if (kCategoryGroups[c].category == id) g_categoryCollapsed[c] = true;
+            }
+        }
+    }
     // RowStates = hash:1 / hash:0 for every locked row
     char states[4096]{};
     GetPrivateProfileStringA("Locks", "RowStates", "", states, sizeof(states), cfg.c_str());
@@ -6537,6 +6616,19 @@ void LoadMinimapConfig() {
         const uint32_t hash = static_cast<uint32_t>(std::strtoul(tok, nullptr, 16));
         if (hash != 0u) g_lockedStates[hash] = colon[1] == '1';
     }
+}
+
+// [MinimapV2] CollapsedSections = the category ids of the Map Key's closed sections, kept between game sessions
+void SaveCollapsedSections() {
+    std::string ids;
+    char buf[16]{};
+    for (size_t c = 0; c < kCategoryGroupCount; ++c) {
+        if (!g_categoryCollapsed[c]) continue;
+        std::snprintf(buf, sizeof(buf), "%s%u", ids.empty() ? "" : ",", static_cast<unsigned>(kCategoryGroups[c].category));
+        ids += buf;
+    }
+    WritePrivateProfileStringA("MinimapV2", "CollapsedSections", ids.empty() ? "none" : ids.c_str(),
+                               GetMinimapConfigPath().c_str());
 }
 
 void SaveFilterLocks() {
@@ -7627,7 +7719,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 uint32_t savedId08 = isSlotSaved ? *reinterpret_cast<uint32_t*>(m + 0x4c)
                                                  : *reinterpret_cast<uint32_t*>(m + 0x08);
                 if (savedId08 == 0u) savedId08 = *reinterpret_cast<uint32_t*>(m + 0x08);
-                const uint32_t markerState = *reinterpret_cast<uint32_t*>(m + 0x34);
+                const uint32_t markerState = static_cast<uint32_t>(m[0x34]);
 
                 uint32_t normHash = (origHash == 0xafce0c5fu)
                                         ? ClassifyQuestOrRumorMarker(savedId08, static_cast<uint8_t>(markerState))
@@ -7728,7 +7820,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 if (sortCat == 4) {
                     iconSize *= customScale;
                 }
-                if (isUnexploredPin && g_pinRevealMode == PinRevealMode::Hybrid) {
+                if ((isUnexploredPin && g_pinRevealMode == PinRevealMode::Hybrid) || IsMarkerUndiscovered(m, origHash)) {
                     tint = 0xFF8C9296u;
                     alpha = 0.52f;
                 }
@@ -8431,7 +8523,7 @@ bool ShouldDimWorldMapMarker(uint8_t* client, uint8_t* m, bool* outIsCustomPlaye
     const uint32_t uid = *reinterpret_cast<uint32_t*>(m + 0x00);
     const uint32_t typeHash = *reinterpret_cast<uint32_t*>(m + 0x30);
     const uint32_t origHash = GetMarkerOrigTypeHash(m);
-    const uint32_t markerState = *reinterpret_cast<uint32_t*>(m + 0x34);
+    const uint32_t markerState = static_cast<uint32_t>(m[0x34]);
     const bool isChest = ((uid & 0xFFFF0000u) == kChestMarkerUidPrefix);
     if (outIsChest) *outIsChest = isChest;
 
@@ -8452,9 +8544,9 @@ bool ShouldDimWorldMapMarker(uint8_t* client, uint8_t* m, bool* outIsCustomPlaye
                                                                *reinterpret_cast<int32_t*>(m + 0x24)));
         return lootedDim || hybridDim;
     }
-    if (!isCustomPlayerPin && g_pinRevealMode == PinRevealMode::Hybrid && client) {
-        return !IsMarkerExplored(client, m, origHash);
-    }
+    if (isCustomPlayerPin) return false;
+    if (IsMarkerUndiscovered(m, origHash)) return true;
+    if (g_pinRevealMode == PinRevealMode::Hybrid && client) return !IsMarkerExplored(client, m, origHash);
     return false;
 }
 
@@ -8488,7 +8580,7 @@ void ApplyWorldMapMarkerIconOverrides(uint8_t* m, uint8_t* drawParams, WorldMapM
         auto* uiGlobal = g_uiCtx ? static_cast<uint8_t*>(g_uiCtx()) : nullptr;
         void* uiCtx = uiGlobal ? *reinterpret_cast<void**>(uiGlobal + 0x18) : nullptr;
         if (uiCtx && g_pushUiOpacity && g_popUiOpacity) {
-            const float opacity = chest && *reinterpret_cast<uint32_t*>(m + 0x34) == 3u ? 0.36f : 0.48f;
+            const float opacity = chest && static_cast<uint32_t>(m[0x34]) == 3u ? 0.36f : 0.48f;
             g_pushUiOpacity(uiCtx, opacity);
             bak.opacityUiCtx = uiCtx;
         }
@@ -8532,7 +8624,7 @@ bool TryPushMarkerPlateDimOpacity(uint8_t* entry, void*& outUiCtx) {
         auto* uiGlobal = static_cast<uint8_t*>(g_uiCtx());
         void* uiCtx = uiGlobal ? *reinterpret_cast<void**>(uiGlobal + 0x18) : nullptr;
         if (!uiCtx) return false;
-        const uint32_t markerState = *reinterpret_cast<uint32_t*>(m + 0x34);
+        const uint32_t markerState = static_cast<uint32_t>(m[0x34]);
         const float dimAlpha = (isChest && markerState == 3u) ? 0.36f : 0.42f;
         g_pushUiOpacity(uiCtx, dimAlpha);
         outUiCtx = uiCtx;

@@ -37,6 +37,36 @@ void FindSave2Block() {
     g_save2Block = p + 0x48 + disp - 0x10; // the byte store's target is block + 0x10
 }
 
+uint32_t g_knowledgeAhead = 0; // ids the server sent that the character's save doesn't have yet
+
+// The server's replicated set R + 0x40058: +0x08 u32* slot-used bits, +0x10 u64 slots, +0x28 u32* keys, +0x40 u32*
+// states, +0x54 u32 count. Adds its keys to out when it is this character's: it holds nearly all of the save's (own)
+// keys, so the set left behind by another server or character is not used. A note read on a server is in it before
+// the server saves.
+void MergeReplicatedKnowledge(const uint8_t* replica, const std::unordered_set<uint32_t>& own,
+                              std::unordered_set<uint32_t>& out) {
+    g_knowledgeAhead = 0;
+    if (!replica || own.empty()) return;
+    const uint8_t* h = replica + 0x40058;
+    const auto* bits = *reinterpret_cast<const uint32_t* const*>(h + 0x08);
+    const uint64_t slots = *reinterpret_cast<const uint64_t*>(h + 0x10);
+    const auto* keys = *reinterpret_cast<const uint32_t* const*>(h + 0x28);
+    const uint32_t count = *reinterpret_cast<const uint32_t*>(h + 0x54);
+    if (!bits || !keys || slots == 0 || slots > 0x100000 || count > slots) return;
+    std::vector<uint32_t> ids;
+    ids.reserve(count);
+    size_t shared = 0;
+    for (uint64_t i = 0; i < slots; ++i) {
+        if (!(bits[i >> 5] >> (i & 31) & 1)) continue;
+        ids.push_back(keys[i]);
+        if (own.count(keys[i])) ++shared;
+    }
+    if (shared * 10 < own.size() * 9) return;
+    for (uint32_t id : ids) {
+        if (out.insert(id).second) ++g_knowledgeAhead;
+    }
+}
+
 // Adds a knowledge container's known ids to out; false if it does not validate.
 bool ReadKnowledgeContainer(const uint8_t* c, std::unordered_set<uint32_t>& out) {
     if (c[0] != 1) return false;
@@ -64,6 +94,12 @@ bool ReadKnowledgeInner(std::unordered_set<uint32_t>& out) {
     const uint32_t replicated = replica ? *reinterpret_cast<const uint32_t*>(replica + 0x40058 + 0x54) : 0;
     const uint64_t slotKeys = *reinterpret_cast<const uint64_t*>(save2 + 0xbcd28 + 0x10);
     g_knowledgeReplicated = replicated <= 11000 ? replicated : 0;
+    if (own && (!slot || slotKeys == 0) && g_worldHostState == 0) {
+        const std::unordered_set<uint32_t> saved = out;
+        MergeReplicatedKnowledge(replica, saved, out);
+    } else {
+        g_knowledgeAhead = 0;
+    }
     g_knowledgeSlotKeys = slot ? slotKeys : 0;
     return own || slot;
 }
@@ -84,7 +120,9 @@ void UpdateKnowledge() {
     }
     static size_t loggedCount = SIZE_MAX;
     if (ok && g_knownKnowledge.size() != loggedCount && g_log) {
-        g_log("Lore notes / bosses: %zu known", g_knownKnowledge.size()); // also when a note is read or a boss beaten
+        // also when a note is read or a boss beaten
+        g_log("Lore notes / bosses: %zu known (%u of them from the server, not in the save yet)", g_knownKnowledge.size(),
+              g_knowledgeAhead);
         loggedCount = g_knownKnowledge.size();
     } else if (!ok && g_knowledgeValid && g_log) {
         g_log("Lore notes / bosses: knowledge not readable (untracked)");
@@ -92,10 +130,12 @@ void UpdateKnowledge() {
     }
     g_knowledgeValid = ok;
     static uint64_t clientSince = 0;
+    static int loggedHost = -2;
     if (g_worldHostRecheck) {
         g_worldHostRecheck = false;
         g_worldHostState = -1;
         clientSince = 0;
+        loggedHost = -2; // each world logs its answer
     }
     if (!ok) {
         g_worldHostState = -1;
@@ -109,7 +149,6 @@ void UpdateKnowledge() {
     } else {
         clientSince = 0;
     }
-    static int loggedHost = -2;
     if (g_worldHostState != loggedHost && g_worldHostState != -1 && g_log) {
         g_log("%s (player slot %llu keys, replicated %u)",
               g_worldHostState ? "World: hosted by this game" : "World: on a server (not hosted by this game)",
@@ -136,24 +175,29 @@ bool IsKnowledgeDeposit(size_t d) {
 }
 
 // Bosses the game keeps no knowledge for (the Dire Wolf, the Critter Queens, ...: 14 of 25 spawn places have no
-// SceneKnowledgeTrigger) are marked defeated by hand with Ctrl + left click. Like the game's knowledge they belong to
-// the character: saved in defeated_bosses.ini under the character's name, by knowledge spot index.
+// SceneKnowledgeTrigger) are marked defeated by hand with Ctrl + left click; one the game has as beaten can be marked
+// not beaten the same way. Like the game's knowledge they belong to the character: saved in defeated_bosses.ini under
+// the character's name (Bosses = beaten by hand, NotBeaten = not beaten by hand), by knowledge spot index.
 std::unordered_set<uint16_t> g_manualBosses;
+std::unordered_set<uint16_t> g_notBeatenBosses;
 std::string g_bossCharacter; // empty: not known yet (marks not loaded)
 
-bool IsManualBossSpot(size_t d) {
-    return IsKnowledgeDeposit(d) && kOreDeposits[d].ore == kBossesFirst &&
-           kKnowledgeSpots[d - kKnowledgeFirstDeposit].knowledge == 0;
+bool IsBossSpot(size_t d) {
+    return IsKnowledgeDeposit(d) && kOreDeposits[d].ore == kBossesFirst;
 }
 
 void SaveManualBosses() {
     if (g_bossCharacter.empty()) return;
-    std::vector<uint16_t> spots(g_manualBosses.begin(), g_manualBosses.end());
-    std::sort(spots.begin(), spots.end());
-    std::string text;
-    for (uint16_t s : spots) text += (text.empty() ? "" : ";") + std::to_string(s);
-    WritePrivateProfileStringA(("Character_" + g_bossCharacter).c_str(), "Bosses", text.c_str(),
-                               std::string(greeneye::DataPath("defeated_bosses.ini")).c_str());
+    const std::string path = greeneye::DataPath("defeated_bosses.ini");
+    auto save = [&](const char* key, const std::unordered_set<uint16_t>& set) {
+        std::vector<uint16_t> spots(set.begin(), set.end());
+        std::sort(spots.begin(), spots.end());
+        std::string text;
+        for (uint16_t s : spots) text += (text.empty() ? "" : ";") + std::to_string(s);
+        WritePrivateProfileStringA(("Character_" + g_bossCharacter).c_str(), key, text.c_str(), path.c_str());
+    };
+    save("Bosses", g_manualBosses);
+    save("NotBeaten", g_notBeatenBosses);
 }
 
 // Once a second: loads the marks when the local character's name is first known (or changes).
@@ -177,29 +221,53 @@ void UpdateManualBosses(uint8_t* client) {
     }
     if (name.empty() || name == g_bossCharacter) return;
     g_bossCharacter = name;
-    g_manualBosses.clear();
-    char text[2048]{};
-    GetPrivateProfileStringA(("Character_" + name).c_str(), "Bosses", "", text, sizeof(text),
-                             std::string(greeneye::DataPath("defeated_bosses.ini")).c_str());
-    for (const char* t = text; *t;) {
-        const int s = std::atoi(t);
-        if (s >= 0 && static_cast<size_t>(s) < kKnowledgeSpotCount && IsManualBossSpot(kKnowledgeFirstDeposit + s))
-            g_manualBosses.insert(static_cast<uint16_t>(s));
-        while (*t && *t != ';') ++t;
-        if (*t == ';') ++t;
-    }
-    if (g_log) g_log("Bosses: character %s, %zu marked defeated by hand", name.c_str(), g_manualBosses.size());
+    const std::string path = greeneye::DataPath("defeated_bosses.ini");
+    auto load = [&](const char* key, std::unordered_set<uint16_t>& set) {
+        set.clear();
+        char text[2048]{};
+        GetPrivateProfileStringA(("Character_" + name).c_str(), key, "", text, sizeof(text), path.c_str());
+        for (const char* t = text; *t;) {
+            const int s = std::atoi(t);
+            if (s >= 0 && static_cast<size_t>(s) < kKnowledgeSpotCount && IsBossSpot(kKnowledgeFirstDeposit + s))
+                set.insert(static_cast<uint16_t>(s));
+            while (*t && *t != ';') ++t;
+            if (*t == ';') ++t;
+        }
+    };
+    load("Bosses", g_manualBosses);
+    load("NotBeaten", g_notBeatenBosses);
+    if (g_log)
+        g_log("Bosses: character %s, %zu marked defeated by hand, %zu not beaten by hand", name.c_str(),
+              g_manualBosses.size(), g_notBeatenBosses.size());
 }
 
-// Ctrl + left click near (wx, wz): marks the nearest boss the game doesn't track as defeated, or clears the mark.
+// What the game's own knowledge says: a lore note read / a boss defeated (false while untracked).
+bool KnowledgeDoneInGame(size_t d) {
+    if (!IsKnowledgeDeposit(d) || !g_knowledgeValid) return false;
+    const uint32_t id = kKnowledgeSpots[d - kKnowledgeFirstDeposit].knowledge;
+    return id != 0 && g_knownKnowledge.count(id) != 0;
+}
+
+// The game's answer, or for a boss the character's mark by hand when there is one.
+bool KnowledgeDone(size_t d) {
+    if (IsBossSpot(d)) {
+        const auto s = static_cast<uint16_t>(d - kKnowledgeFirstDeposit);
+        if (g_manualBosses.count(s)) return true;
+        if (g_notBeatenBosses.count(s)) return false;
+    }
+    return KnowledgeDoneInGame(d);
+}
+
+// Ctrl + left click near (wx, wz): flips the nearest shown boss between beaten and not beaten. A mark by hand is kept
+// only where it differs from the game's own record.
 bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters) {
     if (g_bossCharacter.empty() || !g_oreEnabled[kBossesFirst]) return false;
     float best = maxRadiusMeters * maxRadiusMeters;
     size_t bestSpot = kKnowledgeSpotCount;
     for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
         const size_t d = kKnowledgeFirstDeposit + i;
-        if (!IsManualBossSpot(d)) continue;
-        if (g_lootedChestMode == 0 && g_manualBosses.count(static_cast<uint16_t>(i))) continue; // hidden
+        if (!IsBossSpot(d)) continue;
+        if (g_lootedChestMode == 0 && KnowledgeDone(d)) continue; // hidden
         const float dx = kOreDeposits[d].x - wx, dz = kOreDeposits[d].z - wz;
         if (dx * dx + dz * dz < best) {
             best = dx * dx + dz * dz;
@@ -208,20 +276,14 @@ bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters) {
     }
     if (bestSpot == kKnowledgeSpotCount) return false;
     const auto s = static_cast<uint16_t>(bestSpot);
-    const bool marked = g_manualBosses.erase(s) == 0;
-    if (marked) g_manualBosses.insert(s);
+    const size_t d = kKnowledgeFirstDeposit + bestSpot;
+    const bool beaten = !KnowledgeDone(d);
+    g_manualBosses.erase(s);
+    g_notBeatenBosses.erase(s);
+    if (beaten != KnowledgeDoneInGame(d)) (beaten ? g_manualBosses : g_notBeatenBosses).insert(s);
     SaveManualBosses();
-    if (g_log) g_log("Bosses: boss spot %u %s by hand", s, marked ? "marked defeated" : "cleared");
+    if (g_log) g_log("Bosses: boss spot %u marked %s by hand", s, beaten ? "beaten" : "not beaten");
     return true;
-}
-
-// A lore note read / a boss defeated (false while untracked).
-bool KnowledgeDone(size_t d) {
-    if (!IsKnowledgeDeposit(d)) return false;
-    if (IsManualBossSpot(d)) return g_manualBosses.count(static_cast<uint16_t>(d - kKnowledgeFirstDeposit)) != 0;
-    if (!g_knowledgeValid) return false;
-    const uint32_t id = kKnowledgeSpots[d - kKnowledgeFirstDeposit].knowledge;
-    return id != 0 && g_knownKnowledge.count(id) != 0;
 }
 
 // The note's or boss's own name (journal entry / health bar) in the game's language, else the row's name.

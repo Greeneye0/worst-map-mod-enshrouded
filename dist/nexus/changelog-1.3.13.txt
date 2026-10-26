@@ -1,0 +1,5 @@
+- Folded Map Key categories stay folded the next time you play. Requested by HadToRegister.
+- Ctrl + left click works on every boss: a beaten one can be marked not beaten (with Looted Chests: Grayed Out they show to click). Requested by Delacroix.
+- Places you haven't discovered yet are grayed out, even where the fog is cleared. Requested by Delacroix.
+- On a dedicated server, a lore note you read hides right away, from what the server sends, instead of after the server saves.
+- On a dedicated server, time away only brings chests back if the server's clock kept running.
