@@ -135,9 +135,91 @@ bool IsKnowledgeDeposit(size_t d) {
     return d >= kKnowledgeFirstDeposit && d < kKnowledgeFirstDeposit + kKnowledgeSpotCount;
 }
 
+// Bosses the game keeps no knowledge for (the Dire Wolf, the Critter Queens, ...: 14 of 25 spawn places have no
+// SceneKnowledgeTrigger) are marked defeated by hand with Ctrl + left click. Like the game's knowledge they belong to
+// the character: saved in defeated_bosses.ini under the character's name, by knowledge spot index.
+std::unordered_set<uint16_t> g_manualBosses;
+std::string g_bossCharacter; // empty: not known yet (marks not loaded)
+
+bool IsManualBossSpot(size_t d) {
+    return IsKnowledgeDeposit(d) && kOreDeposits[d].ore == kBossesFirst &&
+           kKnowledgeSpots[d - kKnowledgeFirstDeposit].knowledge == 0;
+}
+
+void SaveManualBosses() {
+    if (g_bossCharacter.empty()) return;
+    std::vector<uint16_t> spots(g_manualBosses.begin(), g_manualBosses.end());
+    std::sort(spots.begin(), spots.end());
+    std::string text;
+    for (uint16_t s : spots) text += (text.empty() ? "" : ";") + std::to_string(s);
+    WritePrivateProfileStringA(("Character_" + g_bossCharacter).c_str(), "Bosses", text.c_str(),
+                               std::string(greeneye::DataPath("defeated_bosses.ini")).c_str());
+}
+
+// Once a second: loads the marks when the local character's name is first known (or changes).
+void UpdateManualBosses(uint8_t* client) {
+    if (!client) return;
+    uint8_t* players = *reinterpret_cast<uint8_t**>(client + 0x4642c0);
+    const uint64_t count = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
+    const uint32_t localId = *reinterpret_cast<uint32_t*>(client + 0x18);
+    if (!players || count == 0 || count > 64 || localId == 0) return;
+    std::string name;
+    for (uint64_t i = 0; i < count && name.empty(); ++i) {
+        const uint8_t* p = players + i * 0x240;
+        if (*reinterpret_cast<const uint32_t*>(p) != localId) continue;
+        const char* ptr = *reinterpret_cast<const char* const*>(p + 0xc0);
+        const size_t len = *reinterpret_cast<const size_t*>(p + 0xc8);
+        if (ptr && len > 0 && len <= 48) name.assign(ptr, len);
+    }
+    // Section names can't hold ] or line breaks
+    for (char& c : name) {
+        if (c == '[' || c == ']' || c == '\r' || c == '\n' || c == '=') c = '_';
+    }
+    if (name.empty() || name == g_bossCharacter) return;
+    g_bossCharacter = name;
+    g_manualBosses.clear();
+    char text[2048]{};
+    GetPrivateProfileStringA(("Character_" + name).c_str(), "Bosses", "", text, sizeof(text),
+                             std::string(greeneye::DataPath("defeated_bosses.ini")).c_str());
+    for (const char* t = text; *t;) {
+        const int s = std::atoi(t);
+        if (s >= 0 && static_cast<size_t>(s) < kKnowledgeSpotCount && IsManualBossSpot(kKnowledgeFirstDeposit + s))
+            g_manualBosses.insert(static_cast<uint16_t>(s));
+        while (*t && *t != ';') ++t;
+        if (*t == ';') ++t;
+    }
+    if (g_log) g_log("Bosses: character %s, %zu marked defeated by hand", name.c_str(), g_manualBosses.size());
+}
+
+// Ctrl + left click near (wx, wz): marks the nearest boss the game doesn't track as defeated, or clears the mark.
+bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters) {
+    if (g_bossCharacter.empty() || !g_oreEnabled[kBossesFirst]) return false;
+    float best = maxRadiusMeters * maxRadiusMeters;
+    size_t bestSpot = kKnowledgeSpotCount;
+    for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
+        const size_t d = kKnowledgeFirstDeposit + i;
+        if (!IsManualBossSpot(d)) continue;
+        if (g_lootedChestMode == 0 && g_manualBosses.count(static_cast<uint16_t>(i))) continue; // hidden
+        const float dx = kOreDeposits[d].x - wx, dz = kOreDeposits[d].z - wz;
+        if (dx * dx + dz * dz < best) {
+            best = dx * dx + dz * dz;
+            bestSpot = i;
+        }
+    }
+    if (bestSpot == kKnowledgeSpotCount) return false;
+    const auto s = static_cast<uint16_t>(bestSpot);
+    const bool marked = g_manualBosses.erase(s) == 0;
+    if (marked) g_manualBosses.insert(s);
+    SaveManualBosses();
+    if (g_log) g_log("Bosses: boss spot %u %s by hand", s, marked ? "marked defeated" : "cleared");
+    return true;
+}
+
 // A lore note read / a boss defeated (false while untracked).
 bool KnowledgeDone(size_t d) {
-    if (!g_knowledgeValid || !IsKnowledgeDeposit(d)) return false;
+    if (!IsKnowledgeDeposit(d)) return false;
+    if (IsManualBossSpot(d)) return g_manualBosses.count(static_cast<uint16_t>(d - kKnowledgeFirstDeposit)) != 0;
+    if (!g_knowledgeValid) return false;
     const uint32_t id = kKnowledgeSpots[d - kKnowledgeFirstDeposit].knowledge;
     return id != 0 && g_knownKnowledge.count(id) != 0;
 }

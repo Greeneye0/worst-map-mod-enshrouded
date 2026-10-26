@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.11
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.12
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
@@ -38,6 +38,9 @@ On the right of the world map.
 - The mouse wheel or the scroll bar scrolls the list.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
+  To use another key than Tab, set PanelToggle= under [Keys] in
+  greeneye\unlock-map-markers\minimap_config.ini: a letter, a digit, F1 to F12, CapsLock,
+  Backquote, Insert, Delete, Home, End, or None for no key.
 - Every gold and silver chest in the world is included: all 448 gold and 1032 silver
   chests have their own filter rows.
 - FILTER LOCKS: the padlock left of a switch locks that filter. A locked filter keeps its ON
@@ -48,7 +51,9 @@ On the right of the world map.
   are hidden or grayed out (Settings > Looted Chests); unread ones are drawn bigger on an
   amber ring so they stand out. Hover one for its title.
 - BOSSES (WORLD & RESOURCES): the world's bosses, named like their health bar; beaten ones
-  are hidden or grayed out.
+  are hidden or grayed out. The game keeps no record of beating some of them (the Dire Wolf,
+  the Critter Queens, the Fog Predator...): Ctrl + left click one on the map to mark it beaten
+  or clear the mark. These marks are saved per character.
 - RETURN BEACONS (SHROUD & VAULTS): all 282.
 - WATER SOURCE (WORLD & RESOURCES) also shows the world's wells and water barrels you can
   drink from, and the wells and barrels you build (remembered per world).
@@ -144,7 +149,8 @@ MINIMAP
 A minimap with the World Map's terrain, a compass, the time of day (or the weather) and its
 zoom level on your HUD, under the Journal [J] tab at first. Cleared places and looted chests
 show a check mark. A gold or silver chest, lore note or boss within 75 m that is 4 m or more
-above or below you gets a small green up or orange down caret, and so does another player.
+above or below you gets a small green up or orange down caret, and so do another player and
+a player grave (on the world map too).
 - Hold Shift + Alt: the mouse cursor appears and the camera stops turning, so you can use
   the minimap without swinging your view or attacking.
     drag the minimap                 move it anywhere on screen
@@ -200,6 +206,14 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.12
+- The key that folds the Map Key panel can be changed: PanelToggle= under [Keys] in
+  minimap_config.ini (Tab at first; None for no key). Requested by KazarusKain.
+- Bosses the game keeps no record of beating (the Dire Wolf, the Critter Queens, the Fog
+  Predator and others): Ctrl + left click one on the map to mark it beaten.
+- A player grave 4 m or more above or below you gets the up or down caret, on the minimap and
+  the world map.
+
 1.3.11
 - World map: Page Up / Page Down (or numpad + and -) zoom in and out one step.
 - Map Key: drag a category header to move the category; the rows in each category are sorted

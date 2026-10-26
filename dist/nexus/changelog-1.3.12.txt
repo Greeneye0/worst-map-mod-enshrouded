@@ -1,0 +1,3 @@
+- The Map Key panel's fold key can be changed: PanelToggle= under [Keys] in minimap_config.ini (Tab at first; None for no key). Requested by KazarusKain.
+- Bosses the game keeps no record of beating (Dire Wolf, Critter Queens, Fog Predator and others): Ctrl + left click one on the map to mark it beaten.
+- A player grave 4 m or more above or below you gets the up or down caret, on the minimap and the world map.

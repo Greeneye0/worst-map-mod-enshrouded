@@ -29,6 +29,7 @@
 #include "map_control.h"
 #include "player_markers.h"
 #include "chest_spawns.h"
+#include "chest_loot_ids.h"
 #include "ore_deposits.h"
 #include "sanctum_spots.h"
 #include "minimap_art.h"
@@ -73,6 +74,8 @@ namespace chest_glow { void UpdateKey(uint8_t* client, bool appFocused); void Dr
 bool IsKnowledgeDeposit(size_t d);
 const char* KnowledgeSpotName(size_t d);
 void UpdateKnowledge();
+void UpdateManualBosses(uint8_t* client);
+bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters);
 bool SanctumVisitedNear(float x, float z); // knowledge.inl
 
 // A Flame or Night Sanctum marker this character has been to: shown with a check mark like a completed place.
@@ -813,6 +816,38 @@ void ClearFilterLocks() {
 void DrawCategoryBarAbs(void* widgetRaw, float x, float y, float w, float h, bool hovered);
 bool g_leftWasDown = false;
 bool g_toggleKeyWasDown = false;
+// The key that folds the panel ([Keys] PanelToggle in the ini; None: no key), as a Windows virtual key and as the
+// game's own key code for the map's hint bar (USB HID usage: A = 4, 1 = 0x1e, Tab = 0x2b, F1 = 0x3a)
+int g_panelToggleVk = VK_TAB;
+uint16_t g_panelToggleHid = 0x2b;
+
+// A key's name ("Tab", "G", "5", "F3", "CapsLock", "None"...) to its virtual key and HID code; false if not known.
+bool ParseKeyName(const char* name, int& vk, uint16_t& hid) {
+    struct Named { const char* name; int vk; uint16_t hid; };
+    static constexpr Named kNamed[] = {
+        {"None", 0, 0},          {"Tab", VK_TAB, 0x2b},       {"CapsLock", VK_CAPITAL, 0x39},
+        {"Backquote", VK_OEM_3, 0x35}, {"Insert", VK_INSERT, 0x49}, {"Delete", VK_DELETE, 0x4c},
+        {"Home", VK_HOME, 0x4a},    {"End", VK_END, 0x4d},       {"Space", VK_SPACE, 0x2c},
+    };
+    for (const Named& n : kNamed) {
+        if (_stricmp(name, n.name) == 0) {
+            vk = n.vk;
+            hid = n.hid;
+            return true;
+        }
+    }
+    const char c = static_cast<char>(std::toupper(static_cast<unsigned char>(name[0])));
+    if (c && !name[1]) {
+        if (c >= 'A' && c <= 'Z') { vk = c; hid = static_cast<uint16_t>(4 + c - 'A'); return true; }
+        if (c >= '1' && c <= '9') { vk = c; hid = static_cast<uint16_t>(0x1e + c - '1'); return true; }
+        if (c == '0') { vk = c; hid = 0x27; return true; }
+    }
+    if (c == 'F' && name[1] >= '1' && name[1] <= '9') {
+        const int f = std::atoi(name + 1);
+        if (f >= 1 && f <= 12) { vk = VK_F1 + f - 1; hid = static_cast<uint16_t>(0x3a + f - 1); return true; }
+    }
+    return false;
+}
 
 uint8_t* ScanPattern(uint8_t* base, size_t size, const char* pattern) {
     uint8_t bytes[128]{};
@@ -1999,6 +2034,8 @@ void ResetLootWorld(const char* why) {
     g_lootLastMatchTick = 0;
 }
 
+#include "chest_live.inl"
+
 void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     if (!client) return;
     uint8_t screen = client[0x1cd8];
@@ -2048,7 +2085,9 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
         }
     }
     UpdateBuiltWater(client);
+    chest_live::Update(nowTick, screen);
     UpdateKnowledge();
+    UpdateManualBosses(client);
     chest_glow::UpdateKey(client, appFocused);
 
     // 1. A chest counts as looted when the interact key is pressed next to it and the game switches to its
@@ -4277,6 +4316,83 @@ void DrawVisitedSanctumsOnMap(void* widgetRaw, const float* rootRect, uint8_t* c
     }
 }
 
+// A squat caret, wider than tall, flat filled on a dark edge: unlike the players' slender pointers.
+// Up: green, centred on (ax, ay) pointing up. Down: orange, pointing down.
+void DrawHeightCaretAbs(void* widgetRaw, float ax, float ay, bool up, float alpha, float k) {
+    const uint32_t col = up ? 0xFF7CE08Cu : 0xFF4C9CF0u;
+    auto drawCaret = [&](float halfBase, float height, uint32_t c, float a) {
+        constexpr int kRows = 6;
+        const float rowH = height / kRows;
+        for (int row = 0; row < kRows; ++row) {
+            const float w = 2.0f * halfBase * (row + 1) / kRows; // narrow at the point
+            const float y = up ? ay - height * 0.5f + row * rowH : ay + height * 0.5f - (row + 1) * rowH;
+            DrawSolidRectAbs(widgetRaw, ax - w * 0.5f, y, w, rowH + 0.25f, c, a);
+        }
+    };
+    drawCaret(5.6f * k, 5.4f * k, 0xFF0A0E10u, 0.9f * alpha); // the dark edge
+    drawCaret(4.2f * k, 3.8f * k, col, alpha);
+}
+
+// The local player's height (m), false before the world is in
+bool LocalPlayerY(uint8_t* client, float& y) {
+    uint8_t* clientWorld = GetClientWorld(client);
+    if (!clientWorld) return false;
+    const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
+    y = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
+    return rawY != 0 && std::isfinite(y);
+}
+
+// A player grave (client + 0x3e6a78) 4 m or more above or below you: +1 / -1, else 0
+int8_t GraveHeightDir(const uint8_t* m, bool haveY, float playerY) {
+    if (!haveY) return 0;
+    const float gy = static_cast<float>(static_cast<double>(*reinterpret_cast<const int64_t*>(m + 0x18)) *
+                                        2.3283064365386963e-10);
+    const float dy = gy - playerY;
+    if (!std::isfinite(dy) || std::abs(dy) >= 2000.0f) return 0;
+    return dy >= 4.0f ? 1 : dy <= -4.0f ? -1 : 0;
+}
+
+// The height caret on each player grave on the world map, at the grave icon's top right (up) or bottom right (down)
+void DrawGraveHeightsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState) {
+    if (!widgetRaw || !client || !mapState) return;
+    uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
+    if (!mapView) return;
+    const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
+    float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
+    if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
+    if (!(zoom > 0.0f)) return;
+    float playerY = 0.0f;
+    if (!LocalPlayerY(client, playerY)) return;
+    auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+    const size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
+    if (!IsFilterEnabled(filterEntries, filterCount, NormalizeFilterTypeHash(0x1ad8f96eu))) return;
+    uint8_t* base = *reinterpret_cast<uint8_t**>(client + 0x3e6a78);
+    const uint64_t count = *reinterpret_cast<uint64_t*>(client + 0x3e6a78 + 8);
+    if (!base || count == 0 || count > 10000) return;
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
+                          *reinterpret_cast<float*>(mapView + 0x1e8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
+                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float left = rootRect[0], top = rootRect[1];
+    const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
+    const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
+    constexpr float kGraveHalf = 20.0f; // the grave's diamond
+    for (uint64_t i = 0; i < count; ++i) {
+        const uint8_t* m = base + i * 0xA0;
+        const int8_t dir = GraveHeightDir(m, true, playerY);
+        if (dir == 0) continue;
+        const float wx = static_cast<float>(static_cast<double>(*reinterpret_cast<const int64_t*>(m + 0x10)) *
+                                            2.3283064365386963e-10);
+        const float wz = static_cast<float>(static_cast<double>(*reinterpret_cast<const int64_t*>(m + 0x20)) *
+                                            2.3283064365386963e-10);
+        if (wx <= 1.0f && wz <= 1.0f) continue;
+        const float sx = originX + wx * zoom, sy = originY + (mapWorldH - wz) * zoom;
+        if (sx < left || sx > right || sy < top + 114.0f || sy > bottom) continue;
+        DrawHeightCaretAbs(widgetRaw, sx + kGraveHalf * 0.75f, sy + (dir > 0 ? -0.75f : 0.75f) * kGraveHalf, dir > 0, 1.0f,
+                           1.6f);
+    }
+}
+
 void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState,
                           bool haveCursor, float mx, float my, int maxIcons) {
     if (!widgetRaw || !mapState || !AnyOreEnabled()) return;
@@ -5124,7 +5240,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     }
     g_shiftFWasDown = shiftFNow;
 
-    bool toggleKeyDown = focused && !g_findDialogOpen && !typingInGameField && ((GetAsyncKeyState(VK_TAB) & 0x8000) != 0);
+    bool toggleKeyDown = focused && g_panelToggleVk && !g_findDialogOpen && !typingInGameField &&
+                         ((GetAsyncKeyState(g_panelToggleVk) & 0x8000) != 0);
     if (toggleKeyDown && !g_toggleKeyWasDown) {
         g_panelCollapsed = !g_panelCollapsed;
     }
@@ -5229,6 +5346,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my,
                              std::max(500, std::min(1500, 2000 - treeDraws)));
         DrawVisitedSanctumsOnMap(root.raw, rootRect, client, mapState);
+        DrawGraveHeightsOnMap(root.raw, rootRect, client, mapState);
 
         const PanelLayout& lay = CurrentPanelLayout();
         const float kPanelW = lay.panelW;
@@ -5309,7 +5427,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         float clickWx = (mx - originX) / zoom;
                         float clickWz = mapWorldH - ((my - originY) / zoom);
                         float hitRadiusMeters = std::max(8.0f, 18.0f / zoom);
-                        if (ToggleChestClearedNearWorldPos(clickWx, clickWz, hitRadiusMeters)) {
+                        // A boss first: its icon is bigger than a chest's, so a click on it is meant for it
+                        if (ToggleManualBossNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom)) ||
+                            ToggleChestClearedNearWorldPos(clickWx, clickWz, hitRadiusMeters)) {
                             SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
                             ClearMapViewClickLatch(mapState);
                             g_findClosingFrames = std::max(g_findClosingFrames, 8);
@@ -6344,6 +6464,16 @@ void LoadMinimapConfig() {
     }
     const char keyChar = static_cast<char>(std::toupper(static_cast<unsigned char>(interactKey[0])));
     g_interactVk = (keyChar >= 'A' && keyChar <= 'Z') || (keyChar >= '0' && keyChar <= '9') ? keyChar : 'E';
+    char panelKey[16]{};
+    if (GetPrivateProfileStringA("Keys", "PanelToggle", "", panelKey, sizeof(panelKey), cfg.c_str()) == 0) {
+        strcpy_s(panelKey, "Tab");
+        WritePrivateProfileStringA("Keys", "PanelToggle", panelKey, cfg.c_str());
+    }
+    if (!ParseKeyName(panelKey, g_panelToggleVk, g_panelToggleHid)) {
+        if (g_log) g_log("Settings: [Keys] PanelToggle=%s is not a key this mod knows; using Tab", panelKey);
+        g_panelToggleVk = VK_TAB;
+        g_panelToggleHid = 0x2b;
+    }
 
     g_minimapCustomPos = (customPos != 0 && posX > 10 && posY > 10);
     if (g_minimapCustomPos) {
@@ -7367,7 +7497,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 float clickWx = playerX + (mouseX - vcx) / pxPerMeterX;
                 float clickWz = playerZ - (mouseY - vcy) / pxPerMeterY;
                 float maxRadiusM = std::max(12.0f, 14.0f / pxPerMeterX);
-                if (ToggleChestClearedNearWorldPos(clickWx, clickWz, maxRadiusM)) {
+                if (ToggleManualBossNear(clickWx, clickWz, std::max(10.0f, 10.0f / pxPerMeterX)) ||
+                    ToggleChestClearedNearWorldPos(clickWx, clickWz, maxRadiusM)) {
                     toggledChest = true;
                 }
             }
@@ -7473,6 +7604,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         constexpr size_t kMarkerArrays[4] = { 0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78 };
         const float iconPad = 10.0f * btnScale;
 
+        float graveY = 0.0f;
+        const bool haveGraveY = LocalPlayerY(client, graveY);
         // 2a. Non-chest markers from arr0..arr3 (read-only so arrays never flicker!)
         for (size_t a = 0; a < 4; ++a) {
             uint8_t* base = *reinterpret_cast<uint8_t**>(client + kMarkerArrays[a]);
@@ -7612,7 +7745,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                     }
                 }
 
-                drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, sortCat, isPulsing, isCleared});
+                // A player grave above or below you gets the chests' height caret
+                const int8_t heightDir = a == 3 ? GraveHeightDir(m, haveGraveY, graveY) : 0;
+                drawList.push_back(
+                    MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, sortCat, isPulsing, isCleared, heightDir});
             }
         }
 
@@ -7779,22 +7915,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             pulseCol = *reinterpret_cast<uint32_t*>(assets + kMapPulseColorOffset) | 0xff000000u;
         }
 
-        // A squat caret, wider than tall, flat filled on a dark edge: unlike the players' slender pointers.
-        // Up: green, centred on (ax, ay) pointing up. Down: orange, pointing down.
         auto drawHeightCaret = [&](float ax, float ay, bool up, float alpha) {
-            const float k = btnScale;
-            const uint32_t col = up ? 0xFF7CE08Cu : 0xFF4C9CF0u;
-            auto drawCaret = [&](float halfBase, float height, uint32_t c, float a) {
-                constexpr int kRows = 6;
-                const float rowH = height / kRows;
-                for (int row = 0; row < kRows; ++row) {
-                    const float w = 2.0f * halfBase * (row + 1) / kRows; // narrow at the point
-                    const float y = up ? ay - height * 0.5f + row * rowH : ay + height * 0.5f - (row + 1) * rowH;
-                    DrawSolidRectAbs(anchor.raw, ax - w * 0.5f, y, w, rowH + 0.25f, c, a);
-                }
-            };
-            drawCaret(5.6f * k, 5.4f * k, 0xFF0A0E10u, 0.9f * alpha); // the dark edge
-            drawCaret(4.2f * k, 3.8f * k, col, alpha);
+            DrawHeightCaretAbs(anchor.raw, ax, ay, up, alpha, btnScale);
         };
 
         for (const auto& md : drawList) {

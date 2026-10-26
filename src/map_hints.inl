@@ -14,6 +14,9 @@ uint8_t* MapHintBinding(uint8_t action) {
     return ui ? ui + 0xf27c + action * kMapBindingSize : nullptr;
 }
 
+// Ctrl+click and Shift+F, then the panel key unless it is set to None
+int MapHintCount() { return g_panelToggleVk ? 3 : 2; }
+
 uint64_t DrawMapHintWithBinding(uint8_t* entry, void* params, int index) {
     uint8_t* binding = MapHintBinding(entry[0]);
     if (!binding) return g_originalMapHint(entry, params);
@@ -23,7 +26,7 @@ uint64_t DrawMapHintWithBinding(uint8_t* entry, void* params, int index) {
     std::memset(binding, 0, 16);
     auto* words = reinterpret_cast<uint16_t*>(binding);
     words[0] = index == 0 ? 2 : 1; // mouse or keyboard
-    words[1] = index == 1 ? 0x09 : index == 2 ? 0x2b : 0; // F, Tab
+    words[1] = index == 1 ? 0x09 : index == 2 ? g_panelToggleHid : 0; // F, the panel key (Tab)
     if (index == 0) *reinterpret_cast<uint32_t*>(binding + 4) = 1; // left mouse
     if (index < 2) {
         words[6] = 1;
@@ -38,7 +41,7 @@ uint64_t DrawMapHintWithBinding(uint8_t* entry, void* params, int index) {
 uint64_t MapHintHook(uint8_t* entry, void* params) {
     greeneye::Lease lease;
     if (lease && g_mapHintEntries) {
-        for (int i = 0; i < 3; ++i)
+        for (int i = 0; i < MapHintCount(); ++i)
             if (entry == g_mapHintEntries + i * kMapHintSize)
                 return DrawMapHintWithBinding(entry, params, i);
     }
@@ -54,15 +57,16 @@ void DrawCombinedMapHints(MapHintSpan* span, void* options) {
     }
     if (!model) { g_originalMapHints(span, options); return; }
     const umm_lang::Str labels[] = {umm_lang::Str::HintClearChest, umm_lang::Str::HintFind, umm_lang::Str::HintToggleKey};
-    for (int i = 0; i < 3; ++i) {
+    const int count = MapHintCount();
+    for (int i = 0; i < count; ++i) {
         uint8_t* e = entries + i * kMapHintSize;
         std::memcpy(e, model, kMapHintSize);
         UiText text = MakeUiText(umm_lang::T(labels[i]));
         std::memcpy(e + 0x20, &text, sizeof(text));
         e[0x1b] = 1;
     }
-    std::memcpy(entries + 3 * kMapHintSize, span->data, span->count * kMapHintSize);
-    MapHintSpan combined{entries, span->count + 3};
+    std::memcpy(entries + count * kMapHintSize, span->data, span->count * kMapHintSize);
+    MapHintSpan combined{entries, span->count + count};
     uint8_t* previous = g_mapHintEntries;
     g_mapHintEntries = entries;
     __try { g_originalMapHints(&combined, options); }
