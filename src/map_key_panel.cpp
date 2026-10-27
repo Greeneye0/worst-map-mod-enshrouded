@@ -139,6 +139,12 @@ void NoteSlotPass(const uint8_t* m) {
     it->second.id08 = *reinterpret_cast<const uint32_t*>(m + 0x08);
 }
 
+// Places the game itself never puts on the map, by their name: Revelwood's Abandoned Farms and Abandoned Windmills.
+// Their visibility never changes from 0, so the unlock patches showed them grayed for good. Reported by BlaineCraner.
+bool GameNeverShowsPlace(uint32_t nameId) {
+    return nameId == 0x94eb5847u || nameId == 0x55641bdbu;
+}
+
 enum class PinRevealMode : int {
     ExploredOnly = 0, // Only show pins in areas visited by the character
     Hybrid       = 1, // Show unexplored pins greyed out, explored pins in full color
@@ -1499,20 +1505,21 @@ void SetSingleFilterState(uint8_t* client, uint8_t* mapState, uint32_t typeHash,
     if (FilterLockCount() > 0) SaveFilterLocks();
 }
 
-// A category's switch: every row in it except the locked ones.
+// A category's switch: every row in it, the locked ones too (a click on the switch is a click on each of its rows; a
+// row locked ON kept the switch ON for good).
 void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category, bool enable) {
     if (!client) return;
     if (category == 3) {
-        if (!IsRowLocked(kGoldChestTypeHash)) g_goldChestEnabled = enable;
-        if (!IsRowLocked(kSilverChestTypeHash)) g_silverChestEnabled = enable;
+        g_goldChestEnabled = enable;
+        g_silverChestEnabled = enable;
     } else if (category == 0) {
-        if (!IsRowLocked(kOtherPlayerTypeHash)) g_otherPlayersEnabled = enable;
+        g_otherPlayersEnabled = enable;
         SaveMinimapConfig();
     }
     // Resource rows: the resource groups, and the Return Beacons in Shroud
     bool anyResource = false;
     for (size_t o = 0; o < kOreCount; ++o) {
-        if (kOreCategory[o] == category && !IsRowLocked(OreHash(o))) {
+        if (kOreCategory[o] == category) {
             g_oreEnabled[o] = enable;
             anyResource = true;
         }
@@ -1521,7 +1528,7 @@ void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category
     auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
     size_t count = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
     for (size_t i = 0; i < count; ++i) {
-        if (FilterCategory(entries[i]) == category && !IsRowLocked(entries[i].typeHash)) {
+        if (FilterCategory(entries[i]) == category) {
             entries[i].enabled = enable ? 1 : 0;
             ApplyFilterChange(client, entries[i].typeHash, enable);
         }
@@ -2951,7 +2958,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 if (subpinQuestOn || subpinRumor) {
                     applyMarkerVisibility(m, origHash, savedId08, false, true, true);
                     if (subpinRumor) addCountForHash(0x8ba7c122u);
-                } else if (!revealedForPinMode || !poiFilterOn ||
+                } else if (!revealedForPinMode || !poiFilterOn || GameNeverShowsPlace(savedId08) ||
                            (g_hideCompletedPlaces && (m[0x34] == 3 || IsVisitedSanctumMarker(m, origHash)))) {
                     // (state 3: the game's completed place, drawn with a check mark; hidden with Completed Places: Hide,
                     // like a sanctum you have been to)
@@ -2963,7 +2970,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             }
 
             arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ tHash ^ *reinterpret_cast<uint32_t*>(m + 0x08)) * 0x100000001b3ULL;
-            if (origHash == 0u || !revealedForPinMode) continue;
+            if (origHash == 0u || !revealedForPinMode || GameNeverShowsPlace(savedId08)) continue;
             uint32_t countHash = (origHash == 0x6a56c5b3u) ? 0xa447cba3u : origHash;
             addCountForHash(countHash);
             addCountForHash(subpinQuestHash);
@@ -3681,7 +3688,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
             uint32_t filterHash = (origHash == 0xafce0c5fu)
                                       ? ClassifyQuestOrRumorMarker(savedId08, m[0x34])
                                       : NormalizeFilterTypeHash(origHash);
-            if (filterHash == 0u) continue;
+            if (filterHash == 0u || GameNeverShowsPlace(savedId08)) continue;
             if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, m[0x34])) continue; // its quest is done
             bool isFilterOn = IsFilterEnabled(filterEntries, filterCount, filterHash);
             if (!isFilterOn && origHash != 0xafce0c5fu) {
@@ -8022,7 +8029,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 uint32_t normHash = (origHash == 0xafce0c5fu)
                                         ? ClassifyQuestOrRumorMarker(savedId08, static_cast<uint8_t>(markerState))
                                         : NormalizeFilterTypeHash(origHash);
-                if (normHash == 0u) continue;
+                if (normHash == 0u || GameNeverShowsPlace(savedId08)) continue;
                 // A main quest's area circle (Plains For First Base): only while its quest is on, like the world map
                 if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, static_cast<uint8_t>(markerState))) continue;
                 const bool visitedSanctum = IsVisitedSanctumMarker(m, origHash);
