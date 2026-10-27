@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.14
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.15
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
@@ -239,6 +239,15 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.15
+- Fixed: the fog mode (Explored / Hybrid / Reveal All) went back to Explored every time you
+  started the game. Reported by Gadn.
+- Fixed: Revelwood's Abandoned Farms and Abandoned Windmills, which the game never puts on the
+  map, showed grayed out for good. They stay hidden now, like in the vanilla game. Reported by
+  BlaineCraner.
+- Fixed: a section's ON / OFF stayed ON when one of its rows was locked ON. The switch now changes
+  every row in its section, locked rows too; Show All / Hide All still leave locked rows alone.
+
 1.3.14
 - Unique Weapons (40) and Unique Equipment (16): every one-of-a-kind weapon, ring and piece of
   gear at the chest or place it is in. Requested by Gadn.

@@ -1,0 +1,3 @@
+- Fixed: the fog mode (Explored / Hybrid / Reveal All) went back to Explored every time you started the game. Reported by Gadn.
+- Fixed: Revelwood's Abandoned Farms and Abandoned Windmills, which the game never puts on the map, showed grayed out for good. They stay hidden now, like in the vanilla game. Reported by BlaineCraner.
+- Fixed: a section's ON / OFF stayed ON when one of its rows was locked ON. The switch now changes every row in its section, locked rows too; Show All / Hide All still leave locked rows alone.
