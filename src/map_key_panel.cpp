@@ -475,6 +475,7 @@ enum class FogRevealMode : int {
 };
 
 FogRevealMode g_fogRevealMode = FogRevealMode::ExploredOnly;
+bool g_fogModeFromHotReload = false; // the running mode came from the previous generation (else minimap_config.ini's)
 uint8_t* g_fogColorSite = nullptr;
 uint8_t* g_fogAlphaSite = nullptr;
 
@@ -4855,6 +4856,7 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
             TextAlignH::Center, TextAlignV::Center);
         if (clicked && hovFm) {
             ApplyFogRevealMode(kFogBtns[fm].mode);
+            SaveMinimapConfig(); // FogRevealMode: kept the next time you play
             changed = true;
         }
         fbx += fogBtnW + fogBtnGap;
@@ -6742,6 +6744,9 @@ void LoadMinimapConfig() {
     int lootedChestMode = GetPrivateProfileIntA("MinimapV2", "LootedChestMode", 0, cfg.c_str());
     int markerScaleIdx = GetPrivateProfileIntA("MinimapV2", "CustomMarkerScaleIdx", 2, cfg.c_str());
     int pinRevealMode = GetPrivateProfileIntA("MinimapV2", "PinRevealMode", 2, cfg.c_str());
+    // The fog mode as last chosen (a hot reload keeps the running one instead)
+    const int fogMode = GetPrivateProfileIntA("MinimapV2", "FogRevealMode", -1, cfg.c_str());
+    if (fogMode >= 0 && fogMode <= 2 && !g_fogModeFromHotReload) ApplyFogRevealMode(static_cast<FogRevealMode>(fogMode));
     int respawnMins = GetPrivateProfileIntA("Chests", "RespawnMinutes", 30, cfg.c_str());
     int resetRadius = GetPrivateProfileIntA("Chests", "ResetRadius", -1, cfg.c_str());
     if (resetRadius < 0) {
@@ -6938,6 +6943,8 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "ShowTerrain", buf, cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "ThinBorder", g_minimapThinBorder ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "InfoBar", g_minimapInfoBar ? "1" : "0", cfg.c_str());
+    std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_fogRevealMode));
+    WritePrivateProfileStringA("MinimapV2", "FogRevealMode", buf, cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "ShowPosition", g_minimapShowPosition ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionFilter", g_regionFilterEnabled ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionColors", g_regionColors ? "1" : "0", cfg.c_str());
@@ -9063,6 +9070,7 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
         g_panelCollapsed = std::strcmp(value, "collapse") == 0;
     } else if (std::strcmp(action, "fog") == 0 && mode >= 0) {
         ApplyFogRevealMode(static_cast<FogRevealMode>(mode));
+        SaveMinimapConfig();
         changed = true;
     } else if (std::strcmp(action, "pins") == 0 && mode >= 0) {
         g_pinRevealMode = static_cast<PinRevealMode>(mode);
@@ -9239,6 +9247,7 @@ bool InstallMapKeyPanelHook(LogFn logger) {
         }
     }
 
+    g_fogModeFromHotReload = g_kept && g_kept->valid;
     ApplyFogRevealMode((g_kept && g_kept->valid) ? static_cast<FogRevealMode>(g_kept->fogMode) : g_fogRevealMode);
 
     // doPlayStateUi: "mov r11, rsp; push rbp; lea rbp, [r11-218h]; sub rsp, 310h" (18 bytes).
