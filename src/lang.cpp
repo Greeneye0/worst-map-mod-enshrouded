@@ -465,6 +465,15 @@ const Row kTable[] = {
      "Ninguna fila coincide", "Nenhuma linha corresponde", "Brak pasujących wierszy", "Нет подходящих строк",
      "Немає відповідних рядків", "Eşleşen satır yok", "一致する行はありません", "일치하는 항목 없음", "没有匹配的行",
      "沒有符合的列", "ไม่มีแถวที่ตรงกัน"},
+    // WoodChest: the World & Resources row and the map's name for the world's wooden loot chests (the game's own
+    // "Wooden Chest" text is used while the mod follows the game's language)
+    {"Wooden Chest", "Holztruhe", "Coffre en bois", "Forziere di legno", "Cofre de madera", "Baú de madeira",
+     "Drewniana skrzynia", "Деревянный сундук", "Дерев'яна скриня", "Ahşap Sandık", "木の宝箱", "나무 상자", "木宝箱",
+     "木寶箱", "หีบไม้"},
+    // WoodSarcophagus: a wooden loot sarcophagus (crypts, cairns)
+    {"Wooden Sarcophagus", "Holzsarkophag", "Sarcophage en bois", "Sarcofago di legno", "Sarcófago de madera",
+     "Sarcófago de madeira", "Drewniany sarkofag", "Деревянный саркофаг", "Дерев'яний саркофаг", "Ahşap Lahit",
+     "木の石棺", "나무 석관", "木石棺", "木石棺", "โลงศพไม้"},
 };
 // clang-format on
 

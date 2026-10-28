@@ -31,8 +31,9 @@ On the right of the world map.
   Click a row to show or hide that type.
 - SHOW ALL / HIDE ALL at the top switch every marker type at once.
 - Search this list, under them: type part of a row's name and only the matching rows show,
-  their sections opened (folded or locked ones too). Esc or the x clears it. It only narrows
-  the panel; Find (Shift + F) searches the map's places.
+  their sections opened (folded or locked ones too). Esc or the x clears it. From 3 letters it
+  also finds places by their name (a lore note, a boss, a place, a pin): the row they're in
+  shows with that name after it, even when the row is off. Find (Shift + F) takes you there.
 - REGION, under them (with Settings > Advanced > Region Filter on): the arrows step through All Regions and the world's regions in level
   order (Springlands, Revelwood, Blackmire, Nomad Highlands, Kindlewastes, Albaneve Summits,
   Veilwater Basin, Cinder's Cradle); click the name to jump to the region you're in. Pins
@@ -52,7 +53,8 @@ On the right of the world map.
   greeneye\unlock-map-markers\minimap_config.ini: a letter, a digit, F1 to F12, CapsLock,
   Backquote, Insert, Delete, Home, End, or None for no key.
 - Every gold and silver chest in the world is included: all 448 gold and 1032 silver
-  chests have their own filter rows.
+  chests have their own filter rows. WOODEN CHEST (World & Resources, off at first): the
+  world's 1562 wooden chests, wooden sarcophagi and locked wooden chests.
 - FILTER LOCKS: the padlock left of a switch locks that filter. A locked filter keeps its ON
   or OFF through SHOW ALL / HIDE ALL, reloads and updates (a locked category also keeps it
   open or closed); you can still click it. Hold SHOW ALL or HIDE ALL to change locked
@@ -87,9 +89,10 @@ On the right of the world map.
 G G: WHAT'S NEARBY GLOWS
 ------------------------
 Press G twice quickly while playing. For 14 seconds everything within 75 m that isn't done
-yet glows through walls and floors: unlooted gold and silver chests (in gold and silver),
-unread lore notes and bosses you haven't beaten, while their filters are on. They pulse on
-the world map and the minimap too.
+yet glows through walls and floors: unlooted gold, silver and wooden chests, unread lore notes,
+bosses you haven't beaten, and what the quests you're on want there (the quest's item or
+place, with its quest icon), while their filters are on. They pulse on the world map and the
+minimap too.
 Vein sight: the ore and materials of the Mining and Materials rows you have on show for 30
 seconds too, for the deposits the map shows near you. Within 12 m their edges glow on the
 rock itself, in the game's build zone colour (dig in and the glow on the walls of your hole
@@ -144,8 +147,10 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
     EXPLORED     pins only where you've been.
     HYBRID       pins in unexplored land are grayed out.
     REVEAL ALL   every pin.
-  In every mode, a place you haven't discovered yet (the game would hide it) is grayed out,
-  on the world map and the minimap, even where the fog is cleared.
+  EXPLORED also keeps everything the game itself shows in land still fogged: places it
+  knows of, places you've discovered, and lore rumor hints. With EXPLORED and HYBRID, a place
+  you haven't discovered yet (the game would hide it) is grayed out, on the world map and the
+  minimap, even where the fog is cleared; REVEAL ALL shows it in full colour.
 - Custom Marker Size   the size of your own pins.
 - Show Minimap, Minimap Terrain, Minimap Icon (sun/moon or weather).
 - Time Format: 1:00 PM or 13:00 for the minimap's clock (at first it follows Windows).
@@ -254,6 +259,29 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.17
+- Wooden chests: all 1562 of the world's wooden chests, wooden sarcophagi and locked wooden
+  chests, under World & Resources > Wooden Chest (off at first, switch it on). Looted ones are
+  hidden or grayed out and keep their check mark like gold and silver, they glow with G G, and
+  Find finds them. Requested by AnkuSol.
+- G G also lights what the quests you're on want near you: the quest's item or place, with its
+  quest icon, while the Main Quest / Side Quest rows are on. Requested by Gadn.
+- Search this list finds places by their name too: type 3 letters or more of a lore note, boss,
+  place or pin and its row shows with that name ("Lore Note: Song Of ..."), even when the row is
+  off.
+- Pins: EXPLORED no longer hides what the game itself shows: places it knows of in land still
+  fogged (drawn faded), places you've discovered, and lore rumor hints such as "Undiscovered:
+  Shroud Root"; towns like the Alchemist Tower and cave passages get their rumor "?" too. A
+  started quest's search area (Cat Search, the Customization quests) shows under its quest's row.
+  Reported by secretroff.
+- Pins: REVEAL ALL shows every place in full colour, the ones you haven't discovered yet too
+  (EXPLORED and HYBRID still gray those out). Locked spires and fast travel points keep their
+  gray.
+- Faster: the minimap and the world map do about half the work they did each frame, and joining a
+  world with many locked filters no longer freezes the game for seconds. Reported by kingkongcs.
+- Fixed: with a controller, the world map could stop answering it after the mouse was used, until
+  the mouse moved again. Reported by FamanFortune.
+
 1.3.16
 - Chests you've looted keep their check mark for good: a looted chest is grayed out only until it
   respawns, then shows in full colour with its check mark, so you can see which chests you've

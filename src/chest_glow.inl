@@ -1,5 +1,7 @@
-// GG: everything near the player that gets the minimap's height arrow (75 m) and is not done yet - gold and silver
-// chests not looted, lore notes not read, bosses not defeated, each while its row is on - lights up for a while: the
+// GG: everything near the player that gets the minimap's height arrow (75 m) and is not done yet - gold, silver and
+// wooden chests not looted, lore notes not read, bosses not defeated, each while its row is on, and what the quests
+// you're on want here (the game's own pins for them: an item to fetch, a place to reach; Main Quest / Side Quest
+// rows; requested by Gadn) - lights up for a while: the
 // game's outline highlight where it is in view, its silhouette on screen through walls and ground (Find's,
 // chest_silhouette.inl; a ring with its icon where it has no model), and pulses on the map and minimap. Silver chests
 // glow silver; the rest in Find's gold.
@@ -257,6 +259,7 @@ void SafeApply(void* iter, void* view, const System& system) {
 // by the return address: Quick Deposit redirects the same calls, and when the loader chains the two detours the second
 // one's return address is the first detour.
 bool NextHook(void* iter, void* view, uint32_t size) {
+    UMM_PERF(PerfGlowNext);
     greeneye::Lease lease; // an older generation after a hot reload only calls on
     const bool next = g_next(iter, view, size);
     if (!lease || next || g_modOff) return next;
@@ -295,6 +298,7 @@ struct NearChest {
     size_t chest;      // a chest (kChestSpawns), or kTotalChestCount
     size_t deposit;    // a lore note / boss (kOreDeposits), or kOreDepositCount
     uint32_t colour;
+    uint32_t questRow = 0; // an active quest's pin (neither of the above): its Main Quest / Side Quest row
 };
 std::vector<NearChest> g_markers; // what GG lit (UI thread)
 uint64_t g_markersStart = 0, g_markersUntil = 0;
@@ -324,7 +328,8 @@ void FillTargets(uint8_t* reg, const NearChest* chests, size_t chestCount, uint6
             if (!EcsPosition(records[i], posType, p)) continue;
             for (size_t c = 0; c < chestCount; ++c) {
                 const NearChest& n = chests[c];
-                const float tol = n.chest < kTotalChestCount ? 0.6f : 1.2f; // notes / bosses: whole metres
+                // notes / bosses: whole metres; a quest's pin stands by its item or in its place
+                const float tol = n.chest < kTotalChestCount ? 0.6f : n.questRow ? 1.5f : 1.2f;
                 if (std::fabs(p[0] - n.x) < tol && std::fabs(p[2] - n.z) < tol && std::fabs(p[1] - n.y) < tol + 0.6f) {
                     g_targets[g_count++] = {ids[i], {p[0], p[1], p[2]}, until, n.colour};
                     break;
@@ -337,6 +342,44 @@ void FillTargets(uint8_t* reg, const NearChest* chests, size_t chestCount, uint6
     ReleaseSRWLockExclusive(&g_lock);
 }
 
+// The pins of the quests you're on within kNearMeters of (px, pz): the map's markers (client + 0x36ea00) whose id
+// an active quest's open objective names (GetQuestFilterHashForMarkerId), quest pins and the places a quest sends
+// you to alike, while that quest's row is on. Area circles (0x454e24f2) are a region, not a thing: left out.
+struct QuestPin {
+    float x, y, z;
+    uint32_t row;
+};
+size_t CollectQuestPinsInner(uint8_t* client, float px, float pz, QuestPin* out, size_t cap) {
+    uint8_t* base = *reinterpret_cast<uint8_t**>(client + 0x36ea00);
+    const uint64_t count = *reinterpret_cast<uint64_t*>(client + 0x36ea08);
+    if (!base || count == 0 || count > 10000) return 0;
+    auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+    const size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
+    size_t n = 0;
+    for (uint64_t i = 0; i < count && n < cap; ++i) {
+        const uint8_t* m = base + i * 0xA0;
+        if ((*reinterpret_cast<const uint32_t*>(m) & 0xFFFF0000u) == kChestMarkerUidPrefix) continue;
+        const uint32_t orig = GetMarkerOrigTypeHash(m);
+        if (orig == 0u || orig == 0x454e24f2u) continue;
+        const float x = static_cast<float>(*reinterpret_cast<const int64_t*>(m + 0x10) / 4294967296.0);
+        const float z = static_cast<float>(*reinterpret_cast<const int64_t*>(m + 0x20) / 4294967296.0);
+        if ((x - px) * (x - px) + (z - pz) * (z - pz) > kNearMeters * kNearMeters) continue;
+        uint32_t id = IsSlotSaved(m) ? *reinterpret_cast<const uint32_t*>(m + 0x4c) : 0u;
+        if (id == 0u) id = *reinterpret_cast<const uint32_t*>(m + 0x08);
+        const uint32_t row = GetQuestFilterHashForMarkerId(id, true);
+        if (row == 0u || !IsFilterEnabled(entries, filterCount, row)) continue;
+        out[n++] = {x, static_cast<float>(*reinterpret_cast<const int64_t*>(m + 0x18) / 4294967296.0), z, row};
+    }
+    return n;
+}
+size_t CollectQuestPins(uint8_t* client, float px, float pz, QuestPin* out, size_t cap) {
+    __try {
+        return CollectQuestPinsInner(client, px, pz, out, cap);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return 0;
+    }
+}
+
 // The nearby unlooted chests' entities (client registry, by their position) and positions; lights them.
 void LightNearbyChests(uint8_t* client) {
     float px = 0.0f, pz = 0.0f;
@@ -345,7 +388,7 @@ void LightNearbyChests(uint8_t* client) {
     std::vector<NearChest> nearChests;
     for (size_t c = 0; c < kTotalChestCount; ++c) {
         const bool gold = c < kGoldChestCount;
-        if (IsChestCurrentlyCleared(c) || !(gold ? g_goldChestEnabled : g_silverChestEnabled)) continue;
+        if (IsChestCurrentlyCleared(c) || !ChestRowEnabled(c)) continue;
         const ChestSpawn& sp = kChestSpawns[c];
         const float x = sp.px1 + sp.px0 / 65536.0f, y = sp.py1 + sp.py0 / 65536.0f, z = sp.pz1 + sp.pz0 / 65536.0f;
         if ((x - px) * (x - px) + (z - pz) * (z - pz) > kNearMeters * kNearMeters) continue;
@@ -359,6 +402,12 @@ void LightNearbyChests(uint8_t* client) {
         if ((dep.x - px) * (dep.x - px) + (dep.z - pz) * (dep.z - pz) > kNearMeters * kNearMeters) continue;
         nearChests.push_back({float(dep.x), float(dep.topY), float(dep.z), kTotalChestCount, d, kFindGold});
     }
+    // What the quests you're on want here
+    QuestPin pins[16];
+    const size_t pinCount = CollectQuestPins(client, px, pz, pins, 16);
+    for (size_t i = 0; i < pinCount; ++i) {
+        nearChests.push_back({pins[i].x, pins[i].y, pins[i].z, kTotalChestCount, kOreDepositCount, kFindGold, pins[i].row});
+    }
     g_markers = nearChests;
     g_markersStart = GetTickCount64();
     g_markersUntil = g_markersStart + kGlowMs;
@@ -366,7 +415,8 @@ void LightNearbyChests(uint8_t* client) {
     g_pulsingPlaces.clear();
     for (const auto& n : nearChests) g_pulsingPlaces.push_back({n.x, n.z});
     g_pulseStartTick = GetTickCount64();
-    if (g_log) g_log("Chest glow: %zu chests, notes and bosses within %.0f m", nearChests.size(), kNearMeters);
+    if (g_log) g_log("Chest glow: %zu chests, notes, bosses and quest pins within %.0f m (%zu quest)", nearChests.size(),
+                     kNearMeters, pinCount);
     if (!g_next || nearChests.empty()) return;
     // Their entities: an entity of the client registry standing where a chest stands
     auto* reg = static_cast<uint8_t*>(g_waterRegistry.load(std::memory_order_relaxed));
@@ -450,7 +500,7 @@ void DrawMarkersInner(uint8_t* client, void* widgetRaw) {
         return false;
     };
     for (const NearChest& c : g_markers) {
-        if (c.chest < kTotalChestCount ? IsChestCurrentlyCleared(c.chest) : KnowledgeDone(c.deposit)) continue;
+        if (c.chest < kTotalChestCount ? IsChestCurrentlyCleared(c.chest) : !c.questRow && KnowledgeDone(c.deposit)) continue;
         if (hasSilhouette(c)) continue;
         const float world[3] = {c.x, c.y + 0.6f, c.z};
         const float depth = world[0] * view[2] + world[1] * view[6] + world[2] * view[10] + view[14];
@@ -465,15 +515,19 @@ void DrawMarkersInner(uint8_t* client, void* widgetRaw) {
         const float size = std::max(18.0f, std::min(40.0f, 40.0f * 12.0f / std::max(12.0f, dist)));
         const float glow = size * (1.8f + 0.5f * breathe), ring = size * (1.15f + 0.25f * breathe);
         const bool gold = c.chest < kGoldChestCount;
-        const uint32_t tint = c.chest < kTotalChestCount ? (gold ? 0xff3cc8ffu : 0xffe8e4dcu) : 0xffffffffu;
+        const uint32_t tint = c.chest >= kTotalChestCount ? 0xffffffffu
+                              : gold                         ? 0xff3cc8ffu
+                              : IsWoodChest(c.chest)         ? kWoodChestTint
+                                                             : 0xffe8e4dcu;
         DrawAssetRectAbs(widgetRaw, kSoftGlowPrimitive, sx - glow * 0.5f, sy - glow * 0.5f, glow, glow, c.colour,
                          (0.35f + 0.35f * breathe) * fadeOut);
         DrawAssetRectAbs(widgetRaw, kCircleOutlinePrimitive, sx - ring * 0.5f, sy - ring * 0.5f, ring, ring, 0xff5ca4c9u,
                          (0.55f + 0.45f * breathe) * fadeOut);
         DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - size * 0.5f, sy - size * 0.5f, size, size, 0xff0a0e10u,
                          0.6f * fadeOut);
-        const void* icon = c.chest < kTotalChestCount ? GetIconRefForType(client, gold ? kGoldChestTypeHash : kSilverChestTypeHash)
-                                                      : DepositIcon(c.deposit);
+        const void* icon = c.chest < kTotalChestCount ? GetIconRefForType(client, ChestTypeHash(c.chest))
+                           : c.questRow                 ? GetIconRefForType(client, c.questRow)
+                                                        : DepositIcon(c.deposit);
         if (icon) {
             DrawIconRectAbs(widgetRaw, icon, sx - size * 0.4f, sy - size * 0.4f, size * 0.8f, size * 0.8f, tint, fadeOut);
         }

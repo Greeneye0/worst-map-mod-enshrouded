@@ -43,8 +43,53 @@
 namespace unlock_map_markers {
 namespace {
 
+// Dev builds: the time each per-frame part takes, averaged per frame and logged every 5 s (UMM_PERF(Part) at the top of
+// a scope times the rest of it). Release builds: nothing.
+#ifdef UMM_DEV_BRIDGE
+enum PerfPart { PerfHud, PerfLoot, PerfGlowDraw, PerfMinimap, PerfMmTerrain, PerfMmMarkers, PerfMmChests, PerfMmOres, PerfMapKey, PerfPreSync, PerfIconOverride, PerfGlowNext, PerfPlate, PerfMarkerType, PerfCount };
+constexpr const char* kPerfNames[PerfCount] = {"hud+minimap", "loot tracking", "glow draw", "minimap", "mm terrain", "mm markers", "mm chests", "mm resources", "map key+overlay", "map pre-sync", "icon override",
+                                               "glow next", "plate", "marker type"};
+std::atomic<uint64_t> g_perfTicks[PerfCount]{}, g_perfCalls[PerfCount]{}, g_perfMax[PerfCount]{};
+void PerfAdd(PerfPart part, uint64_t ticks) {
+    g_perfTicks[part].fetch_add(ticks, std::memory_order_relaxed);
+    g_perfCalls[part].fetch_add(1, std::memory_order_relaxed);
+    uint64_t prev = g_perfMax[part].load(std::memory_order_relaxed);
+    while (ticks > prev && !g_perfMax[part].compare_exchange_weak(prev, ticks, std::memory_order_relaxed)) {
+    }
+}
+// Section times inside one function: UMM_LAP_START, then UMM_LAP(Part) at the end of each section
+struct PerfLapper {
+    LARGE_INTEGER last;
+    PerfLapper() { QueryPerformanceCounter(&last); }
+    void Mark(PerfPart part) {
+        LARGE_INTEGER now;
+        QueryPerformanceCounter(&now);
+        PerfAdd(part, static_cast<uint64_t>(now.QuadPart - last.QuadPart));
+        last = now;
+    }
+};
+struct PerfScope {
+    PerfPart part;
+    LARGE_INTEGER start;
+    explicit PerfScope(PerfPart p) : part(p) { QueryPerformanceCounter(&start); }
+    ~PerfScope() {
+        LARGE_INTEGER end;
+        QueryPerformanceCounter(&end);
+        PerfAdd(part, static_cast<uint64_t>(end.QuadPart - start.QuadPart));
+    }
+};
+#define UMM_PERF(part) PerfScope umm_perf_scope_(part)
+#define UMM_LAP_START PerfLapper umm_perf_lap_
+#define UMM_LAP(part) umm_perf_lap_.Mark(part)
+#else
+#define UMM_PERF(part) ((void)0)
+#define UMM_LAP_START ((void)0)
+#define UMM_LAP(part) ((void)0)
+#endif
+
 constexpr uint32_t kGoldChestTypeHash = 0x601dcbe5u;
 constexpr uint32_t kSilverChestTypeHash = 0x511fcbe5u;
+constexpr uint32_t kWoodChestTypeHash = 0x711fcbe5u; // the mod's own row and marker type, like the two above
 constexpr uint32_t kOtherPlayerTypeHash = 0x26d18a06u;
 constexpr uint32_t kTownPortalTypeHash = 0x7b0e7a11u; // the mod's own row (no game marker type): Town Portal's portals
 constexpr uint32_t kCompletedQuestTypeHash = 0x9c4e7b12u;
@@ -164,6 +209,21 @@ constexpr int kMarkerScaleCount = static_cast<int>(sizeof(kMarkerScaleLevels) / 
 
 bool g_goldChestEnabled = true;
 bool g_silverChestEnabled = true;
+bool g_woodChestEnabled = false; // off at first: 1562 more icons on a map that had none
+
+// A kChestSpawns index: gold chests, then silver, then wooden (kWoodChestFirst on)
+bool IsWoodChest(size_t c) {
+    return c >= kWoodChestFirst;
+}
+bool ChestRowEnabled(size_t c) {
+    return c < kGoldChestCount ? g_goldChestEnabled : c < kWoodChestFirst ? g_silverChestEnabled : g_woodChestEnabled;
+}
+uint32_t ChestTypeHash(size_t c) {
+    return c < kGoldChestCount ? kGoldChestTypeHash : c < kWoodChestFirst ? kSilverChestTypeHash : kWoodChestTypeHash;
+}
+bool AnyChestRowEnabled() {
+    return g_goldChestEnabled || g_silverChestEnabled || g_woodChestEnabled;
+}
 bool g_otherPlayersEnabled = true;
 bool g_townPortalsEnabled = true; // Fast Travel & Altars > Town Portals (town_portals.inl)
 size_t TownPortalCount();
@@ -285,6 +345,24 @@ CustomMapMarkerType g_silverChestMarkerType = {
     1,
     {}
 };
+
+// Wooden chests are drawn by the mod (the game's marker arrays hold 1024 each, full with gold and silver); the type
+// gives the Map Key row its icon
+CustomMapMarkerType g_woodChestMarkerType = {
+    {},
+    kWoodChestTypeHash,
+    3, 0, 1, 0, 0, 1,
+    {},
+    {0xc9, 0xdb, 0xcb, 0xda, 0x12, 0x0a, 0xc2, 0x4f, 0xa9, 0xda, 0xfb, 0xcb, 0x29, 0x04, 0x10, 0x29},
+    {0xc9, 0xdb, 0xcb, 0xda, 0x12, 0x0a, 0xc2, 0x4f, 0xa9, 0xda, 0xfb, 0xcb, 0x29, 0x04, 0x10, 0x29},
+    19.0f,
+    1, 1, 0, 2, 10,
+    {},
+    0xff4a86c8u,
+    1,
+    {}
+};
+constexpr uint32_t kWoodChestTint = 0xff4a86c8u, kWoodChestDimTint = 0xff5a7088u; // 0xAABBGGRR: oak brown
 
 CustomMapMarkerType g_lockedFastTravelMarkerType = {
     {0x27, 0x59, 0x2e, 0x0c, 0x65, 0xc2, 0xad, 0x4b, 0xba, 0xd7, 0x5f, 0xcb, 0xc5, 0xe2, 0x58, 0xec},
@@ -577,6 +655,9 @@ uint8_t* CustomMarkerType(uint32_t typeHash) {
     if (typeHash == kSilverChestTypeHash) {
         return reinterpret_cast<uint8_t*>(&g_silverChestMarkerType);
     }
+    if (typeHash == kWoodChestTypeHash) {
+        return reinterpret_cast<uint8_t*>(&g_woodChestMarkerType);
+    }
     if (typeHash == kLockedFastTravelTypeHash) {
         return reinterpret_cast<uint8_t*>(&g_lockedFastTravelMarkerType);
     }
@@ -585,6 +666,7 @@ uint8_t* CustomMarkerType(uint32_t typeHash) {
 
 // Our marker types, every other one from the game (or a mod that hooked the lookup before us).
 uint8_t* GetMarkerTypeHook(uint32_t typeHash, void* mgr) {
+    UMM_PERF(PerfMarkerType);
     {
         greeneye::Lease lease; // an older generation after a hot reload only calls on
         if (lease && !g_modOff) {
@@ -673,6 +755,7 @@ static_assert(kBeaconsCount == 1, "one Return Beacon row");
 constexpr MarkerRowSpec kCategory3Rows[] = {
     {kGoldChestTypeHash, 0u, 3, "Gold Chest", umm_lang::Str::GoldChest},
     {kSilverChestTypeHash, 0u, 3, "Silver Chest", umm_lang::Str::SilverChest},
+    {kWoodChestTypeHash, 0u, 3, "Wooden Chest", umm_lang::Str::WoodChest},
     // Bosses: a resource row (ore_deposits.h), defeated ones hidden or greyed like looted chests
     {kOreTypeHashBase + static_cast<uint32_t>(kBossesFirst), 0u, 3, kOreLabels[kBossesFirst], umm_lang::Str::CatWorld},
     // Unique Weapons and Unique Equipment: resource rows (ore_deposits.h), each item at the chest or place it is in,
@@ -839,23 +922,29 @@ void RemoveMapKeyWheelHook() {
 constexpr size_t kCategoryGroupCount = sizeof(kCategoryGroups) / sizeof(kCategoryGroups[0]);
 const char* RowText(const MarkerRowSpec& row);
 
-// The Map Key's search: a row shows when its name (shown or English) or its section's title holds the text typed; a
-// section shows, open, when any of its rows does. Recomputed when the text or the language changes.
+// The Map Key's search: a row shows when its name (shown or English) or its section's title holds the text typed, or
+// when a place on the map by that name is in it (KeySearchPlaces: "song of" finds the Lore Note row); a section shows,
+// open, when any of its rows does. Recomputed when the text, the language or the places found change.
 std::string g_keySearch; // UTF-8
 struct KeySearchMatch {
     bool cat[kCategoryGroupCount]{};
     bool row[kCategoryGroupCount][64]{};
+    std::string place[kCategoryGroupCount][64]; // the place named so that brought the row in
     int any = 0;
 };
 KeySearchMatch g_keySearchMatch;
+// Places on the map whose name holds the search text: their row's type and the nearest one's name
+std::vector<std::pair<uint32_t, std::string>> g_keySearchPlaces;
+int g_keySearchPlacesVersion = 0;
 
 void UpdateKeySearchMatch() {
     static std::string s_for;
-    static int s_lang = -1;
+    static int s_lang = -1, s_places = -1;
     const int lang = static_cast<int>(umm_lang::Current());
-    if (s_for == g_keySearch && s_lang == lang) return;
+    if (s_for == g_keySearch && s_lang == lang && s_places == g_keySearchPlacesVersion) return;
     s_for = g_keySearch;
     s_lang = lang;
+    s_places = g_keySearchPlacesVersion;
     g_keySearchMatch = {};
     const std::string q = umm_lang::ToLowerUtf8(g_keySearch);
     auto has = [&](const char* s) { return s && umm_lang::ToLowerUtf8(s).find(q) != std::string::npos; };
@@ -864,7 +953,17 @@ void UpdateKeySearchMatch() {
         const bool title = has(umm_lang::T(grp.title));
         if (grp.category == 4) g_keySearchMatch.cat[c] = title || has("custom pin");
         for (size_t r = 0; r < grp.rowCount && r < 64; ++r) {
-            const bool m = title || has(RowText(grp.rows[r])) || has(grp.rows[r].label);
+            bool m = title || has(RowText(grp.rows[r])) || has(grp.rows[r].label);
+            if (!m) {
+                const MarkerRowSpec& row = grp.rows[r];
+                for (const auto& [hash, name] : g_keySearchPlaces) {
+                    if (hash != row.typeHash && (!row.pairedHash || hash != row.pairedHash) &&
+                        (!row.pairedHash2 || hash != row.pairedHash2)) continue;
+                    m = true;
+                    g_keySearchMatch.place[c][r] = name;
+                    break;
+                }
+            }
             g_keySearchMatch.row[c][r] = m;
             if (m) g_keySearchMatch.cat[c] = true;
         }
@@ -1565,6 +1664,7 @@ uint8_t FilterCategory(const FilterEntry& e) {
 bool IsFilterEnabled(FilterEntry* entries, size_t count, uint32_t typeHash) {
     if (typeHash == kGoldChestTypeHash) return g_goldChestEnabled;
     if (typeHash == kSilverChestTypeHash) return g_silverChestEnabled;
+    if (typeHash == kWoodChestTypeHash) return g_woodChestEnabled;
     if (typeHash == kOtherPlayerTypeHash) return g_otherPlayersEnabled;
     if (typeHash == kTownPortalTypeHash) return g_townPortalsEnabled;
     if (typeHash == kCompletedQuestTypeHash) return false; // finished quests are never shown
@@ -1578,7 +1678,7 @@ bool IsFilterEnabled(FilterEntry* entries, size_t count, uint32_t typeHash) {
 }
 
 void ApplyFilterChange(uint8_t* client, uint32_t typeHash, bool enable) {
-    if (typeHash == kGoldChestTypeHash || typeHash == kSilverChestTypeHash ||
+    if (typeHash == kGoldChestTypeHash || typeHash == kSilverChestTypeHash || typeHash == kWoodChestTypeHash ||
         typeHash == kOtherPlayerTypeHash || typeHash == kTownPortalTypeHash || typeHash == kCompletedQuestTypeHash ||
         IsOreHash(typeHash)) {
         return;
@@ -1600,6 +1700,8 @@ void SetSingleFilterState(uint8_t* client, uint8_t* mapState, uint32_t typeHash,
         g_goldChestEnabled = enable;
     } else if (typeHash == kSilverChestTypeHash) {
         g_silverChestEnabled = enable;
+    } else if (typeHash == kWoodChestTypeHash) {
+        g_woodChestEnabled = enable;
     } else if (typeHash == kOtherPlayerTypeHash) {
         g_otherPlayersEnabled = enable;
         SaveMinimapConfig();
@@ -1619,7 +1721,7 @@ void SetSingleFilterState(uint8_t* client, uint8_t* mapState, uint32_t typeHash,
         }
         ApplyFilterChange(client, typeHash, enable);
     }
-    if (typeHash == kGoldChestTypeHash || typeHash == kSilverChestTypeHash) SaveMinimapConfig();
+    if (typeHash == kGoldChestTypeHash || typeHash == kSilverChestTypeHash || typeHash == kWoodChestTypeHash) SaveMinimapConfig();
     if (mapState) {
         *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
         *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
@@ -1634,6 +1736,7 @@ void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category
     if (category == 3) {
         g_goldChestEnabled = enable;
         g_silverChestEnabled = enable;
+        g_woodChestEnabled = enable;
     } else if (category == 0) {
         g_otherPlayersEnabled = enable;
         SaveMinimapConfig();
@@ -1672,6 +1775,7 @@ void SetAllFiltersState(uint8_t* client, uint8_t* mapState, bool enable, bool pa
     auto open = [&](uint32_t typeHash, uint8_t category) { return passLocks || !IsFilterLocked(typeHash, category); };
     if (open(kGoldChestTypeHash, 3)) g_goldChestEnabled = enable;
     if (open(kSilverChestTypeHash, 3)) g_silverChestEnabled = enable;
+    if (open(kWoodChestTypeHash, 3)) g_woodChestEnabled = enable;
     if (open(kOtherPlayerTypeHash, 0)) g_otherPlayersEnabled = enable;
     if (open(kTownPortalTypeHash, 1)) g_townPortalsEnabled = enable;
     for (size_t o = 0; o < kOreCount; ++o) {
@@ -1724,6 +1828,7 @@ FilterSnapshot TakeFilterSnapshot(uint8_t* client) {
     s.states.reserve(160);
     s.states.emplace_back(kGoldChestTypeHash, g_goldChestEnabled);
     s.states.emplace_back(kSilverChestTypeHash, g_silverChestEnabled);
+    s.states.emplace_back(kWoodChestTypeHash, g_woodChestEnabled);
     s.states.emplace_back(kOtherPlayerTypeHash, g_otherPlayersEnabled);
     s.states.emplace_back(kTownPortalTypeHash, g_townPortalsEnabled);
     for (size_t o = 0; o < kOreCount; ++o) s.states.emplace_back(OreHash(o), g_oreEnabled[o]);
@@ -1746,15 +1851,16 @@ void RestoreFilterSnapshot(uint8_t* client, uint8_t* mapState, const FilterSnaps
     const FilterSnapshot now = TakeFilterSnapshot(client);
     if (!SameFilterRows(now, s)) return;
     auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
-    const size_t fixed = 4 + kOreCount;
+    const size_t fixed = 5 + kOreCount;
     for (size_t i = 0; i < s.states.size(); ++i) {
         const auto [hash, on] = s.states[i];
         if (now.states[i].second == on) continue;
         if (i == 0) g_goldChestEnabled = on;
         else if (i == 1) g_silverChestEnabled = on;
-        else if (i == 2) g_otherPlayersEnabled = on;
-        else if (i == 3) g_townPortalsEnabled = on;
-        else if (i < fixed) g_oreEnabled[i - 4] = on;
+        else if (i == 2) g_woodChestEnabled = on;
+        else if (i == 3) g_otherPlayersEnabled = on;
+        else if (i == 4) g_townPortalsEnabled = on;
+        else if (i < fixed) g_oreEnabled[i - 5] = on;
         else {
             entries[i - fixed].enabled = on ? 1 : 0;
             ApplyFilterChange(client, hash, on);
@@ -1840,11 +1946,12 @@ void ApplyLockedStates(uint8_t* client) {
     }
     g_applyingLockedStates = false;
     SaveFilterLocks();
+    if (applied) SaveMinimapConfig();
     if (g_log) g_log("Filter locks: restored %zu locked filters", applied);
 }
 
 bool IsCategoryEnabled(FilterEntry* entries, size_t count, uint8_t category) {
-    if (category == 3 && (g_goldChestEnabled || g_silverChestEnabled)) {
+    if (category == 3 && AnyChestRowEnabled()) {
         return true;
     }
     if (category == 0 && g_otherPlayersEnabled) {
@@ -1868,6 +1975,7 @@ bool IsCategoryEnabled(FilterEntry* entries, size_t count, uint8_t category) {
 const void* GetIconRefForType(uint8_t* client, uint32_t typeHash) {
     if (typeHash == kGoldChestTypeHash) return g_goldChestMarkerType.icon;
     if (typeHash == kSilverChestTypeHash) return g_silverChestMarkerType.icon;
+    if (typeHash == kWoodChestTypeHash) return g_woodChestMarkerType.icon;
     if (IsOreHash(typeHash)) return kOreIcons[OreIndexOf(typeHash)];
     if (typeHash == 0x26d18a06u) {
         if (uint8_t* assets = GetUiAssets()) {
@@ -1890,12 +1998,27 @@ const void* GetIconRefForType(uint8_t* client, uint32_t typeHash) {
     return markerType + 0x1c;
 }
 
+bool ReadLocaText(uint32_t locaId, char* out, size_t cap);
+
+// "Wooden Chest": the game's own text while the mod follows the game's language, else the mod's
+const char* WoodChestName() {
+    static char game[96]{};
+    static int state = 0, builtFor = -1; // 0 not tried, 1 have it, 2 none
+    const int lang = static_cast<int>(umm_lang::Current());
+    if (builtFor != lang) state = 0, builtFor = lang;
+    if (umm_lang::FollowsGame() && umm_lang::Current() != umm_lang::Lang::English) {
+        if (state == 0 && GetUiClient()) state = ReadLocaText(725466433u, game, sizeof(game)) ? 1 : 2;
+        if (state == 1) return game;
+    }
+    return umm_lang::T(umm_lang::Str::WoodChest);
+}
+
 // The chest titles shown on the map, in the current language. Marker slots keep pointers to these
 // texts, so they live in fixed buffers that are rewritten in place when the language is decided.
 const UiText& GetChestSubtypeTitle(uint16_t subtype) {
     using umm_lang::Str;
-    static char buffers[6][128]{};
-    static UiText titles[6]{};
+    static char buffers[9][128]{};
+    static UiText titles[9]{};
     static int builtFor = -1;
     const int lang = static_cast<int>(umm_lang::Current());
     if (builtFor != lang) {
@@ -1908,10 +2031,14 @@ const UiText& GetChestSubtypeTitle(uint16_t subtype) {
         std::snprintf(buffers[3], sizeof(buffers[3]), "%s", silver);
         std::snprintf(buffers[4], sizeof(buffers[4]), "%s", umm_lang::T(Str::SilverSarcophagus));
         std::snprintf(buffers[5], sizeof(buffers[5]), "%s%s", silver, locked);
-        for (int i = 0; i < 6; ++i) titles[i] = MakeUiText(buffers[i]);
+        const char* const wood = WoodChestName();
+        std::snprintf(buffers[6], sizeof(buffers[6]), "%s", wood);
+        std::snprintf(buffers[7], sizeof(buffers[7]), "%s", umm_lang::T(Str::WoodSarcophagus));
+        std::snprintf(buffers[8], sizeof(buffers[8]), "%s%s", wood, locked);
+        for (int i = 0; i < 9; ++i) titles[i] = MakeUiText(buffers[i]);
         builtFor = lang;
     }
-    return titles[subtype < 6 ? subtype : 0];
+    return titles[subtype < 9 ? subtype : 0];
 }
 
 bool IsChestCurrentlyCleared(size_t chestIdx);
@@ -2202,7 +2329,7 @@ size_t NearestChestTo(float px, float py, float pz) {
         if (std::abs(cy - py) > 4.5f) continue;
         float d2 = (cx - px) * (cx - px) + (cz - pz) * (cz - pz);
         // A locked chest opens from farther away (chest 567 from 5.5 m), so it counts up to 6.5 m
-        const bool locked = sp.subtype == 2 || sp.subtype == 5;
+        const bool locked = sp.subtype == 2 || sp.subtype == 5 || sp.subtype == 8;
         if (locked && d2 >= 42.25f) continue;
         if (!locked && d2 >= 18.0f) continue;
         if (d2 < bestDistSq) {
@@ -2231,6 +2358,7 @@ constexpr uint8_t kChestChatType = 255;
 struct ChestNetEvent {
     bool looted;
     int32_t x, z;
+    bool wood; // a wooden chest: "W" / "V", which mod versions before wooden chests skip
 };
 std::mutex g_chestNetLock;
 std::vector<ChestNetEvent> g_chestNetInbox;
@@ -2245,7 +2373,8 @@ void ShareChestState(size_t chestIdx, bool looted) {
     if (!g_sendCommand || !gameClient || chestIdx >= kTotalChestCount) return;
     const ChestSpawn& sp = kChestSpawns[chestIdx];
     char line[64];
-    const int len = std::snprintf(line, sizeof(line), "/ummc1 %c %u %u", looted ? 'L' : 'U', sp.px1, sp.pz1);
+    const char kind = IsWoodChest(chestIdx) ? (looted ? 'W' : 'V') : (looted ? 'L' : 'U');
+    const int len = std::snprintf(line, sizeof(line), "/ummc1 %c %u %u", kind, sp.px1, sp.pz1);
     if (len <= 0 || len >= static_cast<int>(sizeof(line))) return;
     // The game's chat command: 0x74, the entry type, the text, and its length at +0x402
     alignas(8) uint8_t command[0x410]{};
@@ -2269,12 +2398,14 @@ int ReadChestChatLine(void* store, uint8_t type, const uint64_t* text) {
     std::memcpy(buf, line, static_cast<size_t>(text[1]));
     char kind = 0;
     unsigned x = 0, z = 0;
-    if (sscanf_s(buf + 7, "%c %u %u", &kind, 1u, &x, &z) != 3 || (kind != 'L' && kind != 'U') || x > 20000 || z > 20000) {
+    if (sscanf_s(buf + 7, "%c %u %u", &kind, 1u, &x, &z) != 3 || !std::strchr("LUWV", kind) || !kind || x > 20000 ||
+        z > 20000) {
         return 1;
     }
     std::lock_guard<std::mutex> guard(g_chestNetLock);
     if (g_chestNetInbox.size() < 256) {
-        g_chestNetInbox.push_back({kind == 'L', static_cast<int32_t>(x), static_cast<int32_t>(z)});
+        g_chestNetInbox.push_back({kind == 'L' || kind == 'W', static_cast<int32_t>(x), static_cast<int32_t>(z),
+                                   kind == 'W' || kind == 'V'});
     }
     return 1;
 }
@@ -2309,7 +2440,7 @@ void ApplySharedChestStates() {
     for (const ChestNetEvent& e : events) {
         size_t best = kTotalChestCount;
         int64_t bestD2 = 6 * 6; // within 6 m of the position sent
-        for (size_t c = 0; c < kTotalChestCount; ++c) {
+        for (size_t c = e.wood ? kWoodChestFirst : 0; c < (e.wood ? kTotalChestCount : kWoodChestFirst); ++c) {
             const int64_t dx = static_cast<int64_t>(kChestSpawns[c].px1) - e.x;
             const int64_t dz = static_cast<int64_t>(kChestSpawns[c].pz1) - e.z;
             if (dx * dx + dz * dz <= bestD2) {
@@ -2586,9 +2717,7 @@ bool ToggleChestClearedNearWorldPos(float wx, float wz, float maxRadiusMeters) {
     float bestDistSq = maxRadiusMeters * maxRadiusMeters;
     size_t bestChest = kTotalChestCount;
     for (size_t c = 0; c < kTotalChestCount; ++c) {
-        const bool isGold = (c < kGoldChestCount);
-        if (isGold && !g_goldChestEnabled) continue;
-        if (!isGold && !g_silverChestEnabled) continue;
+        if (!ChestRowEnabled(c)) continue;
         if (g_chestLootStates[c].looted && g_lootedChestMode == 0) continue;
 
         const ChestSpawn& sp = kChestSpawns[c];
@@ -2666,7 +2795,7 @@ void SyncChestsInUiArrays(uint8_t* client, bool& dirty) {
         }
     }
     if (g_silverChestEnabled) {
-        for (size_t c = kGoldChestCount; c < kTotalChestCount; ++c) {
+        for (size_t c = kGoldChestCount; c < kWoodChestFirst; ++c) { // wooden chests: DrawWoodChestsOnMap
             if (IsChestCurrentlyCleared(c) && !keepLootedAsGrey) continue;
             if (exploredOnly && !IsPositionExploredByCharacter(client, kChestSpawns[c].px1, kChestSpawns[c].pz1)) continue;
             if (RegionHidesAt(kChestSpawns[c].px1, kChestSpawns[c].pz1)) continue;
@@ -2774,8 +2903,34 @@ bool IsPositionExploredByCharacter(uint8_t* client, int32_t wx, int32_t wz) {
     return bitmap[offset] >= 64u;
 }
 
+// The quest answers below are the game's own lookups, asked for every marker every frame (the World Map's pass, the
+// minimap, Find): kept for half a second, quests don't change faster than that.
+struct QuestAnswer {
+    uint32_t value;
+    uint64_t tick;
+};
+template <typename Compute>
+uint32_t CachedQuestAnswer(std::unordered_map<uint64_t, QuestAnswer>& cache, uint64_t key, Compute compute) {
+    const uint64_t now = GetTickCount64();
+    if (cache.size() > 8192) cache.clear();
+    auto it = cache.find(key);
+    if (it != cache.end() && now - it->second.tick < 500) return it->second.value;
+    const uint32_t value = compute();
+    cache[key] = {value, now};
+    return value;
+}
+
+uint32_t GetQuestFilterHashForMarkerIdUncached(uint32_t id08, bool activeObjectiveOnly);
+
 // Returns 0xa7cadc08u (Main Quest) or 0xc52e92e5u (Side Quest) if id08 belongs to a quest, else 0u.
 uint32_t GetQuestFilterHashForMarkerId(uint32_t id08, bool activeObjectiveOnly) {
+    if (id08 == 0u) return 0u;
+    static std::unordered_map<uint64_t, QuestAnswer> cache;
+    return CachedQuestAnswer(cache, (static_cast<uint64_t>(id08) << 1) | (activeObjectiveOnly ? 1u : 0u),
+                             [&] { return GetQuestFilterHashForMarkerIdUncached(id08, activeObjectiveOnly); });
+}
+
+uint32_t GetQuestFilterHashForMarkerIdUncached(uint32_t id08, bool activeObjectiveOnly) {
     if (id08 == 0u) return 0u;
     const uint8_t* quest = nullptr;
     if (activeObjectiveOnly) {
@@ -2851,7 +3006,16 @@ bool GameShowsMarker(uint8_t vis35) {
     return vis35 >= 0x11u && vis35 <= 0x13u;
 }
 
+uint32_t ClassifyQuestOrRumorMarkerUncached(uint32_t id08, uint8_t vis35);
+
 uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t vis35) {
+    if (id08 == 0u) return 0u;
+    static std::unordered_map<uint64_t, QuestAnswer> cache;
+    return CachedQuestAnswer(cache, (static_cast<uint64_t>(id08) << 8) | vis35,
+                             [&] { return ClassifyQuestOrRumorMarkerUncached(id08, vis35); });
+}
+
+uint32_t ClassifyQuestOrRumorMarkerUncached(uint32_t id08, uint8_t vis35) {
     if (id08 == 0u) return 0u;
     if (uint32_t activeQ = GetQuestFilterHashForMarkerId(id08, true)) return activeQ;
     if (g_isLoreRumorMarkerId && g_isLoreRumorMarkerId(id08)) {
@@ -2890,10 +3054,12 @@ bool IsMarkerTypeAlwaysRevealed(uint32_t origHash, uint8_t b48, uint64_t lastChg
     return false;
 }
 
-// A place this character hasn't discovered yet: the game would hide it (patches.h site 2 keeps its visibility byte at
-// +0x35 as 0x10 | state, 0x10 not discovered). Quests and rumors, and a place an active quest points to, stand out
-// as they are.
+// A place this character hasn't discovered yet, drawn grayed out: the game would hide it (patches.h site 2 keeps its
+// visibility byte at +0x35 as 0x10 | state, 0x10 not discovered). Quests and rumors, and a place an active quest points
+// to, stand out as they are. Pins: REVEAL ALL shows every place in full colour (locked Fast Travel Points and Spires
+// keep their own gray).
 bool IsMarkerUndiscovered(const uint8_t* m, uint32_t origHash) {
+    if (g_pinRevealMode == PinRevealMode::RevealAll) return false;
     if (!m || m[0x35] != 0x10) return false;
     for (const auto& row : kCategory0Rows) {
         if (row.typeHash == origHash) return false;
@@ -3329,10 +3495,16 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
         ++unlootedGoldCount;
     }
     int unlootedSilverCount = 0;
-    for (size_t c = kGoldChestCount; c < kTotalChestCount; ++c) {
+    for (size_t c = kGoldChestCount; c < kWoodChestFirst; ++c) {
         if (IsChestCurrentlyCleared(c)) continue;
         if (exploredOnly && !IsPositionExploredByCharacter(client, kChestSpawns[c].px1, kChestSpawns[c].pz1)) continue;
         ++unlootedSilverCount;
+    }
+    int unlootedWoodCount = 0;
+    for (size_t c = kWoodChestFirst; c < kTotalChestCount; ++c) {
+        if (IsChestCurrentlyCleared(c)) continue;
+        if (exploredOnly && !IsPositionExploredByCharacter(client, kChestSpawns[c].px1, kChestSpawns[c].pz1)) continue;
+        ++unlootedWoodCount;
     }
 
     for (size_t q = 0; q < numQueries; ++q) {
@@ -3340,6 +3512,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             outCounts[q] = unlootedGoldCount;
         } else if (queryHashes[q] == kSilverChestTypeHash) {
             outCounts[q] = unlootedSilverCount;
+        } else if (queryHashes[q] == kWoodChestTypeHash) {
+            outCounts[q] = unlootedWoodCount;
         } else if (queryHashes[q] == kOtherPlayerTypeHash) {
             outCounts[q] = otherPlayerCount;
         } else if (queryHashes[q] == kTownPortalTypeHash) {
@@ -3407,7 +3581,6 @@ bool UsingGamepad() {
         if (!x) x = LoadLibraryW(L"xinput9_1_0.dll");
         return x ? reinterpret_cast<XInputGetStateFn>(GetProcAddress(x, "XInputGetState")) : nullptr;
     }();
-    static DWORD lastPacket[XUSER_MAX_COUNT]{};
     static uint64_t padTick = 0, mouseTick = 1;
     static POINT lastCursor{};
     static uint64_t lastPoll = 0;
@@ -3422,8 +3595,11 @@ bool UsingGamepad() {
             const bool active = g.wButtons != 0 || g.bLeftTrigger > 30 || g.bRightTrigger > 30 ||
                                 std::abs(g.sThumbLX) > 8000 || std::abs(g.sThumbLY) > 8000 ||
                                 std::abs(g.sThumbRX) > 8000 || std::abs(g.sThumbRY) > 8000;
-            if (st.dwPacketNumber != lastPacket[i] && active) padTick = now;
-            lastPacket[i] = st.dwPacketNumber;
+            // A stick held steady sends no new packets: held counts as in use too. Only new packets counted, the
+            // mouse took over a quarter second into a steady push (the game moves the hidden cursor meanwhile), and
+            // when that cursor sat on the Map Key the map's input was blocked, the pad frozen until the mouse moved
+            // (reported by FamanFortune)
+            if (active) padTick = now;
         }
     }
     POINT pt{};
@@ -3904,6 +4080,59 @@ int ComputeNameMatchTier(const std::string& queryLower, const std::string& title
     return 4; // Multi-token or type-label match
 }
 
+void RebuildFindResults(uint8_t* client, uint8_t* mapState);
+
+// The Map Key search's places: Find's own scan (every marker, chest, resource, lore note and boss, by its name; rows
+// switched off too) for the text typed, once each time it changes. 3 letters at least, so a letter or two doesn't
+// bring in every row. Find's results stay as they were.
+void KeySearchPlaces(uint8_t* client, uint8_t* mapState) {
+    static std::string s_for;
+    static int s_lang = -1;
+    const int lang = static_cast<int>(umm_lang::Current());
+    if (!client || (s_for == g_keySearch && s_lang == lang)) return;
+    s_for = g_keySearch;
+    s_lang = lang;
+    g_keySearchPlaces.clear();
+    ++g_keySearchPlacesVersion;
+    std::string q = g_keySearch;
+    while (!q.empty() && q.front() == ' ') q.erase(q.begin());
+    while (!q.empty() && q.back() == ' ') q.pop_back();
+    if (q.size() < 3) return;
+    const std::string query = g_findQuery;
+    const bool respect = g_findRespectFilters;
+    const int selected = g_findSelectedIndex, hovered = g_findHoveredIndex, scroll = g_findScrollOffset;
+    const int filteredOut = g_findFilteredOutCount;
+    std::vector<FindPlaceEntry> places;
+    std::vector<FindDisplayRow> rows;
+    places.swap(g_findMatchedPlaces);
+    rows.swap(g_findDisplayRows);
+    g_findQuery = q;
+    g_findRespectFilters = false;
+    RebuildFindResults(client, mapState);
+    const std::string queryLower = ToLowerAscii(q);
+    std::vector<const FindPlaceEntry*> named;
+    for (const FindPlaceEntry& e : g_findMatchedPlaces) {
+        // By its own name only, not the type label Find matches too (the row names already count)
+        if (ComputeNameMatchTier(queryLower, ToLowerAscii(e.title), std::string()) >= 0) named.push_back(&e);
+    }
+    std::sort(named.begin(), named.end(), [](const FindPlaceEntry* a, const FindPlaceEntry* b) {
+        return a->distMeters < b->distMeters;
+    });
+    for (const FindPlaceEntry* e : named) {
+        bool seen = false;
+        for (const auto& pl : g_keySearchPlaces) seen = seen || pl.first == e->filterTypeHash;
+        if (!seen) g_keySearchPlaces.emplace_back(e->filterTypeHash, e->title);
+    }
+    g_findMatchedPlaces.swap(places);
+    g_findDisplayRows.swap(rows);
+    g_findQuery = query;
+    g_findRespectFilters = respect;
+    g_findSelectedIndex = selected;
+    g_findHoveredIndex = hovered;
+    g_findScrollOffset = scroll;
+    g_findFilteredOutCount = filteredOut;
+}
+
 void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
     g_findMatchedPlaces.clear();
     g_findDisplayRows.clear();
@@ -4036,13 +4265,14 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
     for (size_t c = 0; c < kTotalChestCount; ++c) {
         if (IsChestCurrentlyCleared(c)) continue;
         const ChestSpawn& sp = kChestSpawns[c];
-        bool isGold = (c < kGoldChestCount);
-        uint32_t chestHash = isGold ? kGoldChestTypeHash : kSilverChestTypeHash;
-        bool isFilterOn = isGold ? g_goldChestEnabled : g_silverChestEnabled;
+        uint32_t chestHash = ChestTypeHash(c);
+        bool isFilterOn = ChestRowEnabled(c);
         if (g_pinRevealMode == PinRevealMode::ExploredOnly && !IsPositionExploredByCharacter(client, sp.px1, sp.pz1)) {
             isFilterOn = false;
         }
-        const char* typeLabel = umm_lang::T(isGold ? umm_lang::Str::GoldChest : umm_lang::Str::SilverChest);
+        const char* typeLabel = c < kGoldChestCount   ? umm_lang::T(umm_lang::Str::GoldChest)
+                                : !IsWoodChest(c)       ? umm_lang::T(umm_lang::Str::SilverChest)
+                                                        : WoodChestName();
         const UiText& subTitle = GetChestSubtypeTitle(sp.subtype);
         float wx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
         float wz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
@@ -4846,7 +5076,7 @@ void DrawVisitedSanctumsOnMap(void* widgetRaw, const float* rootRect, uint8_t* c
 // A check mark on each gold and silver chest looted here once that has refilled since: the looted ones carry the
 // game's own (completed state), these keep theirs at the same corner of the icon.
 void DrawRefilledChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState) {
-    if (!widgetRaw || !client || !mapState || (!g_goldChestEnabled && !g_silverChestEnabled)) return;
+    if (!widgetRaw || !client || !mapState || (!g_goldChestEnabled && !g_silverChestEnabled)) return; // wood: its own
     uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
     if (!mapView) return;
     const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
@@ -4862,10 +5092,10 @@ void DrawRefilledChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* cl
     const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
     const bool exploredOnly = g_pinRevealMode == PinRevealMode::ExploredOnly;
     constexpr float kIconHalf = 13.0f, kCheck = 14.0f;
-    for (size_t c = 0; c < kTotalChestCount; ++c) {
+    for (size_t c = 0; c < kWoodChestFirst; ++c) {
         const ChestLootState& st = g_chestLootStates[c];
         if (!st.everLooted || st.looted) continue;
-        if (!(c < kGoldChestCount ? g_goldChestEnabled : g_silverChestEnabled)) continue;
+        if (!ChestRowEnabled(c)) continue;
         const ChestSpawn& sp = kChestSpawns[c];
         const float x = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
         const float z = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
@@ -5106,6 +5336,82 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     if (hoveredName) DrawMapHoverTitle(hoveredSx + half + 10.0f, hoveredSy, hoveredName);
 }
 
+// Wooden chests on the World Map, drawn by the mod: the game's two marker arrays the gold and silver chests go into
+// hold 1024 each and are nearly full with them. One icon per screen cell (where they would overlap anyway), as the
+// resources; looted ones hidden or greyed like the others, with the check mark once looted here; a name on hover.
+void DrawWoodChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState, bool haveCursor,
+                         float mx, float my) {
+    if (!widgetRaw || !client || !mapState) return;
+    uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
+    if (!mapView) return;
+    const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
+    float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
+    if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
+    if (!(zoom > 0.0f)) return;
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
+                          *reinterpret_cast<float*>(mapView + 0x1e8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
+                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float left = rootRect[0], top = rootRect[1];
+    const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
+    const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
+    const void* icon = GetIconRefForType(client, kWoodChestTypeHash);
+    if (!icon) return;
+    constexpr float kMapBannerBottom = 114.0f;
+    const float size = std::max(11.0f, std::min(19.0f, 8.0f + zoom * 5.0f)), half = size * 0.5f;
+    const float cell = std::max(8.0f, size * 0.9f);
+    const int gridW = std::max(1, static_cast<int>((right - left) / cell) + 1);
+    const int gridH = std::max(1, static_cast<int>((bottom - top) / cell) + 1);
+    static std::vector<uint8_t> taken;
+    taken.assign(static_cast<size_t>(gridW) * gridH, 0);
+    const bool backing = size > 13.0f;
+    size_t hovered = kTotalChestCount;
+    float hoveredSx = 0.0f, hoveredSy = 0.0f;
+    for (size_t c = kWoodChestFirst; c < kTotalChestCount; ++c) {
+        const ChestSpawn& sp = kChestSpawns[c];
+        const float x = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
+        const float z = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
+        const float sx = originX + x * zoom, sy = originY + (mapWorldH - z) * zoom;
+        if (sx < left - size || sx > right + size || sy < top - size || sy > bottom + size) continue;
+        const bool cleared = IsChestCurrentlyCleared(c);
+        if (cleared && g_lootedChestMode == 0) continue;
+        const bool unexplored = g_pinRevealMode != PinRevealMode::RevealAll &&
+                                !IsPositionExploredByCharacter(client, sp.px1, sp.pz1);
+        if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) continue;
+        const bool outside = OutsideFocusedRegion(x, z); // Map Key > Region
+        if (outside && g_regionOutsideHide) continue;
+        const int gx = static_cast<int>((sx - left) / cell), gy = static_cast<int>((sy - top) / cell);
+        if (gx >= 0 && gy >= 0 && gx < gridW && gy < gridH) {
+            uint8_t& t = taken[static_cast<size_t>(gy) * gridW + gx];
+            if (t) continue;
+            t = 1;
+        }
+        const bool underBanner = sy < top + kMapBannerBottom;
+        const bool dim = cleared || (unexplored && g_pinRevealMode == PinRevealMode::Hybrid);
+        const float alpha = (dim ? 0.55f : 1.0f) * (underBanner ? 0.22f : 1.0f) * (outside ? 0.3f : 1.0f);
+        if (backing) {
+            DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - half - 2.0f, sy - half - 2.0f, size + 4.0f, size + 4.0f,
+                             0xff0a0e10u, 0.55f * alpha);
+        }
+        DrawIconRectAbs(widgetRaw, icon, sx - half, sy - half, size, size, dim ? kWoodChestDimTint : kWoodChestTint, alpha);
+        if (cleared || g_chestLootStates[c].everLooted) {
+            const float checkSz = std::max(8.0f, size * 0.6f);
+            DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, sx + half - checkSz * 0.7f, sy + half - checkSz * 0.7f,
+                             checkSz, checkSz, 0xFFFFFFFFu, 0.95f * alpha, 1.12f);
+        }
+        if (!underBanner && haveCursor && std::fabs(mx - sx) <= half + 2.0f && std::fabs(my - sy) <= half + 2.0f) {
+            hovered = c;
+            hoveredSx = sx;
+            hoveredSy = sy;
+        }
+    }
+    if (hovered < kTotalChestCount) {
+        if (!g_hoveredDepositRow) g_hoveredDepositRow = kWoodChestTypeHash; // Alt + click hides the row
+        const UiText& title = GetChestSubtypeTitle(kChestSpawns[hovered].subtype);
+        DrawMapHoverTitle(hoveredSx + half + 10.0f, hoveredSy, title.utf8);
+    }
+}
+
 #include "town_portals.inl"
 
 // What a marker row is called in the panel. Rows whose game name is exactly the row's meaning use
@@ -5158,6 +5464,7 @@ void ApplyCustomMarkerScale() {
     // keeping preloaded Gold & Silver Chests at their fixed sizes.
     g_goldChestMarkerType.iconDisplaySize = 23.0f;
     g_silverChestMarkerType.iconDisplaySize = 21.0f;
+    g_woodChestMarkerType.iconDisplaySize = 19.0f;
 }
 
 // Draws a crisp vector gear/cog icon at (cx, cy) using engine primitives so it never relies on missing font glyphs.
@@ -6038,6 +6345,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                              std::max(500, std::min(1500, 2000 - treeDraws)));
         DrawVisitedSanctumsOnMap(root.raw, rootRect, client, mapState);
         DrawRefilledChestsOnMap(root.raw, rootRect, client, mapState);
+        if (g_woodChestEnabled) DrawWoodChestsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my);
         DrawGraveHeightsOnMap(root.raw, rootRect, client, mapState);
         if (g_townPortalsEnabled) DrawTownPortalsOnMap(root.raw, rootRect, mapState, haveCursor, mx, my); // Town Portal's open portals
         DrawMapCursorPosition(root.raw, rootRect, mapState, haveCursor, mx, my, false);
@@ -6098,6 +6406,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         const float kRegionRowH = g_regionFilterEnabled ? 30.0f : 0.0f;
         constexpr float kSearchRowH = 30.0f; // the search box, under them (does not scroll)
         constexpr float kItemRowH0 = 20.0f;
+        if (KeySearching()) KeySearchPlaces(client, mapState);
         UpdateKeySearchMatch();
         const float panelX = rootRect[0] + rootW - kPanelW - 24.0f;
         const float panelY = rootRect[1] + 104.0f;
@@ -6733,6 +7042,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                     iconTint = rowOn ? 0xff38c8ffu : 0xff406880u;
                                 } else if (rowSpec.typeHash == kSilverChestTypeHash) {
                                     iconTint = rowOn ? 0xffe8e4dcu : 0xff707070u;
+                                } else if (rowSpec.typeHash == kWoodChestTypeHash) {
+                                    iconTint = rowOn ? kWoodChestTint : 0xff707070u;
                                 }
                                 // Ore icons are full-colour inventory art: a little larger in the badge
                                 const float iconSz = IsOreHash(rowSpec.typeHash) ? 16.0f : 14.0f;
@@ -6746,6 +7057,12 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                 std::snprintf(rowText, sizeof(rowText), "%s (%d)", RowText(rowSpec), count);
                             } else {
                                 std::snprintf(rowText, sizeof(rowText), "%s", RowText(rowSpec));
+                            }
+                            // Brought in by a place's name: which one ("Lore Note (12): Song of the ...")
+                            if (KeySearching() && r < 64 && !g_keySearchMatch.place[c][r].empty()) {
+                                const size_t used = std::strlen(rowText);
+                                std::snprintf(rowText + used, sizeof(rowText) - used, ": %s",
+                                              g_keySearchMatch.place[c][r].c_str());
                             }
                             uint32_t textCol = rowOn ? 0xffd6e6eeu : kOffText; // #eee6d6 parchment
                             if (rowOn && rowSpec.typeHash == kGoldChestTypeHash) {
@@ -7218,11 +7535,15 @@ void WorldMapInputHook(void* mapRootWidget, uint8_t* mapState) {
     }
 }
 
-void SafeDrawMapKeyOverlay(void* mapState) {
+void SafeDrawMapKeyOverlayInner(void* mapState) {
     __try {
         DrawMapKeyOverlay(mapState);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
+}
+void SafeDrawMapKeyOverlay(void* mapState) {
+    UMM_PERF(PerfMapKey);
+    SafeDrawMapKeyOverlayInner(mapState);
 }
 
 void DrawMapFilterMenuHook(void* mapState) {
@@ -7478,6 +7799,7 @@ void LoadMinimapConfig() {
     g_townPortalsEnabled = (townPortals != 0);
     g_goldChestEnabled = GetPrivateProfileIntA("MinimapV2", "GoldChests", 1, cfg.c_str()) != 0;
     g_silverChestEnabled = GetPrivateProfileIntA("MinimapV2", "SilverChests", 1, cfg.c_str()) != 0;
+    g_woodChestEnabled = GetPrivateProfileIntA("MinimapV2", "WoodChests", 0, cfg.c_str()) != 0;
     g_minimapShowTerrain = (showTerrain != 0);
     g_minimapThinBorder = (thinBorder != 0);
     g_minimapInfoBar = (infoBar != 0);
@@ -7605,6 +7927,9 @@ void SaveFilterLocks() {
 }
 
 void SaveMinimapConfig() {
+    // Restoring the locked rows on joining a world: once, at the end (a save per row rewrote the file some 30 times a
+    // row, 3 s for 129 locked rows)
+    if (g_applyingLockedStates) return;
     std::string cfg = GetMinimapConfigPath();
     char buf[64]{};
     std::snprintf(buf, sizeof(buf), "%d", g_minimapCustomPos ? 1 : 0);
@@ -7653,6 +7978,7 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "PinRevealMode", buf, cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "GoldChests", g_goldChestEnabled ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "SilverChests", g_silverChestEnabled ? "1" : "0", cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "WoodChests", g_woodChestEnabled ? "1" : "0", cfg.c_str());
     char ores[kOreCount + 1]{};
     for (size_t o = 0; o < kOreCount; ++o) ores[o] = g_oreEnabled[o] ? '1' : '0';
     WritePrivateProfileStringA("Mining", "Ores", ores, cfg.c_str());
@@ -8646,10 +8972,12 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         Widget mmCanvas{};
         g_namedWidget(mmCanvas.raw, &kMmCanvasName);
         g_setSize(mmCanvas.Handle(), 0);
+        UMM_LAP_START;
         if (g_minimapShowTerrain) {
             DrawMinimapTerrain(client, mmCanvas.raw, vx, vy, vw, vh, vcx, vcy, playerX, playerZ, pxPerMeterX, pxPerMeterY);
         }
         g_endWidget(mmCanvas.raw);
+        UMM_LAP(PerfMmTerrain);
 
         // Subtle inner vignette / shadow along viewport edges
         DrawSolidRectAbs(anchor.raw, vx, vy, vw, 5.0f, 0xFF0A0C0Bu, 0.55f);
@@ -8694,6 +9022,28 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 // Skip duplicate grayed-out spire twin (0x98b2d65d) because 0xa17072be holds the spire
                 if (origHash == 0x98b2d65du) continue;
 
+                // On the minimap at all? First: the quest lookups below are the game's own calls, for every marker
+                int32_t rawMx = *reinterpret_cast<int32_t*>(m + 0x14);
+                int32_t rawMz = *reinterpret_cast<int32_t*>(m + 0x24);
+                float mx = static_cast<float>(rawMx) +
+                           static_cast<float>(*reinterpret_cast<uint16_t*>(m + 0x10)) / 65536.0f;
+                float mz = static_cast<float>(rawMz) +
+                           static_cast<float>(*reinterpret_cast<uint16_t*>(m + 0x20)) / 65536.0f;
+                if (mx <= 1.0f && mz <= 1.0f) continue;
+
+                float dxMeters = mx - playerX;
+                float dzMeters = mz - playerZ;
+                if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) {
+                    continue;
+                }
+
+                float sx = vcx + dxMeters * pxPerMeterX;
+                float sy = vcy - dzMeters * pxPerMeterY;
+                if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f ||
+                    sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
+                    continue;
+                }
+
                 const bool isSlotSaved = IsSlotSaved(m);
                 uint32_t savedId08 = isSlotSaved ? *reinterpret_cast<uint32_t*>(m + 0x4c)
                                                  : *reinterpret_cast<uint32_t*>(m + 0x08);
@@ -8729,27 +9079,6 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 // In Enshrouded (0x140d1394d: cmp dword ptr [rdi+34h], 3), markerState == 3 is Completed/Cleared!
                 const bool isCleared = (markerState == 3u) || (normHash == kCompletedQuestTypeHash) || visitedSanctum;
                 if (hideClearedOnBigMap && isCleared && normHash != kCompletedQuestTypeHash) continue;
-
-                int32_t rawMx = *reinterpret_cast<int32_t*>(m + 0x14);
-                int32_t rawMz = *reinterpret_cast<int32_t*>(m + 0x24);
-                float mx = static_cast<float>(rawMx) +
-                           static_cast<float>(*reinterpret_cast<uint16_t*>(m + 0x10)) / 65536.0f;
-                float mz = static_cast<float>(rawMz) +
-                           static_cast<float>(*reinterpret_cast<uint16_t*>(m + 0x20)) / 65536.0f;
-                if (mx <= 1.0f && mz <= 1.0f) continue;
-
-                float dxMeters = mx - playerX;
-                float dzMeters = mz - playerZ;
-                if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) {
-                    continue;
-                }
-
-                float sx = vcx + dxMeters * pxPerMeterX;
-                float sy = vcy - dzMeters * pxPerMeterY;
-                if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f ||
-                    sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
-                    continue;
-                }
 
                 uint32_t displayHash = (normHash == kCompletedQuestTypeHash)
                                            ? GetQuestFilterHashForMarkerId(savedId08, false)
@@ -8823,10 +9152,12 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             }
         }
 
-        // 2b. Gold & Silver Chests directly from kChestSpawns (100% flicker-free!)
-        if (g_goldChestEnabled || g_silverChestEnabled) {
+        UMM_LAP(PerfMmMarkers);
+        // 2b. Gold, Silver & Wooden Chests directly from kChestSpawns (100% flicker-free!)
+        if (AnyChestRowEnabled()) {
             const void* goldIconRef = g_goldChestEnabled ? GetIconRefForType(client, kGoldChestTypeHash) : nullptr;
             const void* silverIconRef = g_silverChestEnabled ? GetIconRefForType(client, kSilverChestTypeHash) : nullptr;
+            const void* woodIconRef = g_woodChestEnabled ? GetIconRefForType(client, kWoodChestTypeHash) : nullptr;
             // Nearby chests get an arrow saying whether they're above or below you (cellars, towers, cliffs).
             constexpr float kChestHeightNearMeters = 75.0f, kChestHeightMinMeters = 4.0f;
             float playerY = 0.0f;
@@ -8840,11 +9171,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             for (size_t c = 0; c < kTotalChestCount; ++c) {
                 const bool chestCleared = IsChestCurrentlyCleared(c);
                 if (chestCleared && g_lootedChestMode == 0) continue;
-                const bool isGold = (c < kGoldChestCount);
-                if (isGold && !g_goldChestEnabled) continue;
-                if (!isGold && !g_silverChestEnabled) continue;
+                const bool isGold = (c < kGoldChestCount), isWood = IsWoodChest(c);
+                if (!ChestRowEnabled(c)) continue;
 
-                const void* iconRef = isGold ? goldIconRef : silverIconRef;
+                const void* iconRef = isGold ? goldIconRef : isWood ? woodIconRef : silverIconRef;
                 if (!iconRef) continue;
 
                 const ChestSpawn& sp = kChestSpawns[c];
@@ -8870,11 +9200,11 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                     continue;
                 }
 
-                float iconSize = (isGold ? 16.5f : 15.5f) * btnScale;
-                uint32_t tint = isGold ? 0xFF38C8FFu : 0xFFE8E4DCu;
+                float iconSize = (isGold ? 16.5f : isWood ? 14.0f : 15.5f) * btnScale;
+                uint32_t tint = isGold ? 0xFF38C8FFu : isWood ? kWoodChestTint : 0xFFE8E4DCu;
                 float alpha = 0.96f;
                 if (chestCleared || (chestUnexplored && g_pinRevealMode == PinRevealMode::Hybrid)) {
-                    tint = isGold ? 0xFF6894ACu : 0xFF909498u;
+                    tint = isGold ? 0xFF6894ACu : isWood ? kWoodChestDimTint : 0xFF909498u;
                     alpha = chestCleared ? 0.50f : 0.55f;
                 }
 
@@ -8902,6 +9232,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             }
         }
 
+        UMM_LAP(PerfMmChests);
         // 2c. Ore deposits (Mining), under everything else
         if (AnyOreEnabled()) {
             // Lore notes, bosses and mining / materials deposits nearby get the chests' height caret (many notes are in
@@ -8964,6 +9295,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             }
         }
 
+        UMM_LAP(PerfMmOres);
         // Sort so POIs/Chests (cat 3) render below Vaults (cat 2), Fast Travel/Spires (cat 1), Quests (cat 0), Custom Pins (cat 4)
         auto catPriority = [](uint8_t cat) -> int {
             switch (cat) {
@@ -9356,8 +9688,14 @@ void DrawHudMinimapOverlay() {
     const bool appFocused = (fgPid == GetCurrentProcessId());
 
     // Update chest loot detection and 30-game-minute respawn timer (even while inventory/loot UI is open)
-    UpdateChestLootTracking(client, appFocused);
-    chest_glow::DrawMarkers(client); // GG's chests on screen, through walls
+    {
+        UMM_PERF(PerfLoot);
+        UpdateChestLootTracking(client, appFocused);
+    }
+    {
+        UMM_PERF(PerfGlowDraw);
+        chest_glow::DrawMarkers(client); // GG's chests on screen, through walls
+    }
 
     // Screen state check:
     // 1 = Playing (normal HUD), 5 = World Map, 2 = Pause/System Menu, 9 = Inventory/Journal
@@ -9391,7 +9729,10 @@ void DrawHudMinimapOverlay() {
     g_namedWidget(anchor.raw, &kLayerName);
     g_opaque(anchor.raw); // Required so the root widget receives the layer's full-screen rect at +0x114!
 
-    SafeRunHudMinimapLayerBody(client, foreground, appFocused, screen, playerX, playerZ, anchor);
+    {
+        UMM_PERF(PerfMinimap);
+        SafeRunHudMinimapLayerBody(client, foreground, appFocused, screen, playerX, playerZ, anchor);
+    }
 
     g_endWidget(anchor.raw);
     g_endLayer(layer);
@@ -9488,6 +9829,10 @@ void PollModOffKey() {
     wasDown = down;
 }
 
+#ifdef UMM_DEV_BRIDGE
+void LogPerf(); // below
+#endif
+
 void PlayStateUiHook() {
     if (g_origPlayStateUi) {
         g_origPlayStateUi();
@@ -9495,9 +9840,41 @@ void PlayStateUiHook() {
     greeneye::Lease lease;
     if (lease) {
         PollModOffKey();
-        if (!g_modOff) SafeDrawHudMinimapOverlay();
+        if (!g_modOff) {
+            UMM_PERF(PerfHud);
+            SafeDrawHudMinimapOverlay();
+        }
+#ifdef UMM_DEV_BRIDGE
+        LogPerf();
+#endif
     }
 }
+
+#ifdef UMM_DEV_BRIDGE
+// Every 5 s: each part's time per frame (frames: this hook's calls) and per call
+void LogPerf() {
+    static uint64_t frames = 0, since = 0;
+    static LARGE_INTEGER freq{};
+    if (!freq.QuadPart) QueryPerformanceFrequency(&freq);
+    ++frames;
+    const uint64_t now = GetTickCount64();
+    if (!since) since = now;
+    if (now - since < 5000) return;
+    char line[1024];
+    int len = std::snprintf(line, sizeof(line), "Perf (%llu frames, %.1f fps):", static_cast<unsigned long long>(frames),
+                            frames * 1000.0 / static_cast<double>(now - since));
+    for (int i = 0; i < PerfCount && len > 0 && len < static_cast<int>(sizeof(line)); ++i) {
+        const uint64_t t = g_perfTicks[i].exchange(0), c = g_perfCalls[i].exchange(0), mx = g_perfMax[i].exchange(0);
+        if (!c) continue;
+        const double ms = t * 1000.0 / static_cast<double>(freq.QuadPart);
+        len += std::snprintf(line + len, sizeof(line) - len, " | %s %.3f ms/frame, worst %.2f ms", kPerfNames[i],
+                             ms / static_cast<double>(frames), mx * 1000.0 / static_cast<double>(freq.QuadPart));
+    }
+    if (g_log) g_log("%s", line);
+    frames = 0;
+    since = now;
+}
+#endif
 
 void FilterWorldMapPlayerMarkers(void* outVec) {
     if (!outVec || g_otherPlayersEnabled) return;
@@ -9523,11 +9900,15 @@ void FilterWorldMapPlayerMarkers(void* outVec) {
     }
 }
 
-void SafePreSyncWorldMapMarkers() {
+void SafePreSyncWorldMapMarkersInner() {
     __try {
         SyncSpiresAndCountMarkers(GetUiClient(), nullptr, nullptr, 0, nullptr);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
+}
+void SafePreSyncWorldMapMarkers() {
+    UMM_PERF(PerfPreSync);
+    SafePreSyncWorldMapMarkersInner();
 }
 
 void BuildWorldMapPlayersHook(void* outVec, void* mapState) {
@@ -9630,9 +10011,14 @@ void ApplyWorldMapMarkerIconOverrides(uint8_t* m, uint8_t* drawParams, WorldMapM
     }
 }
 
+void TimedApplyWorldMapMarkerIconOverrides(uint8_t* m, uint8_t* drawParams, WorldMapMarkerOverrideBackup& bak) {
+    UMM_PERF(PerfIconOverride);
+    ApplyWorldMapMarkerIconOverrides(m, drawParams, bak);
+}
+
 void DrawWorldMapMarkerIconWithOverrides(void* mapState, uint8_t* m, uint8_t* drawParams) {
     WorldMapMarkerOverrideBackup bak{};
-    ApplyWorldMapMarkerIconOverrides(m, drawParams, bak);
+    TimedApplyWorldMapMarkerIconOverrides(m, drawParams, bak);
     __try {
         g_origDrawWorldMapMarkerIcon(mapState, m, drawParams);
     } __finally {

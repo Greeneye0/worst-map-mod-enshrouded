@@ -5,7 +5,7 @@
 [size=4][b]What it does[/b][/size]
 
 [list]
-[*][b]Every marker on the world map[/b]: spires, altars, sanctums, vaults, lairs, towns, camps, mines, caves, garrisons, quests, lore rumors, graves, and all 448 gold and 1032 silver chests.
+[*][b]Every marker on the world map[/b]: spires, altars, sanctums, vaults, lairs, towns, camps, mines, caves, garrisons, quests, lore rumors, graves, and all 448 gold, 1032 silver and 1562 wooden chests.
 [*][b]Mining, Materials, Plants, Bait and Trees[/b]: every ore deposit, material, plant patch and bait spot, read from the game's own world files, and every forest drawn in its tree type's colour.
 [*][b]Lore Notes and Bosses[/b]: every note and diary and every boss, with the ones you've read or beaten grayed out or hidden. Return Beacons and every well and water barrel too.
 [*][b]Unique gear and collectibles[/b]: every unique weapon, ring and piece of gear, the journal's collectibles (fossils, paintings, mosaic pieces...), Fell Summoning Stones and each region's night plants.
@@ -30,10 +30,10 @@
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792845210-913068383.jpg[/img][/center]
 
 [list]
-[*][b]Every gold and silver chest in the world is included[/b]: all 448 gold chests and 1032 silver chests have their own rows in the filter, so you can show just the chests you're hunting.
+[*][b]Every gold and silver chest in the world is included[/b]: all 448 gold chests and 1032 silver chests have their own rows in the filter, so you can show just the chests you're hunting. [b]Wooden Chest[/b] (World & Resources, off at first) adds the world's 1562 wooden chests, wooden sarcophagi and locked wooden chests.
 [*]Click a row to show or hide that marker type.
 [*][b]SHOW ALL / HIDE ALL[/b] at the top switch every marker type at once.
-[*][b]Search this list[/b], under them: type part of a row's name and only the matching rows show, their sections opened (folded or locked ones too). [b]Esc[/b] or the x clears it. It only narrows the panel; Find (Shift+F) searches the map's places.
+[*][b]Search this list[/b], under them: type part of a row's name and only the matching rows show, their sections opened (folded or locked ones too). [b]Esc[/b] or the x clears it. From 3 letters it also finds places by their name (a lore note, a boss, a place, a pin): the row they're in shows with that name after it, even when the row is off. Find (Shift+F) takes you there.
 [*][b]REGION[/b], under them (with Settings > Advanced > Region Filter on): the arrows step through All Regions and the world's regions in level order (Springlands, Revelwood, Blackmire, Nomad Highlands, Kindlewastes, Albaneve Summits, Veilwater Basin, Cinder's Cradle); click the name to jump to the region you're in. Pins outside the region are dimmed ([b]DIM[/b]) or not shown at all ([b]HIDE[/b]), and its border is drawn as a dotted gold line. Quest pins, lore rumors and your own pins always show. Requested by VintageMarble.
 [*]Click a category header to switch the whole category; [b]+ / -[/b] folds it, and it stays folded the next time you play. [b]Drag a category header[/b] up or down to move the category; the order is remembered.
 [*]The rows in each category are sorted by name in your language.
@@ -61,7 +61,7 @@
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792934139-1608303195.jpg[/img][/center]
 
-Press [b]G[/b] twice quickly while playing. For 14 seconds everything within 75 m that isn't done yet glows through walls and floors: unlooted gold and silver chests (in gold and silver), unread lore notes and bosses you haven't beaten, while their filters are on. They pulse on the world map and the minimap too, so you can see which way to go.
+Press [b]G[/b] twice quickly while playing. For 14 seconds everything within 75 m that isn't done yet glows through walls and floors: unlooted gold, silver and wooden chests, unread lore notes, bosses you haven't beaten, and what the quests you're on want there (the quest's item or place, with its quest icon), while their filters are on. They pulse on the world map and the minimap too, so you can see which way to go.
 
 On the minimap, the ones 4 m or more above or below you get a green up or orange down caret, so you know whether to go up or down.
 
@@ -118,7 +118,7 @@ On the world map, press [b]Shift+F[/b] or click [b]FIND[/b]. Type a name or a ki
 The [b]cog[/b] on the Map Key (and the one under the minimap) opens Settings:
 [list]
 [*][b]FOG:[/b] [b]EXPLORED[/b] is the game's own fog, [b]HYBRID[/b] draws the whole map with unexplored land under a light fog, [b]REVEAL ALL[/b] has no fog.
-[*][b]PINS:[/b] [b]EXPLORED[/b] shows pins only where you've been, [b]HYBRID[/b] grays out pins in unexplored land, [b]REVEAL ALL[/b] shows every pin. In every mode, a place you haven't discovered yet (the game would hide it) is grayed out, even where the fog is cleared.
+[*][b]PINS:[/b] [b]EXPLORED[/b] shows pins only where you've been, [b]HYBRID[/b] grays out pins in unexplored land, [b]REVEAL ALL[/b] shows every pin. EXPLORED also keeps everything the game itself shows in land still fogged: places it knows of, places you've discovered, and lore rumor hints. With EXPLORED and HYBRID, a place you haven't discovered yet (the game would hide it) is grayed out, even where the fog is cleared; REVEAL ALL shows it in full colour.
 [*][b]Custom Marker Size[/b]: the size of your own pins.
 [*][b]Show Minimap[/b], [b]Minimap Terrain[/b] and [b]Minimap Icon[/b] (sun/moon or weather).
 [*][b]Time Format[/b]: 1:00 PM or 13:00 for the minimap's clock (at first it follows Windows).
@@ -219,6 +219,17 @@ If something doesn't work, please post these files with your report. Both are in
 [line]
 
 [size=4][b]Changelog[/b][/size]
+
+[b]1.3.17[/b]
+[list]
+[*]Wooden chests: all 1562 of the world's wooden chests, wooden sarcophagi and locked wooden chests, under World & Resources > Wooden Chest (off at first, switch it on). Looted ones are hidden or grayed out and keep their check mark like gold and silver, they glow with G G, and Find finds them. Requested by AnkuSol.
+[*]G G also lights what the quests you're on want near you: the quest's item or place, with its quest icon, while the Main Quest / Side Quest rows are on. Requested by Gadn.
+[*]Search this list finds places by their name too: type 3 letters or more of a lore note, boss, place or pin and its row shows with that name ("Lore Note: Song Of ..."), even when the row is off.
+[*]Pins: EXPLORED no longer hides what the game itself shows: places it knows of in land still fogged (drawn faded), places you've discovered, and lore rumor hints such as "Undiscovered: Shroud Root"; towns like the Alchemist Tower and cave passages get their rumor "?" too. A started quest's search area (Cat Search, the Customization quests) shows under its quest's row. Reported by secretroff.
+[*]Pins: REVEAL ALL shows every place in full colour, the ones you haven't discovered yet too (EXPLORED and HYBRID still gray those out). Locked spires and fast travel points keep their gray.
+[*]Faster: the minimap and the world map do about half the work they did each frame, and joining a world with many locked filters no longer freezes the game for seconds. Reported by kingkongcs.
+[*]Fixed: with a controller, the world map could stop answering it after the mouse was used, until the mouse moved again. Reported by FamanFortune.
+[/list]
 
 [b]1.3.16[/b]
 [list]

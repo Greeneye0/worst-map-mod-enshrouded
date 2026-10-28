@@ -413,7 +413,7 @@ int StackSide(size_t d) {
         partnerShown = g_oreEnabled[kOreDeposits[other].ore] && !(g_lootedChestMode == 0 && KnowledgeGrayed(other));
     }
     if (IsUniqueSpot(d) && kKnowledgeChest[i] < kTotalChestCount)
-        partnerShown = partnerShown || (kKnowledgeChest[i] < kGoldChestCount ? g_goldChestEnabled : g_silverChestEnabled);
+        partnerShown = partnerShown || ChestRowEnabled(kKnowledgeChest[i]);
     if (!partnerShown) return 0;
     return IsBossSpot(d) ? -1 : 1;
 }
