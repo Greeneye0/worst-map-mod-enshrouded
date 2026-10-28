@@ -440,10 +440,6 @@ const Row kTable[] = {
     {"Town Portals", "Stadtportale", "Portails de ville", "Portali cittadini", "Portales de ciudad",
      "Portais da cidade", "Portale miejskie", "Городские порталы", "Міські портали", "Şehir Portalları",
      "タウンポータル", "마을 포털", "城镇传送门", "城鎮傳送門", "พอร์ทัลเมือง"},
-    // HideRowFmt: the button under a marker's right-click menu; %s is its Map Key row
-    {"Hide: %s", "Ausblenden: %s", "Masquer : %s", "Nascondi: %s", "Ocultar: %s",
-     "Ocultar: %s", "Ukryj: %s", "Скрыть: %s", "Приховати: %s", "Gizle: %s",
-     "非表示: %s", "숨기기: %s", "隐藏：%s", "隱藏：%s", "ซ่อน: %s"},
     // HintHideFilter (the map's hint bar, with Alt + left click): turn off the Map Key row of the marker clicked
     {"Hide Filter", "Filter ausblenden", "Masquer le filtre", "Nascondi filtro", "Ocultar filtro",
      "Ocultar filtro", "Ukryj filtr", "Скрыть фильтр", "Приховати фільтр", "Filtreyi gizle",

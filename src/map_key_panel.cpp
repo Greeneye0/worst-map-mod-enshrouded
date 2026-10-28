@@ -4594,23 +4594,16 @@ void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vec
 
 // True from load: the per-frame screen check clears it whenever the map is not up, so a map already open when the mod
 // (re)loads is not taken for a new open (which would centre it on the player)
-// Right-click a marker: under the game's menu a "Hide: <row>" button turns its Map Key row off, so a row buried
-// in a collapsed section needn't be found. Set while drawing; BlockWorldMapInput keeps the game's clicks off it.
-struct HideRowButton {
-    bool active = false;
-    float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
+// Alt + click a marker: turns its Map Key row off, so a row buried in a collapsed section needn't be found
+struct HideRowTarget {
     uint32_t hashes[3]{}; // the row's type and the types it switches with it
-    char label[192]{};
 };
-HideRowButton g_hideRowBtn;
 
 const char* RowText(const MarkerRowSpec& row);
 
-// The Map Key row of the marker the menu was opened on. The game's menu holds a waypoint of its own at the clicked
-// spot (snapped to the marker), not the marker: the shown marker nearest it, within maxDist metres, is the one.
-// The mod's own icons (lore notes, ores, ...) aren't markers of the game's: knownRow is the one under the cursor
-// when the menu opened.
-bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uint32_t knownRow, HideRowButton& out) {
+// The Map Key row of the marker clicked: the shown marker nearest the spot, within maxDist metres. The mod's own icons
+// (lore notes, ores, ...) aren't markers of the game's: knownRow is the one under the cursor.
+bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uint32_t knownRow, HideRowTarget& out) {
     auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
     const size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
     uint32_t h = knownRow;
@@ -4665,7 +4658,8 @@ bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uin
         }
     }
     }
-    if (h == 0u) return false;
+    // A Fast Travel Point is clicked on to travel or ping it, not to hide its row
+    if (h == 0u || h == 0x1095684eu || h == kLockedFastTravelTypeHash) return false;
     const char* name = nullptr;
     for (const auto& grp : kCategoryGroups) {
         for (size_t r = 0; r < grp.rowCount && !name; ++r) {
@@ -4682,9 +4676,7 @@ bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uin
         out.hashes[1] = out.hashes[2] = 0u;
         name = umm_lang::T(umm_lang::Str::CustomPin);
     }
-    if (!name) return false;
-    std::snprintf(out.label, sizeof(out.label), umm_lang::T(umm_lang::Str::HideRowFmt), name);
-    return true;
+    return name != nullptr;
 }
 
 bool g_worldMapWasOpen = true;
@@ -6300,13 +6292,6 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         // game's, so they stay out of its box (mapState +0xf8 is 3 and +0x56310 holds the marker while it is open; the
         // menu opens beside the marker, on its right unless that runs off the screen)
         g_drawExclusion.active = false;
-        g_hideRowBtn.active = false;
-        // The mod's icon under the cursor as the menu opened (last frame's: the icons draw after this)
-        static uint32_t s_menuDepositRow = 0u;
-        static bool s_menuWasOpen = false;
-        const bool menuOpen = *reinterpret_cast<uint32_t*>(mapState + 0xf8) == 3;
-        if (menuOpen && !s_menuWasOpen) s_menuDepositRow = g_hoveredDepositRow;
-        s_menuWasOpen = menuOpen;
         if (*reinterpret_cast<uint32_t*>(mapState + 0xf8) == 3) {
             const uint8_t* menuMarker = *reinterpret_cast<uint8_t**>(mapState + 0x56310);
             uint8_t* view = *reinterpret_cast<uint8_t**>(mapState + 8);
@@ -6326,17 +6311,6 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 if (left + kMenuW > rightEdge) left = sx - kGap - kMenuW;
                 float top = std::max(rootRect[1], std::min(bottomEdge - kMenuH, sy - 34.0f));
                 g_drawExclusion = {zoom > 0.0f, left - kMargin, top - kMargin, left + kMenuW + kMargin, top + kMenuH + kMargin};
-                // An icon is ~20 px across: 16 px from the clicked spot, in metres at this zoom
-                if (zoom > 0.0f && HideRowTargetAt(client, *reinterpret_cast<const int32_t*>(menuMarker + 0x14),
-                        *reinterpret_cast<const int32_t*>(menuMarker + 0x24), 24.0f / zoom, s_menuDepositRow,
-                        g_hideRowBtn)) {
-                    g_hideRowBtn.w = kMenuW - 20.0f;
-                    g_hideRowBtn.h = 40.0f;
-                    g_hideRowBtn.x = left + 10.0f;
-                    g_hideRowBtn.y = top + kMenuH + 6.0f;
-                    if (g_hideRowBtn.y + g_hideRowBtn.h > bottomEdge) g_hideRowBtn.y = top - 6.0f - g_hideRowBtn.h;
-                    g_hideRowBtn.active = true;
-                }
             }
         }
         DrawRegionBorderOnMap(root.raw, rootRect, mapState);
@@ -6351,35 +6325,12 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         DrawMapCursorPosition(root.raw, rootRect, mapState, haveCursor, mx, my, false);
         g_drawExclusion.active = false; // the Map Key and the rest draw as usual
         {
-            // The game may close its menu on the press itself: a press on last frame's button still counts
-            static HideRowButton s_lastBtn;
-            const HideRowButton& b = g_hideRowBtn.active ? g_hideRowBtn : s_lastBtn;
-            const bool hov = b.active && isHovered(b.x, b.y, b.w, b.h);
-            if (g_hideRowBtn.active) {
-                DrawKeyButtonAbs(root.raw, b.x, b.y, b.w, b.h, hov, false);
-                DrawLabelAbs(b.x + 8.0f, b.y, b.w - 16.0f, b.h, b.label, hov ? key_style::kActiveText : key_style::kText, hov ? 1.0f : 0.92f,
-                    TextAlignH::Center, TextAlignV::Center);
-            }
-            auto hideRow = [&](const HideRowButton& r, const char* how) {
-                for (uint32_t h : r.hashes) {
-                    if (h != 0u) SetSingleFilterState(client, mapState, h, false);
-                }
-                if (g_log) g_log("Map: hid the row %08x (%s)", r.hashes[0], how);
-                ClearMapViewClickLatch(mapState); // closes the menu; no waypoint
-                g_panelClickLatch = true;
-                g_findClosingFrames = std::max(g_findClosingFrames, 8);
-            };
-            if (clicked && hov) {
-                hideRow(b, "a marker's menu");
-                g_hideRowBtn.active = false;
-            }
-            s_lastBtn = g_hideRowBtn;
-            // Alt + click a marker: the same, without the menu
+            // Alt + click a marker: its Map Key row off
             const bool altDown = focused && (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
             uint8_t* view = *reinterpret_cast<uint8_t**>(mapState + 8);
             const bool overPanel = mx >= g_lastPanelX && mx <= g_lastPanelX + g_lastPanelW && my >= g_lastPanelY &&
                                    my <= g_lastPanelY + g_lastPanelH;
-            if (clicked && altDown && haveCursor && !hov && !overPanel && !g_findDialogOpen && view) {
+            if (clicked && altDown && haveCursor && !overPanel && !g_findDialogOpen && view) {
                 const float zoom = *reinterpret_cast<float*>(view + 0x10);
                 float worldH = *reinterpret_cast<float*>(view + 0x3c);
                 if (worldH <= 100.0f) worldH = 10240.0f;
@@ -6387,10 +6338,16 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                  *reinterpret_cast<float*>(view + 0x1e8);
                 const float oy = *reinterpret_cast<float*>(view + 0x1e4) + *reinterpret_cast<float*>(view + 0x180) -
                                  *reinterpret_cast<float*>(view + 0x1ec);
-                HideRowButton target;
+                HideRowTarget target;
                 if (zoom > 0.0f && HideRowTargetAt(client, static_cast<int32_t>((mx - ox) / zoom),
                         static_cast<int32_t>(worldH - (my - oy) / zoom), 16.0f / zoom, g_hoveredDepositRow, target)) {
-                    hideRow(target, "Alt+click");
+                    for (uint32_t h : target.hashes) {
+                        if (h != 0u) SetSingleFilterState(client, mapState, h, false);
+                    }
+                    if (g_log) g_log("Map: hid the row %08x (Alt+click)", target.hashes[0]);
+                    ClearMapViewClickLatch(mapState); // no menu, no waypoint
+                    g_panelClickLatch = true;
+                    g_findClosingFrames = std::max(g_findClosingFrames, 8);
                 }
             }
         }
@@ -7480,8 +7437,6 @@ bool BlockWorldMapInput(uint8_t* mapState) {
                 float my = g_lastRootY + pt.y * g_lastRootH / static_cast<float>(cr.bottom);
                 cursorInPanel = (mx >= g_lastPanelX && mx <= g_lastPanelX + g_lastPanelW &&
                                  my >= g_lastPanelY && my <= g_lastPanelY + g_lastPanelH) ||
-                                (g_hideRowBtn.active && mx >= g_hideRowBtn.x && mx <= g_hideRowBtn.x + g_hideRowBtn.w &&
-                                 my >= g_hideRowBtn.y && my <= g_hideRowBtn.y + g_hideRowBtn.h) ||
                                 (g_lastSettingsW > 0.0f &&
                                  mx >= g_lastSettingsX && mx <= g_lastSettingsX + g_lastSettingsW &&
                                  my >= g_lastSettingsY && my <= g_lastSettingsY + g_lastSettingsH);
@@ -9086,7 +9041,9 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 if (displayHash == 0u || displayHash == 0x8ba7c122u) {
                     if (normHash == kCompletedQuestTypeHash) displayHash = 0xc52e92e5u;
                 }
-                if (isSlotSaved && m[0x48] != 0 && (normHash == 0xa17072beu || normHash == 0x1095684eu)) {
+                // Locked like on the World Map: the game rewrites m+0x40 and m+0x48 on every pass, so a slot the
+                // World Map hasn't saved yet (just loaded, or the map not opened) is locked by the same test
+                if (m[0x48] != 0 && (normHash == 0xa17072beu || normHash == 0x1095684eu)) {
                     uint64_t lastChg = *reinterpret_cast<uint64_t*>(m + 0x40);
                     bool locked = (lastChg == 0);
                     if (locked) {

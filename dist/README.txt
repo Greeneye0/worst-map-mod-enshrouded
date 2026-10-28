@@ -45,8 +45,7 @@ On the right of the world map.
   or down to move the category; the order is remembered.
 - The rows in each category are sorted by name in your language.
 - The mouse wheel or the scroll bar scrolls the list.
-- Hide a marker's row from the map: right-click the marker and click Hide under the game's
-  menu, or Alt + left click it. Ctrl+Z undoes a filter change and Ctrl+Y redoes it.
+- Hide a marker's row from the map: Alt + left click the marker. Ctrl+Z undoes a filter change and Ctrl+Y redoes it.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
   To use another key than Tab, set PanelToggle= under [Keys] in
@@ -259,6 +258,12 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.18
+- The Hide button under a marker's right-click menu is gone, so the game's menu shows only its own
+  buttons. Alt + left click a marker still turns its row off.
+- Fixed: the minimap showed locked Ancient Spires and Fast Travel Points as active until you had
+  opened the world map that session. It now grays them out like the world map does.
+
 1.3.17
 - Wooden chests: all 1562 of the world's wooden chests, wooden sarcophagi and locked wooden
   chests, under World & Resources > Wooden Chest (off at first, switch it on). Looted ones are

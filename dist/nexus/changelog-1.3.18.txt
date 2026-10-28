@@ -1,0 +1,2 @@
+- The Hide button under a marker's right-click menu is gone, so the game's menu shows only its own buttons. Alt + left click a marker still turns its row off.
+- Fixed: the minimap showed locked Ancient Spires and Fast Travel Points as active until you had opened the world map that session. It now grays them out like the world map does.
