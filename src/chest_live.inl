@@ -7,8 +7,11 @@
 // Read from the registries built_water.inl learns. Component type numbers change between game sessions, so both are
 // recognised by their data: SceneLootNodeId is the size-4 type holding a chest's id on an entity at that chest's place;
 // InventoryEmptyState the size-2 type that reads 01 00 or 01 01 on every chest found (and nothing else does).
-// A chest that reads empty is marked looted; one marked looted that reads full twice in a row is unmarked. These are
-// not told to the other players over chat: a world reload could send dozens, and players nearby read the same state.
+// A chest that reads empty is marked looted; one marked looted that reads full twice in a row is unmarked, but only
+// once it has been read empty this session (the game refilled it). A chest marked by hand while it still has its loot,
+// or emptied some way the game doesn't flag (another mod taking the items), stays marked: the respawn rule brings it
+// back. These are not told to the other players over chat: a world reload could send dozens, and players nearby read
+// the same state.
 
 
 namespace chest_live {
@@ -20,6 +23,7 @@ struct Types {
 Types g_types;
 std::unordered_map<uint32_t, uint16_t> g_chestByLootId;
 uint8_t g_fullReads[kTotalChestCount]{}; // reads of "full" in a row while marked looted
+bool g_seenEmpty[kTotalChestCount]{};     // read empty in the game this session
 uint64_t g_lastTick = 0, g_lastDetectTick = 0;
 
 bool AtChest(const float p[3], size_t c) {
@@ -111,6 +115,24 @@ bool DetectInner(uint8_t* reg, Types& out) {
             pickEmpty = t;
         }
     }
+    // Two such types flip together on an emptied chest (seen: one chest emptied, both read 01 01 there and 01 00 on
+    // the four full ones around it), so "exactly one with an empty chest" never came. Types that read the same on every
+    // chest are one answer: take either.
+    if (withEmpty > 1) {
+        bool agree = true;
+        ForEachEcsEntity(reg, [&](uint8_t* rec) {
+            uint16_t size = 0;
+            const uint8_t* id = EcsComponent(rec, out.lootId, &size);
+            if (!agree || !id || size != 4 || ChestOf(id) >= kTotalChestCount) return;
+            const uint8_t* p = EcsComponent(rec, static_cast<uint16_t>(pickEmpty), &size);
+            for (int t = 0; t < kEcsTypeBits && agree; ++t) {
+                if (!ok[t] || !anyEmpty[t] || t == pickEmpty) continue;
+                const uint8_t* c = EcsComponent(rec, static_cast<uint16_t>(t), &size);
+                agree = c && p && c[1] == p[1];
+            }
+        });
+        if (agree) withEmpty = 1;
+    }
     static int loggedCandidates = -1;
     if (candidates != 1 && withEmpty != 1) {
         if (g_log && candidates != loggedCandidates)
@@ -143,6 +165,7 @@ void Update(uint64_t nowTick, uint32_t screen) {
     if (g_types.registry && !RegistryLearned(g_types.registry)) { // another world
         g_types = Types{};
         std::memset(g_fullReads, 0, sizeof(g_fullReads));
+        std::memset(g_seenEmpty, 0, sizeof(g_seenEmpty));
     }
     if (!g_types.empty) {
         if (nowTick - g_lastDetectTick < 5000ULL) return;
@@ -192,6 +215,7 @@ void Update(uint64_t nowTick, uint32_t screen) {
         auto& st = g_chestLootStates[c];
         if (state[c] == 1) {
             g_fullReads[c] = 0;
+            g_seenEmpty[c] = true;
             st.elapsedOutOfBuildZoneSec = 0.0;
             if (!st.looted) {
                 st.looted = true;
@@ -199,9 +223,10 @@ void Update(uint64_t nowTick, uint32_t screen) {
                 g_lootSaveDirty = true;
                 if (g_log) g_log("Live chests: chest %zu is empty in the game; marked looted", c);
             }
-        } else if (state[c] == 0 && st.looted) {
+        } else if (state[c] == 0 && st.looted && g_seenEmpty[c]) {
             if (++g_fullReads[c] < 2) continue;
             g_fullReads[c] = 0;
+            g_seenEmpty[c] = false;
             st.looted = false;
             st.elapsedOutOfBuildZoneSec = 0.0;
             g_chestLootDirty = true;

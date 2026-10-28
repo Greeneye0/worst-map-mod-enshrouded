@@ -436,6 +436,35 @@ const Row kTable[] = {
     {"Region Colors", "Regionsfarben", "Couleurs des régions", "Colori delle regioni", "Colores de región",
      "Cores das regiões", "Kolory regionów", "Цвета регионов", "Кольори регіонів", "Bölge renkleri", "地域の色分け",
      "지역 색상", "地区颜色", "地區顏色", "สีภูมิภาค"},
+    // TownPortals: Fast Travel & Altars row, the open portals of the Town Portal mod
+    {"Town Portals", "Stadtportale", "Portails de ville", "Portali cittadini", "Portales de ciudad",
+     "Portais da cidade", "Portale miejskie", "Городские порталы", "Міські портали", "Şehir Portalları",
+     "タウンポータル", "마을 포털", "城镇传送门", "城鎮傳送門", "พอร์ทัลเมือง"},
+    // HideRowFmt: the button under a marker's right-click menu; %s is its Map Key row
+    {"Hide: %s", "Ausblenden: %s", "Masquer : %s", "Nascondi: %s", "Ocultar: %s",
+     "Ocultar: %s", "Ukryj: %s", "Скрыть: %s", "Приховати: %s", "Gizle: %s",
+     "非表示: %s", "숨기기: %s", "隐藏：%s", "隱藏：%s", "ซ่อน: %s"},
+    // HintHideFilter (the map's hint bar, with Alt + left click): turn off the Map Key row of the marker clicked
+    {"Hide Filter", "Filter ausblenden", "Masquer le filtre", "Nascondi filtro", "Ocultar filtro",
+     "Ocultar filtro", "Ukryj filtr", "Скрыть фильтр", "Приховати фільтр", "Filtreyi gizle",
+     "フィルターを隠す", "필터 숨기기", "隐藏筛选", "隱藏篩選", "ซ่อนตัวกรอง"},
+    // HintUndoFilter (the map's hint bar, Ctrl+Z while there is a filter change to undo)
+    {"Undo Filter", "Filter rückgängig", "Annuler filtre", "Annulla filtro", "Deshacer filtro",
+     "Desfazer filtro", "Cofnij filtr", "Отменить фильтр", "Скасувати фільтр", "Filtreyi geri al",
+     "フィルターを元に戻す", "필터 실행 취소", "撤销筛选", "復原篩選", "เลิกทำตัวกรอง"},
+    // HintRedoFilter (the map's hint bar, Ctrl+Y while there is an undone change to redo)
+    {"Redo Filter", "Filter wiederholen", "Rétablir filtre", "Ripeti filtro", "Rehacer filtro",
+     "Refazer filtro", "Ponów filtr", "Вернуть фильтр", "Повторити фільтр", "Filtreyi yinele",
+     "フィルターをやり直す", "필터 다시 실행", "重做筛选", "重做篩選", "ทำตัวกรองซ้ำ"},
+    // SearchList: the Map Key's search box (under Show All / Hide All); narrows the panel's rows, not the map
+    {"Search this list", "Diese Liste durchsuchen", "Rechercher dans cette liste", "Cerca in questo elenco",
+     "Buscar en esta lista", "Pesquisar nesta lista", "Szukaj na tej liście", "Поиск по списку", "Пошук у списку",
+     "Bu listede ara", "このリストを検索", "이 목록 검색", "搜索此列表", "搜尋此清單", "ค้นหาในรายการนี้"},
+    // NoListMatches: the Map Key's search found no row
+    {"No matching rows", "Keine passenden Zeilen", "Aucune ligne correspondante", "Nessuna riga corrispondente",
+     "Ninguna fila coincide", "Nenhuma linha corresponde", "Brak pasujących wierszy", "Нет подходящих строк",
+     "Немає відповідних рядків", "Eşleşen satır yok", "一致する行はありません", "일치하는 항목 없음", "没有匹配的行",
+     "沒有符合的列", "ไม่มีแถวที่ตรงกัน"},
 };
 // clang-format on
 

@@ -273,7 +273,7 @@ bool KnowledgeDone(size_t d) {
     if (IsUniqueSpot(d)) {
         const size_t i = d - kKnowledgeFirstDeposit;
         const uint16_t chest = kKnowledgeChest[i];
-        if (chest < kTotalChestCount) return g_chestLootStates[chest].looted;
+        if (chest < kTotalChestCount) return g_chestLootStates[chest].everLooted;
         return g_uniqueFound.count(static_cast<uint16_t>(i)) != 0;
     }
     if (IsBossSpot(d)) {
@@ -282,6 +282,105 @@ bool KnowledgeDone(size_t d) {
         if (g_notBeatenBosses.count(s)) return false;
     }
     return KnowledgeDoneInGame(d);
+}
+
+// A beaten boss keeps its check mark, but is grayed (or hidden) only while it is dead: from a kill the mod sees (the
+// game's knowledge turning beaten, or Ctrl + left click) until its scene chunk resets and the boss is back, the same
+// rule as a looted chest's (UpdateSceneChunks). Bosses are the world's, so the timers are saved per world in
+// looted_chests.ini: Bosses = spot:seconds the timer has run.
+std::unordered_map<uint16_t, double> g_bossDead;
+
+bool BossDeadNow(size_t d) {
+    return IsBossSpot(d) && g_bossDead.count(static_cast<uint16_t>(d - kKnowledgeFirstDeposit)) != 0;
+}
+
+// Grayed out (or hidden with Looted Chests: Hide): a lore note read, a unique item found, a boss beaten and still dead.
+// The check mark goes with KnowledgeDone: a boss that came back keeps it.
+bool KnowledgeGrayed(size_t d) {
+    return KnowledgeDone(d) && (!IsBossSpot(d) || BossDeadNow(d));
+}
+
+std::string BossTimersText() {
+    std::string text;
+    char buf[32];
+    for (const auto& [s, secs] : g_bossDead) {
+        std::snprintf(buf, sizeof(buf), "%s%u:%d", text.empty() ? "" : ";", s, static_cast<int>(secs));
+        text += buf;
+    }
+    return text;
+}
+
+void LoadBossTimers(const char* text) {
+    g_bossDead.clear();
+    unsigned s = 0;
+    int secs = 0, used = 0;
+    while (*text && sscanf_s(text, "%u:%d%n", &s, &secs, &used) == 2) {
+        if (s < kKnowledgeSpotCount && IsBossSpot(kKnowledgeFirstDeposit + s))
+            g_bossDead[static_cast<uint16_t>(s)] = std::max(0, secs);
+        text += used;
+        if (*text == ';') ++text;
+    }
+}
+
+// Once a second: a boss the game's knowledge now has as beaten, that it didn't a second ago, was just killed, if the
+// player is at it. Knowledge that swaps wholesale (another character or world loaded: the character's name follows a
+// moment later) only starts the comparison over.
+void NoteBossKills(uint8_t* client) {
+    static std::vector<uint8_t> was;
+    static std::string wasCharacter, wasWorld;
+    static size_t wasKnown = 0;
+    if (!g_knowledgeValid || g_bossCharacter.empty() || g_lootSection.empty()) {
+        was.clear();
+        return;
+    }
+    const size_t known = g_knownKnowledge.size();
+    const bool fresh = was.size() != kKnowledgeSpotCount || wasCharacter != g_bossCharacter || wasWorld != g_lootSection ||
+                       known > wasKnown + 5 || known + 5 < wasKnown;
+    wasKnown = known;
+    if (fresh) {
+        was.assign(kKnowledgeSpotCount, 0);
+        wasCharacter = g_bossCharacter;
+        wasWorld = g_lootSection;
+    }
+    float px = 0.0f, pz = 0.0f;
+    const bool havePos = GetHudPlayerWorldPos(client, px, pz);
+    for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
+        const size_t d = kKnowledgeFirstDeposit + i;
+        if (!IsBossSpot(d)) continue;
+        const bool beaten = KnowledgeDoneInGame(d);
+        const float dx = kOreDeposits[d].x - px, dz = kOreDeposits[d].z - pz;
+        const bool atBoss = havePos && dx * dx + dz * dz <= 200.0f * 200.0f; // an arena's size, with room
+        if (beaten && !was[i] && !fresh && atBoss) {
+            g_bossDead[static_cast<uint16_t>(i)] = 0.0;
+            g_lootSaveDirty = true;
+            if (g_log) g_log("Bosses: boss spot %zu beaten; grayed until it comes back", i);
+        }
+        was[i] = beaten;
+    }
+}
+
+// The dead bosses' timers: like a looted chest's, they run while the boss's scene chunk is unloaded and it is outside
+// every build zone. allAway: time while everyone was away (the chunks were all unloaded).
+void AdvanceBossTimers(double dtSec, double respawnSec, const BuildZoneBox* zones, size_t numZones, bool allAway) {
+    for (auto it = g_bossDead.begin(); it != g_bossDead.end();) {
+        const OreDeposit& dep = kOreDeposits[kKnowledgeFirstDeposit + it->first];
+        bool inZone = false;
+        for (size_t z = 0; z < numZones && !inZone; ++z)
+            inZone = dep.x >= zones[z].minX && dep.x <= zones[z].maxX && dep.z >= zones[z].minZ && dep.z <= zones[z].maxZ;
+        if (inZone || (!allAway && SceneChunkLoadedAt(dep.x, dep.z))) {
+            it->second = 0.0;
+            ++it;
+            continue;
+        }
+        it->second += dtSec;
+        if (it->second < respawnSec) {
+            ++it;
+            continue;
+        }
+        if (g_log) g_log("Bosses: boss spot %u came back", it->first);
+        it = g_bossDead.erase(it);
+        g_lootSaveDirty = true;
+    }
 }
 
 // A unique item stands on its chest's spot, and one in a boss's chest on the boss's spot. While the other icon shows
@@ -311,7 +410,7 @@ int StackSide(size_t d) {
     bool partnerShown = false;
     if (bossPartner[i] >= 0) {
         const size_t other = kKnowledgeFirstDeposit + static_cast<size_t>(bossPartner[i]);
-        partnerShown = g_oreEnabled[kOreDeposits[other].ore] && !(g_lootedChestMode == 0 && KnowledgeDone(other));
+        partnerShown = g_oreEnabled[kOreDeposits[other].ore] && !(g_lootedChestMode == 0 && KnowledgeGrayed(other));
     }
     if (IsUniqueSpot(d) && kKnowledgeChest[i] < kTotalChestCount)
         partnerShown = partnerShown || (kKnowledgeChest[i] < kGoldChestCount ? g_goldChestEnabled : g_silverChestEnabled);
@@ -324,7 +423,7 @@ bool UniqueSpotCloser(float wx, float wz, float distSq, float shiftMeters) {
     for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
         const size_t d = kKnowledgeFirstDeposit + i;
         if (!IsUniqueSpot(d) || !g_oreEnabled[kOreDeposits[d].ore]) continue;
-        if (g_lootedChestMode == 0 && KnowledgeDone(d)) continue; // hidden
+        if (g_lootedChestMode == 0 && KnowledgeGrayed(d)) continue; // hidden
         const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
         if (dx * dx + dz * dz <= distSq) return true;
     }
@@ -340,7 +439,7 @@ bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters, float shift
     for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
         const size_t d = kKnowledgeFirstDeposit + i;
         if (!IsBossSpot(d)) continue;
-        if (g_lootedChestMode == 0 && KnowledgeDone(d)) continue; // hidden
+        if (g_lootedChestMode == 0 && KnowledgeGrayed(d)) continue; // hidden
         const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
         if (dx * dx + dz * dz < best) {
             best = dx * dx + dz * dz;
@@ -350,11 +449,22 @@ bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters, float shift
     if (bestSpot == kKnowledgeSpotCount || UniqueSpotCloser(wx, wz, best, shiftMeters)) return false;
     const auto s = static_cast<uint16_t>(bestSpot);
     const size_t d = kKnowledgeFirstDeposit + bestSpot;
+    // Steps: beaten (grayed, dead) -> came back (its check mark stays) -> never beaten -> beaten
+    if (BossDeadNow(d)) {
+        g_bossDead.erase(s);
+        g_lootSaveDirty = true;
+        if (g_log) g_log("Bosses: boss spot %u marked back by hand", s);
+        return true;
+    }
     const bool beaten = !KnowledgeDone(d);
     g_manualBosses.erase(s);
     g_notBeatenBosses.erase(s);
     if (beaten != KnowledgeDoneInGame(d)) (beaten ? g_manualBosses : g_notBeatenBosses).insert(s);
     SaveManualBosses();
+    if (beaten && !g_lootSection.empty()) {
+        g_bossDead[s] = 0.0;
+        g_lootSaveDirty = true;
+    }
     if (g_log) g_log("Bosses: boss spot %u marked %s by hand", s, beaten ? "beaten" : "not beaten");
     return true;
 }
@@ -368,7 +478,7 @@ bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shif
     for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
         const size_t d = kKnowledgeFirstDeposit + i;
         if (!IsUniqueSpot(d) || !g_oreEnabled[kOreDeposits[d].ore]) continue;
-        if (g_lootedChestMode == 0 && KnowledgeDone(d)) continue; // hidden
+        if (g_lootedChestMode == 0 && KnowledgeGrayed(d)) continue; // hidden
         const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
         if (dx * dx + dz * dz < best) {
             best = dx * dx + dz * dz;
@@ -379,7 +489,7 @@ bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shif
     const uint16_t chest = kKnowledgeChest[bestSpot];
     if (chest < kTotalChestCount) {
         ChestLootState& st = g_chestLootStates[chest];
-        st.looted = !st.looted;
+        st.looted = st.everLooted = !st.everLooted; // found for good once looted, so the mark follows that
         st.elapsedOutOfBuildZoneSec = 0.0;
         g_chestLootDirty = true;
         g_lootSaveDirty = true;

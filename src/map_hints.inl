@@ -14,11 +14,28 @@ uint8_t* MapHintBinding(uint8_t action) {
     return ui ? ui + 0xf27c + action * kMapBindingSize : nullptr;
 }
 
-// Ctrl+click and Shift+F, then the panel key unless it is set to None, then middle click (copy X, Z) with Settings >
-// Advanced > Position on
-int MapHintCount() { return 2 + (g_panelToggleVk ? 1 : 0) + (g_minimapShowPosition ? 1 : 0); }
-// What the i-th of them is: 0 Ctrl+click, 1 Shift+F, 2 the panel key, 3 middle click
-int MapHintKind(int i) { return i < 2 ? i : (i == 2 && g_panelToggleVk) ? 2 : 3; }
+// Kinds: 0 Ctrl+click, 1 Shift+F, 2 the panel key, 3 middle click, 4 Alt+click, 5 Ctrl+Z, 6 Ctrl+Y.
+// Ctrl+click, Alt+click and Shift+F; Ctrl+Z / Ctrl+Y while there is a filter change to undo / redo; the panel key
+// unless it is set to None; middle click (copy X, Z) with Settings > Advanced > Position on
+int MapHintKinds(int out[8]) {
+    int n = 0;
+    out[n++] = 0;
+    out[n++] = 4;
+    out[n++] = 1;
+    if (!g_filterUndo.empty()) out[n++] = 5;
+    if (!g_filterRedo.empty()) out[n++] = 6;
+    if (g_panelToggleVk) out[n++] = 2;
+    if (g_minimapShowPosition) out[n++] = 3;
+    return n;
+}
+int MapHintCount() {
+    int kinds[8];
+    return MapHintKinds(kinds);
+}
+int MapHintKind(int i) {
+    int kinds[8];
+    return i < MapHintKinds(kinds) ? kinds[i] : 3;
+}
 
 uint64_t DrawMapHintWithBinding(uint8_t* entry, void* params, int index) {
     uint8_t* binding = MapHintBinding(entry[0]);
@@ -29,13 +46,14 @@ uint64_t DrawMapHintWithBinding(uint8_t* entry, void* params, int index) {
     std::memset(binding, 0, 16);
     auto* words = reinterpret_cast<uint16_t*>(binding);
     index = MapHintKind(index);
-    words[0] = (index == 0 || index == 3) ? 2 : 1; // mouse or keyboard
-    words[1] = index == 1 ? 0x09 : index == 2 ? g_panelToggleHid : 0; // F, the panel key (Tab)
-    if (index == 0) *reinterpret_cast<uint32_t*>(binding + 4) = 1; // left mouse
+    words[0] = (index == 0 || index == 3 || index == 4) ? 2 : 1; // mouse or keyboard
+    // F, the panel key (Tab), Z, Y (USB HID key codes)
+    words[1] = index == 1 ? 0x09 : index == 2 ? g_panelToggleHid : index == 5 ? 0x1d : index == 6 ? 0x1c : 0;
+    if (index == 0 || index == 4) *reinterpret_cast<uint32_t*>(binding + 4) = 1; // left mouse
     if (index == 3) *reinterpret_cast<uint32_t*>(binding + 4) = 3; // middle mouse
-    if (index < 2) {
+    if (index < 2 || index >= 4) {
         words[6] = 1;
-        words[7] = index == 0 ? 0xe0 : 0xe1; // Ctrl, Shift
+        words[7] = index == 1 ? 0xe1 : index == 4 ? 0xe2 : 0xe0; // Shift, Alt, Ctrl
     }
     uint64_t result = 0;
     __try { result = g_originalMapHint(entry, params); }
@@ -54,7 +72,7 @@ uint64_t MapHintHook(uint8_t* entry, void* params) {
 }
 
 void DrawCombinedMapHints(MapHintSpan* span, void* options) {
-    alignas(16) uint8_t entries[19 * kMapHintSize]{};
+    alignas(16) uint8_t entries[24 * kMapHintSize]{}; // the game's (up to 16) and ours (up to 7)
     const uint8_t* model = nullptr;
     for (uint64_t i = 0; i < span->count; ++i) {
         const uint8_t* e = span->data + i * kMapHintSize;
@@ -62,7 +80,8 @@ void DrawCombinedMapHints(MapHintSpan* span, void* options) {
     }
     if (!model) { g_originalMapHints(span, options); return; }
     const umm_lang::Str labels[] = {umm_lang::Str::HintClearChest, umm_lang::Str::HintFind, umm_lang::Str::HintToggleKey,
-                                    umm_lang::Str::HintCopyPosition};
+                                    umm_lang::Str::HintCopyPosition, umm_lang::Str::HintHideFilter,
+                                    umm_lang::Str::HintUndoFilter, umm_lang::Str::HintRedoFilter};
     const int count = MapHintCount();
     for (int i = 0; i < count; ++i) {
         uint8_t* e = entries + i * kMapHintSize;

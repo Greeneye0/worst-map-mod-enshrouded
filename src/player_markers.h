@@ -11,9 +11,9 @@ struct Marker {
     float x, z, dirX = 0, dirZ = 1;
 };
 
-// 64 distinct bright colors, leaving the local player's gold hue out of the range.
+// 64 distinct bright colors around the whole hue circle.
 inline uint32_t Color(unsigned slot) {
-    const float hue = std::fmod(85.0f + static_cast<float>((slot * 23) % 64) * (300.0f / 64.0f), 360.0f) / 60.0f;
+    const float hue = static_cast<float>((slot * 23) % 64) * (360.0f / 64.0f) / 60.0f;
     const float c = 0.62f, m = 0.33f;
     const float x = c * (1.0f - std::abs(std::fmod(hue, 2.0f) - 1.0f));
     float r = 0, g = 0, b = 0;
@@ -25,6 +25,34 @@ inline uint32_t Color(unsigned slot) {
     else { r = c; b = x; }
     return 0xff000000u | (static_cast<uint32_t>((b + m) * 255) << 16) |
         (static_cast<uint32_t>((g + m) * 255) << 8) | static_cast<uint32_t>((r + m) * 255);
+}
+
+// Every player's colour, the same on every screen (the local player's own arrow too), so
+// players can tell each other apart by colour. The server hands out player ids in join order
+// (the first player is 1), so the first player in the server is yellow, the second blue, and
+// so on; past 16 players, hues from Color(). ABGR. Town Portal colours portals with the same
+// palette (TownPortal src/portal_colors.h); keep the two in step.
+inline constexpr uint32_t kJoinPalette[16] = {
+    0xFF28D2FFu /* yellow */,
+    0xFFFF7828u /* blue */,
+    0xFF3232EBu /* red */,
+    0xFF50C83Cu /* green */,
+    0xFFE650A0u /* purple */,
+    0xFF1E82FFu /* orange */,
+    0xFFDCD228u /* cyan */,
+    0xFFAA5AF0u /* pink */,
+    0xFFEBEBEBu /* white */,
+    0xFF28E6AAu /* lime */,
+    0xFF8C9614u /* teal */,
+    0xFFD228D2u /* magenta */,
+    0xFF325F96u /* brown */,
+    0xFFA03228u /* navy */,
+    0xFF288282u /* olive */,
+    0xFF321E8Cu /* maroon */};
+inline unsigned SlotFor(uint32_t id) { return (id * 2654435761u) % 64; }
+inline uint32_t ColorFor(uint32_t id) {
+    if (id >= 1 && id <= 16) return kJoinPalette[id - 1];
+    return Color(SlotFor(id));
 }
 
 class Roster {
@@ -48,12 +76,9 @@ public:
             } else if (lengthSq >= 100.0f) { m.x = x; m.z = z; }
             return m;
         }
-        unsigned slot = (id * 2654435761u) % 64;
-        for (unsigned tries = 0; tries < 64; ++tries) {
-            if (std::none_of(entries.begin(), entries.end(), [&](const Marker& m) { return m.slot == slot; })) break;
-            slot = (slot + 1) % 64;
-        }
-        entries.push_back({id, Color(slot), slot, x, z});
+        // No probing for a free slot: that would depend on who this screen saw first.
+        const unsigned slot = SlotFor(id);
+        entries.push_back({id, ColorFor(id), slot, x, z});
         return entries.back();
     }
 };

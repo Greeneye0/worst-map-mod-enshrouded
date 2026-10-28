@@ -30,6 +30,9 @@ On the right of the world map.
 - Every marker type has a row with its icon, how many there are, and an ON/OFF switch.
   Click a row to show or hide that type.
 - SHOW ALL / HIDE ALL at the top switch every marker type at once.
+- Search this list, under them: type part of a row's name and only the matching rows show,
+  their sections opened (folded or locked ones too). Esc or the x clears it. It only narrows
+  the panel; Find (Shift + F) searches the map's places.
 - REGION, under them (with Settings > Advanced > Region Filter on): the arrows step through All Regions and the world's regions in level
   order (Springlands, Revelwood, Blackmire, Nomad Highlands, Kindlewastes, Albaneve Summits,
   Veilwater Basin, Cinder's Cradle); click the name to jump to the region you're in. Pins
@@ -41,6 +44,8 @@ On the right of the world map.
   or down to move the category; the order is remembered.
 - The rows in each category are sorted by name in your language.
 - The mouse wheel or the scroll bar scrolls the list.
+- Hide a marker's row from the map: right-click the marker and click Hide under the game's
+  menu, or Alt + left click it. Ctrl+Z undoes a filter change and Ctrl+Y redoes it.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
   To use another key than Tab, set PanelToggle= under [Keys] in
@@ -55,11 +60,13 @@ On the right of the world map.
 - LORE NOTES (QUESTS & RUMORS): every note and diary in the world, 574. Notes you've read
   are hidden or grayed out (Settings > Looted Chests); unread ones are drawn bigger on an
   amber ring so they stand out. Hover one for its title.
-- BOSSES (WORLD & RESOURCES): the world's bosses, named like their health bar; beaten ones
-  are hidden or grayed out. The game keeps no record of beating some of them (the Dire Wolf,
-  the Critter Queens, the Fog Predator...): Ctrl + left click one on the map to mark it beaten
-  or clear the mark. Ctrl + left click a beaten one to mark it not beaten (with Looted Chests:
-  Grayed Out, beaten bosses show to click). These marks are saved per character.
+- BOSSES (WORLD & RESOURCES): the world's bosses, named like their health bar. A boss you've
+  beaten gets a check mark for good; it's hidden or grayed out only while it's dead, until it
+  comes back by the same rule as a looted chest (its 256 m square reset 30 minutes after
+  everyone left). The game keeps no record of beating some of them (the Dire Wolf, the Critter
+  Queens, the Fog Predator...), and none of beating one again: Ctrl + left click a boss on the
+  map to step it: beaten (grayed), came back (check mark only), never beaten. The beaten marks
+  are saved per character, the timers per world.
 - UNIQUE WEAPONS and UNIQUE EQUIPMENT (WORLD & RESOURCES): the one-of-a-kind weapons (40, like
   the Wailing Blade and Talion's Bow) and rings and gear (16, like the Gemini Ring and the
   Flaming Gauntlets), each at the chest or place it is in, with its own icon and name. One in
@@ -162,19 +169,23 @@ Everything is remembered.
 LOOTED CHESTS
 -------------
 Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check
-mark (Settings > Looted Chests). On the world map, Ctrl + left click a chest to mark it or
-clear the mark. Chests you opened before installing the mod aren't known to it: they show
-until you open them again or Ctrl + left click them. Players who have the mod share their
-looted chests: open one and it's marked on their maps too. A looted chest comes back after
-30 minutes of play with every player at least 500 m away (coming closer starts the 30 minutes
-over), unless it's in a Flame Altar's build zone. On a dedicated server the time you're away
-counts too, if the server's clock kept running (one that stands still while nobody is on
-counts nothing). Looted chests are saved per world in
-greeneye\unlock-map-markers\looted_chests.ini. In minimap_config.ini:
+mark (Settings > Looted Chests). Once it refills it's drawn as usual again but keeps its check
+mark, so you can see which chests you've looted at least once. On the world map, Ctrl + left
+click a chest to step it: looted, refilled (check mark only), never looted. Chests you opened
+before installing the mod aren't known to it: they show until you open them again or Ctrl +
+left click them. Players who have the mod share their looted chests: open one and it's marked
+on their maps too.
+A looted chest refills by the game's own rule: the world is cut into 256 m squares, and 30
+minutes after every player has left a square's range (258 m from each of its corners) the
+game resets it. Its chests refill and its bosses come back. Chests in a Flame Altar's build
+zone never come back. On a dedicated server the time you're away counts too, if the server's
+clock kept running (one that stands still while nobody is on counts nothing). Looted chests
+are saved per world in greeneye\unlock-map-markers\looted_chests.ini. In minimap_config.ini:
     [Chests]
     InteractKey=E          the key you open chests with
     RespawnMinutes=30
-    ResetRadius=500        meters; a player this close starts the 30 minutes over
+    ResetRadius=0          meters; a player this close also holds the 30 minutes (0: only
+                           the game's rule)
 
 
 MINIMAP
@@ -193,7 +204,11 @@ and so do another player and a player grave (on the world map too).
 - Zoom any time with [ and ] (or numpad - and +), or the - / + buttons under it. The cog
   next to them opens Settings (the cursor appears while it's open).
 - Other Players (in the panel's QUESTS & RUMORS group) shows other players on the map, and on
-  the minimap as colored arrows that point where they're heading.
+  the minimap as colored arrows that point where they're heading. Each player has the same
+  colour on every screen: the first player in the server yellow, the second blue, then red,
+  green, purple and on.
+- Town Portals (FAST TRAVEL & ALTARS): with the Town Portal mod, its open portals show on the
+  map and the minimap in their owner's colour, the same colour as that player's arrow.
 - Position, size and zoom are saved in greeneye\unlock-map-markers\minimap_config.ini.
 
 
@@ -239,6 +254,34 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.16
+- Chests you've looted keep their check mark for good: a looted chest is grayed out only until it
+  respawns, then shows in full colour with its check mark, so you can see which chests you've
+  looted at least once. Requested by izisot.
+- Chests and bosses come back by the game's own rule: 30 minutes after every player has left the
+  256 m square of the world they're in (ResetRadius=0, the new default, means this).
+- Bosses you've beaten keep their check mark too, grayed out until they respawn by the same rule.
+- Right-click a marker on the world map: a Hide button under the game's menu turns that marker's
+  Map Key row off. Alt + left click a marker does it straight away. Works on players, Town
+  Portals, quests and rumors too.
+- Ctrl+Z / Ctrl+Y on the world map undo and redo filter changes (up to 50), shown on the hint bar
+  while there is one to undo or redo.
+- Search this list: a box under Show All / Hide All narrows the Map Key to the rows that match
+  what you type, opening their sections (folded or locked ones too). Esc clears it. It doesn't
+  search the map; Find (Shift+F) does.
+- Town Portals (Fast Travel & Altars): with the Town Portal mod, its open portals show on the map
+  and the minimap in their owner's colour.
+- Other players: each player has the same colour on every screen, and sees themselves in it (the
+  first player in the server yellow, the second blue, then red, green, purple and on).
+- Fixed: chests near you that were marked looted came back as not looted a moment later when the
+  game still had their loot (a chest hidden with Ctrl + left click, or emptied by another mod).
+  Only a chest the game refilled is unmarked now. Reported by izisot and Loling91.
+- Fixed: on some setups looted chests never grayed on their own: the mod couldn't tell which of
+  two matching chest states to read. Reported by ryuskyn.
+- Fixed: Find's results list (Shift+F) didn't scroll with the mouse wheel, and its scroll bar
+  couldn't be grabbed. The wheel scrolls it now, and you can drag the scroll bar or click on it to
+  jump. Reported by Lomack.
+
 1.3.15
 - Fixed: the fog mode (Explored / Hybrid / Reveal All) went back to Explored every time you
   started the game. Reported by Gadn.

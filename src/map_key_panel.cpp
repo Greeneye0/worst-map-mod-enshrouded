@@ -46,6 +46,7 @@ namespace {
 constexpr uint32_t kGoldChestTypeHash = 0x601dcbe5u;
 constexpr uint32_t kSilverChestTypeHash = 0x511fcbe5u;
 constexpr uint32_t kOtherPlayerTypeHash = 0x26d18a06u;
+constexpr uint32_t kTownPortalTypeHash = 0x7b0e7a11u; // the mod's own row (no game marker type): Town Portal's portals
 constexpr uint32_t kCompletedQuestTypeHash = 0x9c4e7b12u;
 constexpr uint32_t kLockedFastTravelTypeHash = 0x1095684fu;
 constexpr uint32_t kChestMarkerUidPrefix = 0x70000000u;
@@ -76,6 +77,12 @@ bool IsKnowledgeDeposit(size_t d);
 const char* KnowledgeSpotName(size_t d);
 void UpdateKnowledge();
 void UpdateManualBosses(uint8_t* client);
+void NoteBossKills(uint8_t* client);
+std::string BossTimersText();
+void LoadBossTimers(const char* text);
+extern std::unordered_map<uint16_t, double> g_bossDead;
+struct BuildZoneBox;
+void AdvanceBossTimers(double dtSec, double respawnSec, const BuildZoneBox* zones, size_t numZones, bool allAway);
 bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters, float shiftMeters);
 bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shiftMeters);
 int StackSide(size_t d); // knowledge.inl: -1 / +1 for icons drawn aside, off the boss or chest they stand on
@@ -158,6 +165,8 @@ constexpr int kMarkerScaleCount = static_cast<int>(sizeof(kMarkerScaleLevels) / 
 bool g_goldChestEnabled = true;
 bool g_silverChestEnabled = true;
 bool g_otherPlayersEnabled = true;
+bool g_townPortalsEnabled = true; // Fast Travel & Altars > Town Portals (town_portals.inl)
+size_t TownPortalCount();
 bool g_minimapShowTerrain = true;
 bool g_minimapThinBorder = false; // a thin line instead of the ornate frame
 bool g_minimapShowPosition = false; // Settings > Advanced: your X, Y (height), Z under the minimap
@@ -176,11 +185,43 @@ bool g_minimapSettingsOpen = false;
 bool g_bridgeRefreshMap = false;
 bool g_bridgeRecenterMap = false;
 float g_chestRespawnMinutes = 30.0f;
-float g_chestResetRadiusMeters = 500.0f; // a player this close restarts a looted chest's respawn timer
+float g_chestResetRadiusMeters = 0.0f; // [Chests] ResetRadius: a player this close also holds the respawn timer
+
+// The game's own respawn rule (server loop FUN_140a1ebb0): the world is cut into 256 m square scene chunks. One stays
+// loaded while any player is within 242 m of one of its four corners, and unloads once every player is more than
+// 258 m from all four. 30 minutes of server time after it unloads, a chunk with changes is reset: its looted chests
+// refill and its bosses come back.
+constexpr int kSceneChunkSide = 40; // 10240 m / 256 m
+constexpr float kSceneChunkMeters = 256.0f;
+bool g_sceneChunkLoaded[kSceneChunkSide * kSceneChunkSide]{};
+
+void UpdateSceneChunks(const float (*players)[2], size_t numPlayers) {
+    for (int cz = 0; cz < kSceneChunkSide; ++cz) {
+        for (int cx = 0; cx < kSceneChunkSide; ++cx) {
+            float nearest = 1e12f; // squared distance to the nearest corner of the nearest player
+            for (size_t i = 0; i < numPlayers; ++i) {
+                for (int k = 0; k < 4; ++k) {
+                    const float dx = players[i][0] - (cx + (k & 1)) * kSceneChunkMeters;
+                    const float dz = players[i][1] - (cz + (k >> 1)) * kSceneChunkMeters;
+                    nearest = std::min(nearest, dx * dx + dz * dz);
+                }
+            }
+            bool& loaded = g_sceneChunkLoaded[cz * kSceneChunkSide + cx];
+            loaded = nearest < 58564.0f || (loaded && nearest <= 66564.0f);
+        }
+    }
+}
+
+bool SceneChunkLoadedAt(float x, float z) {
+    const int cx = static_cast<int>(x / kSceneChunkMeters), cz = static_cast<int>(z / kSceneChunkMeters);
+    if (cx < 0 || cz < 0 || cx >= kSceneChunkSide || cz >= kSceneChunkSide) return false;
+    return g_sceneChunkLoaded[cz * kSceneChunkSide + cx];
+}
 
 struct ChestLootState {
     bool looted;
     double elapsedOutOfBuildZoneSec;
+    bool everLooted; // looted at least once in this world: keeps its check mark after it refills
 };
 ChestLootState g_chestLootStates[kTotalChestCount]{};
 bool g_chestLootDirty = false;
@@ -614,6 +655,7 @@ constexpr MarkerRowSpec kCategory1Rows[] = {
     {0xf455a765u, 0u, 1, "Gem Forge", umm_lang::Str::GemForge},
     {0xad6a9d9fu, 0u, 1, "Ancient Obelisk", umm_lang::Str::AncientObelisk},
     {0x1095684eu, 0u, 1, "Fast Travel Point", umm_lang::Str::FastTravelPoint},
+    {kTownPortalTypeHash, 0u, 1, "Town Portals", umm_lang::Str::TownPortals},
 };
 
 constexpr MarkerRowSpec kCategory2Rows[] = {
@@ -732,6 +774,11 @@ float g_mapKeyDragStartScroll = 0.0f;
 // Mouse wheel over the Map Key scrolls it. A WH_GETMESSAGE hook on the game's window thread takes the wheel
 // messages while the cursor is over the panel and the World Map is up (the map's own zoom is blocked there).
 HHOOK g_mapKeyWheelHook = nullptr;
+// The Map Key's search box: what is typed while it has the focus comes in as WM_CHAR through the same hook (the game's
+// own keys are off meanwhile: the text input flag is set, as for the game's text fields)
+bool g_keySearchFocused = false;
+std::mutex g_keySearchMutex;
+std::wstring g_keySearchTyped; // taken by the panel each frame
 volatile LONG g_mapKeyWheelDelta = 0;
 volatile bool g_mapKeyWheelCapture = false;
 volatile uint64_t g_mapKeyLastFrameTick = 0;
@@ -741,6 +788,32 @@ LRESULT CALLBACK MapKeyWheelMsgProc(int code, WPARAM wParam, LPARAM lParam) {
         auto* msg = reinterpret_cast<MSG*>(lParam);
         if (msg->message == WM_MOUSEWHEEL && g_mapKeyWheelCapture && GetTickCount64() - g_mapKeyLastFrameTick < 250) {
             InterlockedExchangeAdd(&g_mapKeyWheelDelta, GET_WHEEL_DELTA_WPARAM(msg->wParam));
+            msg->message = WM_NULL;
+        }
+        // While typing, the game's keys stay off: it reads the keyboard as raw input (WM_INPUT), so key presses are taken
+        // from it (Q / E switch tabs, C recenters, Esc closes the map); releases go through so no key stays down. The
+        // letters still come as WM_CHAR from the ordinary key messages.
+        if (msg->message == WM_INPUT && g_keySearchFocused && GetTickCount64() - g_mapKeyLastFrameTick < 250) {
+            RAWINPUT ri{};
+            UINT size = sizeof(ri);
+            if (GetRawInputData(reinterpret_cast<HRAWINPUT>(msg->lParam), RID_INPUT, &ri, &size, sizeof(RAWINPUTHEADER)) !=
+                    static_cast<UINT>(-1) &&
+                ri.header.dwType == RIM_TYPEKEYBOARD && !(ri.data.keyboard.Flags & RI_KEY_BREAK)) {
+                msg->message = WM_NULL;
+            }
+        }
+        // Esc while typing clears the box, and must not reach the game (it would close the map): taken as a key
+        if ((msg->message == WM_KEYDOWN || msg->message == WM_KEYUP) && msg->wParam == VK_ESCAPE && g_keySearchFocused &&
+            GetTickCount64() - g_mapKeyLastFrameTick < 250) {
+            if (msg->message == WM_KEYDOWN) {
+                std::lock_guard<std::mutex> lock(g_keySearchMutex);
+                g_keySearchTyped.push_back(static_cast<wchar_t>(0x1b));
+            }
+            msg->message = WM_NULL;
+        }
+        if (msg->message == WM_CHAR && g_keySearchFocused && GetTickCount64() - g_mapKeyLastFrameTick < 250) {
+            std::lock_guard<std::mutex> lock(g_keySearchMutex);
+            g_keySearchTyped.push_back(static_cast<wchar_t>(msg->wParam));
             msg->message = WM_NULL;
         }
     }
@@ -764,6 +837,50 @@ void RemoveMapKeyWheelHook() {
     }
 }
 constexpr size_t kCategoryGroupCount = sizeof(kCategoryGroups) / sizeof(kCategoryGroups[0]);
+const char* RowText(const MarkerRowSpec& row);
+
+// The Map Key's search: a row shows when its name (shown or English) or its section's title holds the text typed; a
+// section shows, open, when any of its rows does. Recomputed when the text or the language changes.
+std::string g_keySearch; // UTF-8
+struct KeySearchMatch {
+    bool cat[kCategoryGroupCount]{};
+    bool row[kCategoryGroupCount][64]{};
+    int any = 0;
+};
+KeySearchMatch g_keySearchMatch;
+
+void UpdateKeySearchMatch() {
+    static std::string s_for;
+    static int s_lang = -1;
+    const int lang = static_cast<int>(umm_lang::Current());
+    if (s_for == g_keySearch && s_lang == lang) return;
+    s_for = g_keySearch;
+    s_lang = lang;
+    g_keySearchMatch = {};
+    const std::string q = umm_lang::ToLowerUtf8(g_keySearch);
+    auto has = [&](const char* s) { return s && umm_lang::ToLowerUtf8(s).find(q) != std::string::npos; };
+    for (size_t c = 0; c < kCategoryGroupCount; ++c) {
+        const auto& grp = kCategoryGroups[c];
+        const bool title = has(umm_lang::T(grp.title));
+        if (grp.category == 4) g_keySearchMatch.cat[c] = title || has("custom pin");
+        for (size_t r = 0; r < grp.rowCount && r < 64; ++r) {
+            const bool m = title || has(RowText(grp.rows[r])) || has(grp.rows[r].label);
+            g_keySearchMatch.row[c][r] = m;
+            if (m) g_keySearchMatch.cat[c] = true;
+        }
+        g_keySearchMatch.any += g_keySearchMatch.cat[c] ? 1 : 0;
+    }
+}
+bool KeySearching() { return !g_keySearch.empty(); }
+bool KeySearchCatShown(size_t c) { return !KeySearching() || g_keySearchMatch.cat[c]; }
+bool KeySearchRowShown(size_t c, size_t r) { return !KeySearching() || r >= 64 || g_keySearchMatch.row[c][r]; }
+size_t KeySearchRowCount(size_t c) {
+    size_t n = 0;
+    for (size_t r = 0; r < kCategoryGroups[c].rowCount; ++r) n += KeySearchRowShown(c, r) ? 1 : 0;
+    return n;
+}
+// Sets the game's text input flag (UI owner + 0x2fe70) so the map's keys stay off while the box is typed in
+void SetTextInputFlag();
 bool g_categoryCollapsed[kCategoryGroupCount]{};
 // The Map Key's categories in the order shown (indexes into kCategoryGroups); drag a category's title to move it.
 // Saved as CategoryOrder in minimap_config.ini.
@@ -1449,6 +1566,7 @@ bool IsFilterEnabled(FilterEntry* entries, size_t count, uint32_t typeHash) {
     if (typeHash == kGoldChestTypeHash) return g_goldChestEnabled;
     if (typeHash == kSilverChestTypeHash) return g_silverChestEnabled;
     if (typeHash == kOtherPlayerTypeHash) return g_otherPlayersEnabled;
+    if (typeHash == kTownPortalTypeHash) return g_townPortalsEnabled;
     if (typeHash == kCompletedQuestTypeHash) return false; // finished quests are never shown
     if (IsOreHash(typeHash)) return g_oreEnabled[OreIndexOf(typeHash)];
     for (size_t i = 0; i < count; ++i) {
@@ -1461,7 +1579,8 @@ bool IsFilterEnabled(FilterEntry* entries, size_t count, uint32_t typeHash) {
 
 void ApplyFilterChange(uint8_t* client, uint32_t typeHash, bool enable) {
     if (typeHash == kGoldChestTypeHash || typeHash == kSilverChestTypeHash ||
-        typeHash == kOtherPlayerTypeHash || typeHash == kCompletedQuestTypeHash || IsOreHash(typeHash)) {
+        typeHash == kOtherPlayerTypeHash || typeHash == kTownPortalTypeHash || typeHash == kCompletedQuestTypeHash ||
+        IsOreHash(typeHash)) {
         return;
     }
     uint8_t disableFlag = enable ? 0 : 1;
@@ -1483,6 +1602,9 @@ void SetSingleFilterState(uint8_t* client, uint8_t* mapState, uint32_t typeHash,
         g_silverChestEnabled = enable;
     } else if (typeHash == kOtherPlayerTypeHash) {
         g_otherPlayersEnabled = enable;
+        SaveMinimapConfig();
+    } else if (typeHash == kTownPortalTypeHash) {
+        g_townPortalsEnabled = enable;
         SaveMinimapConfig();
     } else if (IsOreHash(typeHash)) {
         g_oreEnabled[OreIndexOf(typeHash)] = enable;
@@ -1514,6 +1636,9 @@ void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category
         g_silverChestEnabled = enable;
     } else if (category == 0) {
         g_otherPlayersEnabled = enable;
+        SaveMinimapConfig();
+    } else if (category == 1) {
+        g_townPortalsEnabled = enable;
         SaveMinimapConfig();
     }
     // Resource rows: the resource groups, and the Return Beacons in Shroud
@@ -1548,6 +1673,7 @@ void SetAllFiltersState(uint8_t* client, uint8_t* mapState, bool enable, bool pa
     if (open(kGoldChestTypeHash, 3)) g_goldChestEnabled = enable;
     if (open(kSilverChestTypeHash, 3)) g_silverChestEnabled = enable;
     if (open(kOtherPlayerTypeHash, 0)) g_otherPlayersEnabled = enable;
+    if (open(kTownPortalTypeHash, 1)) g_townPortalsEnabled = enable;
     for (size_t o = 0; o < kOreCount; ++o) {
         if (open(OreHash(o), kOreCategory[o])) g_oreEnabled[o] = enable;
     }
@@ -1583,6 +1709,100 @@ void SyncLinkedResourceRows(uint8_t* client) {
             }
         }
     }
+}
+
+// Ctrl+Z / Ctrl+Y on the World Map: undo and redo filter changes. Every frame the map is up, the filters' ON / OFF
+// are compared with the last frame's; a change from anywhere (a row, a section, Show All, a marker's Hide button) is
+// one step. Another world's filters start the history over.
+struct FilterSnapshot {
+    std::vector<std::pair<uint32_t, bool>> states; // the mod's own rows first, then the game's entries in order
+    bool operator==(const FilterSnapshot& o) const { return states == o.states; }
+};
+
+FilterSnapshot TakeFilterSnapshot(uint8_t* client) {
+    FilterSnapshot s;
+    s.states.reserve(160);
+    s.states.emplace_back(kGoldChestTypeHash, g_goldChestEnabled);
+    s.states.emplace_back(kSilverChestTypeHash, g_silverChestEnabled);
+    s.states.emplace_back(kOtherPlayerTypeHash, g_otherPlayersEnabled);
+    s.states.emplace_back(kTownPortalTypeHash, g_townPortalsEnabled);
+    for (size_t o = 0; o < kOreCount; ++o) s.states.emplace_back(OreHash(o), g_oreEnabled[o]);
+    auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+    const size_t count = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
+    for (size_t i = 0; i < count; ++i) s.states.emplace_back(entries[i].typeHash, entries[i].enabled != 0);
+    return s;
+}
+
+// Same rows in the same order: the same world's filters
+bool SameFilterRows(const FilterSnapshot& a, const FilterSnapshot& b) {
+    if (a.states.size() != b.states.size()) return false;
+    for (size_t i = 0; i < a.states.size(); ++i) {
+        if (a.states[i].first != b.states[i].first) return false;
+    }
+    return true;
+}
+
+void RestoreFilterSnapshot(uint8_t* client, uint8_t* mapState, const FilterSnapshot& s) {
+    const FilterSnapshot now = TakeFilterSnapshot(client);
+    if (!SameFilterRows(now, s)) return;
+    auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+    const size_t fixed = 4 + kOreCount;
+    for (size_t i = 0; i < s.states.size(); ++i) {
+        const auto [hash, on] = s.states[i];
+        if (now.states[i].second == on) continue;
+        if (i == 0) g_goldChestEnabled = on;
+        else if (i == 1) g_silverChestEnabled = on;
+        else if (i == 2) g_otherPlayersEnabled = on;
+        else if (i == 3) g_townPortalsEnabled = on;
+        else if (i < fixed) g_oreEnabled[i - 4] = on;
+        else {
+            entries[i - fixed].enabled = on ? 1 : 0;
+            ApplyFilterChange(client, hash, on);
+        }
+    }
+    SaveMinimapConfig();
+    if (mapState) {
+        *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
+        *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+    }
+    if (FilterLockCount() > 0) SaveFilterLocks();
+}
+
+std::vector<FilterSnapshot> g_filterUndo, g_filterRedo;
+FilterSnapshot g_filterLastSeen;
+
+// Once a frame with the map up: notes a change, and runs Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) when keysFree
+void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
+    constexpr size_t kMaxSteps = 50;
+    FilterSnapshot now = TakeFilterSnapshot(client);
+    if (!SameFilterRows(now, g_filterLastSeen)) {
+        g_filterUndo.clear();
+        g_filterRedo.clear();
+    } else if (!(now == g_filterLastSeen)) {
+        g_filterUndo.push_back(std::move(g_filterLastSeen));
+        if (g_filterUndo.size() > kMaxSteps) g_filterUndo.erase(g_filterUndo.begin());
+        g_filterRedo.clear();
+    }
+    g_filterLastSeen = now;
+
+    static bool zWasDown = false, yWasDown = false;
+    const bool ctrl = keysFree && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+    const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    const bool zDown = ctrl && (GetAsyncKeyState('Z') & 0x8000) != 0;
+    const bool yDown = ctrl && (GetAsyncKeyState('Y') & 0x8000) != 0;
+    const bool undo = zDown && !zWasDown && !shift;
+    const bool redo = (yDown && !yWasDown) || (zDown && !zWasDown && shift);
+    zWasDown = zDown;
+    yWasDown = yDown;
+    auto& from = undo ? g_filterUndo : g_filterRedo;
+    auto& to = undo ? g_filterRedo : g_filterUndo;
+    if ((!undo && !redo) || from.empty()) return;
+    to.push_back(now);
+    RestoreFilterSnapshot(client, mapState, from.back());
+    from.pop_back();
+    g_filterLastSeen = TakeFilterSnapshot(client);
+    if (g_log) g_log("Map Key: %s a filter change (%zu more to undo, %zu to redo)", undo ? "undid" : "redid",
+                     g_filterUndo.size(), g_filterRedo.size());
 }
 
 // After a load, a reload or a world change: the locked rows back to their saved ON / OFF.
@@ -1628,6 +1848,9 @@ bool IsCategoryEnabled(FilterEntry* entries, size_t count, uint8_t category) {
         return true;
     }
     if (category == 0 && g_otherPlayersEnabled) {
+        return true;
+    }
+    if (category == 1 && g_townPortalsEnabled) {
         return true;
     }
     for (size_t o = 0; o < kOreCount; ++o) {
@@ -1878,7 +2101,7 @@ void SaveLootedChests() {
     g_lootLastSaveTick = GetTickCount64();
     if (g_lootSection.empty()) return;
     const std::string path = GetLootedChestsPath();
-    std::string altars, looted;
+    std::string altars, looted, opened;
     char buf[48];
     for (const auto& p : g_lootAltars) {
         std::snprintf(buf, sizeof(buf), "%s%d,%d", altars.empty() ? "" : ";", p.first, p.second);
@@ -1890,8 +2113,15 @@ void SaveLootedChests() {
                       static_cast<int>(g_chestLootStates[c].elapsedOutOfBuildZoneSec));
         looted += buf;
     }
+    for (size_t c = 0; c < kTotalChestCount; ++c) {
+        if (!g_chestLootStates[c].everLooted) continue;
+        std::snprintf(buf, sizeof(buf), "%s%zu", opened.empty() ? "" : ";", c);
+        opened += buf;
+    }
     WritePrivateProfileStringA(g_lootSection.c_str(), "Altars", altars.c_str(), path.c_str());
     WritePrivateProfileStringA(g_lootSection.c_str(), "Looted", looted.c_str(), path.c_str());
+    WritePrivateProfileStringA(g_lootSection.c_str(), "Opened", opened.c_str(), path.c_str());
+    WritePrivateProfileStringA(g_lootSection.c_str(), "Bosses", BossTimersText().c_str(), path.c_str());
     std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(std::time(nullptr)));
     WritePrivateProfileStringA(g_lootSection.c_str(), "LastPlayed", buf, path.c_str());
     if (g_lootDaySec >= 0.0) {
@@ -1930,8 +2160,18 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
         while (*t && sscanf_s(t, "%zu:%d%n", &idx, &secs, &used) == 2) {
             if (idx < kTotalChestCount && !g_chestLootStates[idx].looted) {
                 g_chestLootStates[idx].looted = true;
+                g_chestLootStates[idx].everLooted = true;
                 g_chestLootStates[idx].elapsedOutOfBuildZoneSec = std::max(0, secs);
             }
+            t += used;
+            if (*t == ';') ++t;
+        }
+        GetPrivateProfileStringA(name, "Bosses", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+        LoadBossTimers(text.data());
+        // Opened = every chest looted here at least once (before 1.3.16: the ones looted then, above)
+        GetPrivateProfileStringA(name, "Opened", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+        for (t = text.data(); *t && sscanf_s(t, "%zu%n", &idx, &used) == 1;) {
+            if (idx < kTotalChestCount) g_chestLootStates[idx].everLooted = true;
             t += used;
             if (*t == ';') ++t;
         }
@@ -2102,6 +2342,7 @@ void ResetLootWorld(const char* why) {
     g_lootJoinDaySec = g_lootDaySec = -1.0;
     ResetBuiltWater();
     for (auto& s : g_chestLootStates) s = ChestLootState{};
+    g_bossDead.clear();
     g_chestLootDirty = true;
     g_lootLastMatchTick = 0;
 }
@@ -2160,6 +2401,7 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     chest_live::Update(nowTick, screen);
     UpdateKnowledge();
     UpdateManualBosses(client);
+    NoteBossKills(client);
     chest_glow::UpdateKey(client, appFocused);
 
     // 1. A chest counts as looted when the interact key is pressed next to it and the game switches to its
@@ -2246,12 +2488,14 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
                 ++numPlayers;
             }
         }
+        UpdateSceneChunks(players, numPlayers);
         const float resetSq = g_chestResetRadiusMeters * g_chestResetRadiusMeters;
         auto playerNear = [&](size_t c) {
             const ChestSpawn& sp = kChestSpawns[c];
             const float cx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
             const float cz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
-            for (size_t i = 0; i < numPlayers; ++i) {
+            if (SceneChunkLoadedAt(cx, cz)) return true;
+            for (size_t i = 0; resetSq > 0.0f && i < numPlayers; ++i) {
                 const float dx = players[i][0] - cx, dz = players[i][1] - cz;
                 if (dx * dx + dz * dz <= resetSq) return true;
             }
@@ -2294,6 +2538,7 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
                         ++back;
                     }
                 }
+                AdvanceBossTimers(g_lootOfflineSec, respawnSec, zones, numZones, true);
                 g_chestLootDirty = true;
                 g_lootSaveDirty = true;
                 if (g_log) g_log("Looted chests: away from this server world for %.0f min; %zu chests came back meanwhile",
@@ -2319,6 +2564,14 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
                     g_lootSaveDirty = true;
                 }
             }
+        }
+        AdvanceBossTimers(dtSec, respawnSec, zones, numZones, false);
+    }
+
+    for (auto& st : g_chestLootStates) {
+        if (st.looted && !st.everLooted) {
+            st.everLooted = true;
+            g_lootSaveDirty = true;
         }
     }
 
@@ -2350,8 +2603,16 @@ bool ToggleChestClearedNearWorldPos(float wx, float wz, float maxRadiusMeters) {
         }
     }
     if (bestChest < kTotalChestCount) {
-        g_chestLootStates[bestChest].looted = !g_chestLootStates[bestChest].looted;
-        g_chestLootStates[bestChest].elapsedOutOfBuildZoneSec = 0.0;
+        // Steps: looted -> refilled (its check mark stays) -> never looted -> looted
+        auto& st = g_chestLootStates[bestChest];
+        if (st.looted) {
+            st.looted = false;
+        } else if (st.everLooted) {
+            st.everLooted = false;
+        } else {
+            st.looted = st.everLooted = true;
+        }
+        st.elapsedOutOfBuildZoneSec = 0.0;
         g_chestLootDirty = true;
         g_lootSaveDirty = true;
         ShareChestState(bestChest, g_chestLootStates[bestChest].looted);
@@ -3053,6 +3314,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             outCounts[q] = unlootedSilverCount;
         } else if (queryHashes[q] == kOtherPlayerTypeHash) {
             outCounts[q] = otherPlayerCount;
+        } else if (queryHashes[q] == kTownPortalTypeHash) {
+            outCounts[q] = static_cast<int>(TownPortalCount());
         } else if (IsOreHash(queryHashes[q])) {
             const size_t ore = OreIndexOf(queryHashes[q]);
             outCounts[q] = (ore == kLoreFirst || ore == kBossesFirst || (ore >= kUniqueFirst && ore < kUniqueFirst + kUniqueCount))
@@ -3162,6 +3425,7 @@ std::string g_findQuery;
 int g_findSelectedIndex = -1;
 int g_findHoveredIndex = -1;
 int g_findScrollOffset = 0;
+bool g_findScrollDragging = false; // dragging the result list's scroll bar
 int g_findFilteredOutCount = 0;
 std::vector<FindPlaceEntry> g_findMatchedPlaces;
 std::vector<FindDisplayRow> g_findDisplayRows;
@@ -3407,6 +3671,12 @@ bool ClearTextInputFlag() {
     if (!owner || !*reinterpret_cast<void**>(owner) || !owner[0x2fe70]) return false;
     owner[0x2fe70] = 0;
     return true;
+}
+
+void SetTextInputFlag() {
+    auto* g = static_cast<uint8_t*>(GetUiG());
+    uint8_t* owner = g ? *reinterpret_cast<uint8_t**>(g + 0xd0) : nullptr;
+    if (owner && *reinterpret_cast<void**>(owner)) owner[0x2fe70] = 1;
 }
 
 // True while one of the game's own text fields (a pin's name, ...) is being typed in.
@@ -4066,6 +4336,99 @@ void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vec
 
 // True from load: the per-frame screen check clears it whenever the map is not up, so a map already open when the mod
 // (re)loads is not taken for a new open (which would centre it on the player)
+// Right-click a marker: under the game's menu a "Hide: <row>" button turns its Map Key row off, so a row buried
+// in a collapsed section needn't be found. Set while drawing; BlockWorldMapInput keeps the game's clicks off it.
+struct HideRowButton {
+    bool active = false;
+    float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
+    uint32_t hashes[3]{}; // the row's type and the types it switches with it
+    char label[192]{};
+};
+HideRowButton g_hideRowBtn;
+
+const char* RowText(const MarkerRowSpec& row);
+
+// The Map Key row of the marker the menu was opened on. The game's menu holds a waypoint of its own at the clicked
+// spot (snapped to the marker), not the marker: the shown marker nearest it, within maxDist metres, is the one.
+// The mod's own icons (lore notes, ores, ...) aren't markers of the game's: knownRow is the one under the cursor
+// when the menu opened.
+bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uint32_t knownRow, HideRowButton& out) {
+    auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+    const size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
+    uint32_t h = knownRow;
+    if (!h) {
+    float best = maxDist * maxDist;
+    constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+    for (size_t a = 0; a < 4; ++a) {
+        uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[a]);
+        const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[a] + 8);
+        if (!base || count == 0 || count > 10000) continue;
+        for (uint64_t i = 0; i < count; ++i) {
+            const uint8_t* m = base + i * 0xA0;
+            const uint32_t origHash = GetMarkerOrigTypeHash(m);
+            if (origHash == 0u || origHash == 0x98b2d65du) continue;
+            const float dx = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14) - wx);
+            const float dz = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24) - wz);
+            const float d2 = dx * dx + dz * dz;
+            if (d2 > best) continue;
+            uint32_t savedId08 = IsSlotSaved(m) ? *reinterpret_cast<const uint32_t*>(m + 0x4c) : 0u;
+            if (savedId08 == 0u) savedId08 = *reinterpret_cast<const uint32_t*>(m + 0x08);
+            uint32_t fh = origHash == 0xafce0c5fu ? ClassifyQuestOrRumorMarker(savedId08, m[0x34])
+                                                  : NormalizeFilterTypeHash(origHash);
+            // A place an active quest or a lore rumor points to shows as a "?" with that row, though its own is off
+            // (a cave passage, an enemy encampment): that row is the one to hide, as the map draws it
+            if (fh != 0u && !IsFilterEnabled(filterEntries, filterCount, fh) && origHash != 0xafce0c5fu) {
+                uint32_t questRow = GetQuestFilterHashForMarkerId(savedId08, true);
+                if ((questRow == 0u || !IsFilterEnabled(filterEntries, filterCount, questRow)) &&
+                    *reinterpret_cast<const uint32_t*>(m + 0x30) == 0xafce0c5fu) {
+                    questRow = ClassifyQuestOrRumorMarker(savedId08, m[0x34]);
+                }
+                if (questRow != 0u && IsFilterEnabled(filterEntries, filterCount, questRow)) fh = questRow;
+            }
+            if (fh == 0u || !IsFilterEnabled(filterEntries, filterCount, fh)) continue;
+            best = d2;
+            h = fh;
+        }
+    }
+    // Other players: the client's player list (client + 0x4642c0, 0x240 apart, live position at +0x10)
+    uint8_t* players = *reinterpret_cast<uint8_t**>(client + 0x4642c0);
+    const uint64_t playerCount = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
+    const uint32_t localId = *reinterpret_cast<uint32_t*>(client + 0x18);
+    if (g_otherPlayersEnabled && players && playerCount <= 64) {
+        for (uint64_t i = 0; i < playerCount; ++i) {
+            const uint8_t* p = players + i * 0x240;
+            const uint32_t pid = *reinterpret_cast<const uint32_t*>(p);
+            if (pid == 0 || pid == localId) continue;
+            const float dx = *reinterpret_cast<const float*>(p + 0x10) - static_cast<float>(wx);
+            const float dz = *reinterpret_cast<const float*>(p + 0x18) - static_cast<float>(wz);
+            if (dx * dx + dz * dz > best) continue;
+            best = dx * dx + dz * dz;
+            h = kOtherPlayerTypeHash;
+        }
+    }
+    }
+    if (h == 0u) return false;
+    const char* name = nullptr;
+    for (const auto& grp : kCategoryGroups) {
+        for (size_t r = 0; r < grp.rowCount && !name; ++r) {
+            const MarkerRowSpec& row = grp.rows[r];
+            if (row.typeHash != h && row.pairedHash != h && row.pairedHash2 != h) continue;
+            out.hashes[0] = row.typeHash;
+            out.hashes[1] = row.pairedHash;
+            out.hashes[2] = row.pairedHash2;
+            name = RowText(row);
+        }
+    }
+    if (!name && std::find(std::begin(kCustomPinHashes), std::end(kCustomPinHashes), h) != std::end(kCustomPinHashes)) {
+        out.hashes[0] = h;
+        out.hashes[1] = out.hashes[2] = 0u;
+        name = umm_lang::T(umm_lang::Str::CustomPin);
+    }
+    if (!name) return false;
+    std::snprintf(out.label, sizeof(out.label), umm_lang::T(umm_lang::Str::HideRowFmt), name);
+    return true;
+}
+
 bool g_worldMapWasOpen = true;
 int g_worldMapOpenCenterFrames = 0;
 uint8_t g_screenBeforeMap = 1; // the last screen before the World Map (1 gameplay, 9 inventory / journal)
@@ -4452,6 +4815,42 @@ void DrawVisitedSanctumsOnMap(void* widgetRaw, const float* rootRect, uint8_t* c
     }
 }
 
+// A check mark on each gold and silver chest looted here once that has refilled since: the looted ones carry the
+// game's own (completed state), these keep theirs at the same corner of the icon.
+void DrawRefilledChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState) {
+    if (!widgetRaw || !client || !mapState || (!g_goldChestEnabled && !g_silverChestEnabled)) return;
+    uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
+    if (!mapView) return;
+    const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
+    float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
+    if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
+    if (!(zoom > 0.0f)) return;
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
+                          *reinterpret_cast<float*>(mapView + 0x1e8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
+                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float left = rootRect[0], top = rootRect[1];
+    const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
+    const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
+    const bool exploredOnly = g_pinRevealMode == PinRevealMode::ExploredOnly;
+    constexpr float kIconHalf = 13.0f, kCheck = 14.0f;
+    for (size_t c = 0; c < kTotalChestCount; ++c) {
+        const ChestLootState& st = g_chestLootStates[c];
+        if (!st.everLooted || st.looted) continue;
+        if (!(c < kGoldChestCount ? g_goldChestEnabled : g_silverChestEnabled)) continue;
+        const ChestSpawn& sp = kChestSpawns[c];
+        const float x = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
+        const float z = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
+        const float sx = originX + x * zoom, sy = originY + (mapWorldH - z) * zoom;
+        if (sx < left || sx > right || sy < top + 114.0f || sy > bottom) continue;
+        if (exploredOnly && !IsPositionExploredByCharacter(client, sp.px1, sp.pz1)) continue;
+        if (RegionHidesAt(x, z)) continue;
+        const float cx = sx + kIconHalf - kCheck * 0.7f, cy = sy + kIconHalf - kCheck * 0.7f;
+        DrawAssetRectAbs(widgetRaw, kCirclePrimitive, cx - 1.0f, cy - 1.0f, kCheck + 2.0f, kCheck + 2.0f, 0xFF0A0E10u, 0.85f);
+        DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, cx, cy, kCheck, kCheck, 0xFFFFFFFFu, 0.98f, 1.12f);
+    }
+}
+
 // A squat caret, wider than tall, flat filled on a dark edge: unlike the players' slender pointers.
 // Up: green, centred on (ax, ay) pointing up. Down: orange, pointing down.
 void DrawHeightCaretAbs(void* widgetRaw, float ax, float ay, bool up, float alpha, float k) {
@@ -4529,8 +4928,34 @@ void DrawGraveHeightsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clie
     }
 }
 
+// Like the game's own hover title ("Gem Forge"): bold and large, starting at x and centred on y, on a soft shadow.
+// A copy of the game's bold h3 style at 28 px (its identifier string dropped: it is a relative pointer).
+void DrawMapHoverTitle(float x, float y, const char* name) {
+    static uint8_t titleStyle[kUiCharacterStyleSize]{};
+    static uint8_t* titleStyleFor = nullptr;
+    uint8_t* assets = GetUiAssets();
+    if (!assets || !name || !*name) return;
+    if (titleStyleFor != assets) {
+        std::memcpy(titleStyle, assets + kH3StyleOffset, sizeof(titleStyle));
+        std::memset(titleStyle, 0, 8);
+        const float titleSize = 28.0f;
+        std::memcpy(titleStyle + kStyleFontSize, &titleSize, sizeof(titleSize));
+        titleStyleFor = assets;
+    }
+    const float fontScale = 28.0f / 15.0f; // TextWidth is calibrated on the small text
+    const float h = 18.0f * fontScale, w = umm_lang::TextWidth(name) * fontScale + 12.0f;
+    const float by = y - h * 0.5f;
+    // No band behind it (the soft glow reads as a dark oval on the map): a faint 1 px drop shadow, like the game's own
+    // hover title (Silver Chest)
+    DrawLabelAbs(x + 1.0f, by + 1.0f, w, h, name, 0xff000000u, 0.5f, TextAlignH::Left, TextAlignV::Center, titleStyle);
+    DrawLabelAbs(x, by, w, h, name, 0xffffffffu, 1.0f, TextAlignH::Left, TextAlignV::Center, titleStyle);
+}
+
+uint32_t g_hoveredDepositRow = 0u; // the row of the mod's icon under the cursor (a lore note, an ore, ...), or 0
+
 void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState,
                           bool haveCursor, float mx, float my, int maxIcons) {
+    g_hoveredDepositRow = 0u;
     if (!widgetRaw || !mapState || !AnyOreEnabled()) return;
     uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
     if (!mapView) return;
@@ -4582,7 +5007,9 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         const bool unexplored = g_pinRevealMode != PinRevealMode::RevealAll &&
                                 !IsPositionExploredByCharacter(client, dep.x, dep.z);
         if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) continue;
-        const bool done = KnowledgeDone(d); // a lore note read / a boss defeated: hidden or greyed like looted chests
+        // A lore note read / a boss defeated: the check mark; hidden or greyed like looted chests while it stays so (a
+        // boss that came back keeps its check mark, not greyed)
+        const bool checked = KnowledgeDone(d), done = checked && KnowledgeGrayed(d);
         if (done && g_lootedChestMode == 0) continue;
         const bool outside = OutsideFocusedRegion(dep.x, dep.z); // Map Key > Region
         if (outside && g_regionOutsideHide) continue;
@@ -4599,7 +5026,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         const bool underBanner = sy < top + kMapBannerBottom;
         const float alpha = (unexplored ? 0.55f : 1.0f) * (underBanner ? 0.22f : 1.0f) * (outside ? 0.3f : 1.0f);
         // A lore note or boss not done yet stands out: a third bigger, on an amber ring (they are few and far apart)
-        const bool standOut = pass == 2 && !done;
+        const bool standOut = pass == 2 && !checked;
         const float iconSz = standOut ? size * 1.35f : size, iconHalf = iconSz * 0.5f;
         if (standOut) {
             DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - iconHalf - 4.0f, sy - iconHalf - 4.0f, iconSz + 8.0f,
@@ -4611,7 +5038,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         }
         DrawIconRectAbs(widgetRaw, DepositIcon(d), sx - iconHalf, sy - iconHalf, iconSz, iconSz,
                         (unexplored || done) ? 0xff8c9296u : 0xffffffffu, done ? alpha * 0.6f : alpha);
-        if (done) {
+        if (checked) {
             const float checkSz = std::max(9.0f, size * 0.6f);
             DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, sx + half - checkSz * 0.7f, sy + half - checkSz * 0.7f, checkSz,
                              checkSz, 0xFFFFFFFFu, 0.95f * alpha, 1.12f);
@@ -4643,33 +5070,15 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
                 hoveredName = umm_lang::T(umm_lang::Str::WaterSource);
                 hoveredSx = sx;
                 hoveredSy = sy;
+                g_hoveredDepositRow = OreHash(kWaterFirst);
             }
         }
     }
-    if (hoveredName) {
-        // Like the game's own hover title ("Gem Forge"): bold and large, right of the icon, on a soft shadow.
-        // A copy of the game's bold h3 style at 28 px (its identifier string dropped: it is a relative pointer).
-        static uint8_t titleStyle[kUiCharacterStyleSize]{};
-        static uint8_t* titleStyleFor = nullptr;
-        uint8_t* assets = GetUiAssets();
-        if (!assets) return;
-        if (titleStyleFor != assets) {
-            std::memcpy(titleStyle, assets + kH3StyleOffset, sizeof(titleStyle));
-            std::memset(titleStyle, 0, 8);
-            const float titleSize = 28.0f;
-            std::memcpy(titleStyle + kStyleFontSize, &titleSize, sizeof(titleSize));
-            titleStyleFor = assets;
-        }
-        const char* name = hoveredName;
-        const float fontScale = 28.0f / 15.0f; // TextWidth is calibrated on the small text
-        const float h = 18.0f * fontScale, w = umm_lang::TextWidth(name) * fontScale + 12.0f;
-        const float bx = hoveredSx + half + 10.0f, by = hoveredSy - h * 0.5f;
-        // No band behind it (the soft glow reads as a dark oval on the map): a faint 1 px drop shadow, like the game's own
-        // hover title (Silver Chest)
-        DrawLabelAbs(bx + 1.0f, by + 1.0f, w, h, name, 0xff000000u, 0.5f, TextAlignH::Left, TextAlignV::Center, titleStyle);
-        DrawLabelAbs(bx, by, w, h, name, 0xffffffffu, 1.0f, TextAlignH::Left, TextAlignV::Center, titleStyle);
-    }
+    if (hovered < kOreDepositCount && !g_hoveredDepositRow) g_hoveredDepositRow = OreHash(kOreDeposits[hovered].ore);
+    if (hoveredName) DrawMapHoverTitle(hoveredSx + half + 10.0f, hoveredSy, hoveredName);
 }
+
+#include "town_portals.inl"
 
 // What a marker row is called in the panel. Rows whose game name is exactly the row's meaning use
 // the game's official translation while the mod follows the game's language; every other row (and
@@ -5460,6 +5869,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     {
         static bool plusWasDown = false, minusWasDown = false;
         const bool keysFree = focused && !g_findDialogOpen && !typingInGameField;
+        UpdateFilterHistory(client, mapState, keysFree);
         const bool plusDown = keysFree && ((GetAsyncKeyState(VK_ADD) | GetAsyncKeyState(VK_PRIOR)) & 0x8000) != 0;
         const bool minusDown = keysFree && ((GetAsyncKeyState(VK_SUBTRACT) | GetAsyncKeyState(VK_NEXT)) & 0x8000) != 0;
         const int dir = (plusDown && !plusWasDown) ? -1 : (minusDown && !minusWasDown) ? 1 : 0; // -1 closer
@@ -5555,6 +5965,13 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         // game's, so they stay out of its box (mapState +0xf8 is 3 and +0x56310 holds the marker while it is open; the
         // menu opens beside the marker, on its right unless that runs off the screen)
         g_drawExclusion.active = false;
+        g_hideRowBtn.active = false;
+        // The mod's icon under the cursor as the menu opened (last frame's: the icons draw after this)
+        static uint32_t s_menuDepositRow = 0u;
+        static bool s_menuWasOpen = false;
+        const bool menuOpen = *reinterpret_cast<uint32_t*>(mapState + 0xf8) == 3;
+        if (menuOpen && !s_menuWasOpen) s_menuDepositRow = g_hoveredDepositRow;
+        s_menuWasOpen = menuOpen;
         if (*reinterpret_cast<uint32_t*>(mapState + 0xf8) == 3) {
             const uint8_t* menuMarker = *reinterpret_cast<uint8_t**>(mapState + 0x56310);
             uint8_t* view = *reinterpret_cast<uint8_t**>(mapState + 8);
@@ -5574,6 +5991,17 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 if (left + kMenuW > rightEdge) left = sx - kGap - kMenuW;
                 float top = std::max(rootRect[1], std::min(bottomEdge - kMenuH, sy - 34.0f));
                 g_drawExclusion = {zoom > 0.0f, left - kMargin, top - kMargin, left + kMenuW + kMargin, top + kMenuH + kMargin};
+                // An icon is ~20 px across: 16 px from the clicked spot, in metres at this zoom
+                if (zoom > 0.0f && HideRowTargetAt(client, *reinterpret_cast<const int32_t*>(menuMarker + 0x14),
+                        *reinterpret_cast<const int32_t*>(menuMarker + 0x24), 24.0f / zoom, s_menuDepositRow,
+                        g_hideRowBtn)) {
+                    g_hideRowBtn.w = kMenuW - 20.0f;
+                    g_hideRowBtn.h = 40.0f;
+                    g_hideRowBtn.x = left + 10.0f;
+                    g_hideRowBtn.y = top + kMenuH + 6.0f;
+                    if (g_hideRowBtn.y + g_hideRowBtn.h > bottomEdge) g_hideRowBtn.y = top - 6.0f - g_hideRowBtn.h;
+                    g_hideRowBtn.active = true;
+                }
             }
         }
         DrawRegionBorderOnMap(root.raw, rootRect, mapState);
@@ -5581,9 +6009,55 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my,
                              std::max(500, std::min(1500, 2000 - treeDraws)));
         DrawVisitedSanctumsOnMap(root.raw, rootRect, client, mapState);
+        DrawRefilledChestsOnMap(root.raw, rootRect, client, mapState);
         DrawGraveHeightsOnMap(root.raw, rootRect, client, mapState);
+        if (g_townPortalsEnabled) DrawTownPortalsOnMap(root.raw, rootRect, mapState, haveCursor, mx, my); // Town Portal's open portals
         DrawMapCursorPosition(root.raw, rootRect, mapState, haveCursor, mx, my, false);
         g_drawExclusion.active = false; // the Map Key and the rest draw as usual
+        {
+            // The game may close its menu on the press itself: a press on last frame's button still counts
+            static HideRowButton s_lastBtn;
+            const HideRowButton& b = g_hideRowBtn.active ? g_hideRowBtn : s_lastBtn;
+            const bool hov = b.active && isHovered(b.x, b.y, b.w, b.h);
+            if (g_hideRowBtn.active) {
+                DrawKeyButtonAbs(root.raw, b.x, b.y, b.w, b.h, hov, false);
+                DrawLabelAbs(b.x + 8.0f, b.y, b.w - 16.0f, b.h, b.label, hov ? key_style::kActiveText : key_style::kText, hov ? 1.0f : 0.92f,
+                    TextAlignH::Center, TextAlignV::Center);
+            }
+            auto hideRow = [&](const HideRowButton& r, const char* how) {
+                for (uint32_t h : r.hashes) {
+                    if (h != 0u) SetSingleFilterState(client, mapState, h, false);
+                }
+                if (g_log) g_log("Map: hid the row %08x (%s)", r.hashes[0], how);
+                ClearMapViewClickLatch(mapState); // closes the menu; no waypoint
+                g_panelClickLatch = true;
+                g_findClosingFrames = std::max(g_findClosingFrames, 8);
+            };
+            if (clicked && hov) {
+                hideRow(b, "a marker's menu");
+                g_hideRowBtn.active = false;
+            }
+            s_lastBtn = g_hideRowBtn;
+            // Alt + click a marker: the same, without the menu
+            const bool altDown = focused && (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+            uint8_t* view = *reinterpret_cast<uint8_t**>(mapState + 8);
+            const bool overPanel = mx >= g_lastPanelX && mx <= g_lastPanelX + g_lastPanelW && my >= g_lastPanelY &&
+                                   my <= g_lastPanelY + g_lastPanelH;
+            if (clicked && altDown && haveCursor && !hov && !overPanel && !g_findDialogOpen && view) {
+                const float zoom = *reinterpret_cast<float*>(view + 0x10);
+                float worldH = *reinterpret_cast<float*>(view + 0x3c);
+                if (worldH <= 100.0f) worldH = 10240.0f;
+                const float ox = *reinterpret_cast<float*>(view + 0x1e0) + *reinterpret_cast<float*>(view + 0x17c) -
+                                 *reinterpret_cast<float*>(view + 0x1e8);
+                const float oy = *reinterpret_cast<float*>(view + 0x1e4) + *reinterpret_cast<float*>(view + 0x180) -
+                                 *reinterpret_cast<float*>(view + 0x1ec);
+                HideRowButton target;
+                if (zoom > 0.0f && HideRowTargetAt(client, static_cast<int32_t>((mx - ox) / zoom),
+                        static_cast<int32_t>(worldH - (my - oy) / zoom), 16.0f / zoom, g_hoveredDepositRow, target)) {
+                    hideRow(target, "Alt+click");
+                }
+            }
+        }
 
         const PanelLayout& lay = CurrentPanelLayout();
         const float kPanelW = lay.panelW;
@@ -5594,20 +6068,25 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         constexpr float kActionRowH = 30.0f; // SHOW ALL / HIDE ALL, under the title bar (does not scroll)
         // Region: [<  name  >] [Dim | Hide], under it (does not scroll), with Settings > Advanced > Region Filter on
         const float kRegionRowH = g_regionFilterEnabled ? 30.0f : 0.0f;
+        constexpr float kSearchRowH = 30.0f; // the search box, under them (does not scroll)
+        constexpr float kItemRowH0 = 20.0f;
+        UpdateKeySearchMatch();
         const float panelX = rootRect[0] + rootW - kPanelW - 24.0f;
         const float panelY = rootRect[1] + 104.0f;
 
         auto panelHeight = [&](float itemRowH) {
             float h = kTitleBarH + 6.0f;
             if (!g_panelCollapsed) {
-                h += 6.0f + kActionRowH + kRegionRowH;
+                h += 6.0f + kActionRowH + kRegionRowH + kSearchRowH;
+                if (KeySearching() && g_keySearchMatch.any == 0) h += kItemRowH0 + 4.0f; // "No matching rows"
                 for (size_t c = 0; c < kCategoryGroupCount; ++c) {
+                    if (!KeySearchCatShown(c)) continue;
                     h += kCatRowH + 2.0f;
-                    if (!g_categoryCollapsed[c]) {
+                    if (KeySearching() || !g_categoryCollapsed[c]) {
                         if (kCategoryGroups[c].category == 4) {
                             h += kPinRowH + 4.0f;
                         } else {
-                            h += kCategoryGroups[c].rowCount * itemRowH + 4.0f;
+                            h += KeySearchRowCount(c) * itemRowH + 4.0f;
                         }
                     }
                 }
@@ -5682,8 +6161,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         }
         g_panelCurrentlyHovered = panelHovered;
         EnsureMapKeyWheelHook(foreground);
-        g_mapKeyWheelCapture = panelHovered && !settingsHovered && scrollMax > 0.0f;
-        {
+        g_mapKeyWheelCapture = (panelHovered && !settingsHovered && scrollMax > 0.0f) || g_findDialogOpen;
+        if (!g_findDialogOpen) { // while Find is open its list takes the wheel (below)
             const LONG wheel = InterlockedExchange(&g_mapKeyWheelDelta, 0);
             if (wheel != 0 && scrollMax > 0.0f) {
                 g_mapKeyScroll = std::max(0.0f, std::min(scrollMax, g_mapKeyScroll - wheel / 120.0f * 60.0f));
@@ -5704,7 +6183,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
         if (!g_findDialogOpen && g_findClosingFrames > 0) {
             --g_findClosingFrames;
-            if (ClearTextInputFlag() && g_log) g_log("Find on the map: the game's text input came back on after closing; turned it off");
+            // (not while the Map Key's search box is typed in: it keeps the flag on itself)
+            if (!g_keySearchFocused && ClearTextInputFlag() && g_log)
+                g_log("Find on the map: the game's text input came back on after closing; turned it off");
         }
         if (g_findDialogOpen || g_findClosingFrames > 0 || g_waitReleaseAfterFindClose ||
             g_panelClickLatch || panelHovered) {
@@ -5904,11 +6385,122 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     }
                 }
 
+                // SEARCH: narrows the list below (Find, Shift+F, searches the map's places instead). Click to type;
+                // Esc clears it, Enter or a click elsewhere keeps it
+                {
+                    static uint64_t s_lastFrame = 0;
+                    const uint64_t now = GetTickCount64();
+                    if (now - s_lastFrame > 1000) { // the map was closed: start empty
+                        g_keySearch.clear();
+                        g_keySearchFocused = false;
+                    }
+                    s_lastFrame = now;
+                    const float bx = panelX + 8.0f, by = panelY + kTitleBarH + 4.0f + kActionRowH + kRegionRowH;
+                    const float bw = kPanelW - 16.0f, bh = kSearchRowH - 4.0f;
+                    const bool hovBox = !g_findDialogOpen && isHovered(bx, by, bw, bh);
+                    const bool hovClear = KeySearching() && !g_findDialogOpen && isHovered(bx + bw - bh, by, bh, bh);
+                    if (clicked) {
+                        if (hovClear) {
+                            g_keySearch.clear();
+                            g_mapKeyScroll = 0.0f;
+                        } else if (hovBox && !g_keySearchFocused) {
+                            g_keySearchFocused = true;
+                            std::lock_guard<std::mutex> lock(g_keySearchMutex);
+                            g_keySearchTyped.clear();
+                        } else if (!hovBox && g_keySearchFocused) {
+                            g_keySearchFocused = false;
+                            ClearTextInputFlag();
+                        }
+                    }
+                    if (g_findDialogOpen && g_keySearchFocused) g_keySearchFocused = false;
+                    if (g_keySearchFocused) {
+                        SetTextInputFlag();
+                        std::wstring typed;
+                        {
+                            std::lock_guard<std::mutex> lock(g_keySearchMutex);
+                            typed.swap(g_keySearchTyped);
+                        }
+                        const std::string before = g_keySearch;
+                        std::wstring plain;
+                        auto flush = [&]() {
+                            if (plain.empty()) return;
+                            const int n = WideCharToMultiByte(CP_UTF8, 0, plain.data(), static_cast<int>(plain.size()),
+                                                              nullptr, 0, nullptr, nullptr);
+                            std::string u(static_cast<size_t>(std::max(0, n)), '\0');
+                            if (n > 0) WideCharToMultiByte(CP_UTF8, 0, plain.data(), static_cast<int>(plain.size()), u.data(),
+                                                           n, nullptr, nullptr);
+                            if (g_keySearch.size() + u.size() <= 40) g_keySearch += u;
+                            plain.clear();
+                        };
+                        auto popChar = [&]() {
+                            while (!g_keySearch.empty() && (static_cast<unsigned char>(g_keySearch.back()) & 0xc0) == 0x80)
+                                g_keySearch.pop_back();
+                            if (!g_keySearch.empty()) g_keySearch.pop_back();
+                        };
+                        for (wchar_t ch : typed) {
+                            if (ch == 0x1b) { // Esc: clear and leave (the map's input stays off while Esc is down)
+                                plain.clear();
+                                g_keySearch.clear();
+                                g_keySearchFocused = false;
+                                g_findClosingFrames = std::max(g_findClosingFrames, 15);
+                                break;
+                            }
+                            if (ch == 0x0d) { // Enter: keep and leave
+                                flush();
+                                g_keySearchFocused = false;
+                                break;
+                            }
+                            if (ch == 0x08 || ch == 0x7f) { // Backspace, Ctrl+Backspace (the whole word)
+                                flush();
+                                popChar();
+                                if (ch == 0x7f) {
+                                    while (!g_keySearch.empty() && g_keySearch.back() == ' ') popChar();
+                                    while (!g_keySearch.empty() && g_keySearch.back() != ' ') popChar();
+                                }
+                                continue;
+                            }
+                            if (ch >= 0x20) plain.push_back(ch);
+                        }
+                        flush();
+                        if (!g_keySearchFocused) ClearTextInputFlag();
+                        if (g_keySearch != before) g_mapKeyScroll = 0.0f;
+                    }
+                    DrawFramedBoxAbs(anchor.raw, bx, by, bw, bh, g_keySearchFocused ? kHoverFill : kPanelFill, 0.95f,
+                                     (g_keySearchFocused || hovBox) ? kGold : kButtonFrame, g_keySearchFocused ? 0.95f : 0.8f);
+                    // A small magnifier: a ring and its handle
+                    const float mcx = bx + 13.0f, mcy = by + bh * 0.5f - 1.5f;
+                    DrawAssetRectAbs(anchor.raw, kCircleOutlinePrimitive, mcx - 5.0f, mcy - 5.0f, 10.0f, 10.0f,
+                                     g_keySearchFocused ? kGold : kTextMuted, 0.95f, 1.6f);
+                    for (int i = 0; i < 4; ++i) {
+                        DrawSolidRectAbs(anchor.raw, mcx + 3.0f + i, mcy + 3.0f + i, 2.0f, 2.0f,
+                                         g_keySearchFocused ? kGold : kTextMuted, 0.95f);
+                    }
+                    const float tx = bx + 26.0f, tw = bw - 26.0f - bh;
+                    // The caret is an "_" after the text, so it sits where the text ends whatever the font (the game's text drops "|")
+                    const bool caretOn = g_keySearchFocused && (now / 530) % 2 == 0;
+                    if (KeySearching() || caretOn) {
+                        const std::string shown = g_keySearch + (caretOn ? "_" : "");
+                        DrawLabelAbs(tx, by, tw, bh, shown.c_str(), kActiveText, 1.0f, TextAlignH::Left,
+                                     TextAlignV::Center, nullptr, kFilterRowFontScale);
+                    }
+                    if (KeySearching()) {
+                        // Clear: an x
+                        const float cx = bx + bw - bh * 0.5f, cy = by + bh * 0.5f;
+                        for (int i = -4; i <= 4; ++i) {
+                            DrawSolidRectAbs(anchor.raw, cx + i - 1.0f, cy + i - 1.0f, 2.0f, 2.0f, hovClear ? kActiveText : kTextMuted, 0.95f);
+                            DrawSolidRectAbs(anchor.raw, cx + i - 1.0f, cy - i - 1.0f, 2.0f, 2.0f, hovClear ? kActiveText : kTextMuted, 0.95f);
+                        }
+                    } else if (!g_keySearchFocused) {
+                        DrawLabelAbs(tx, by, tw, bh, umm_lang::T(umm_lang::Str::SearchList), kOffText, 0.9f,
+                                     TextAlignH::Left, TextAlignV::Center, nullptr, kFilterRowFontScale);
+                    }
+                }
+
                 auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
                 size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
 
                 // The list scrolls under the title bar; a row is drawn (and clickable) only while fully inside it
-                const float contentTop = kTitleBarH + 6.0f + kActionRowH + kRegionRowH;
+                const float contentTop = kTitleBarH + 6.0f + kActionRowH + kRegionRowH + kSearchRowH;
                 const float contentBottom = totalH - 6.0f;
                 const float py = panelY - g_mapKeyScroll; // screen y of content y 0
                 auto inView = [&](float y, float h) {
@@ -5917,6 +6509,14 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 const float rowRight = scrollMax > 0.0f ? 14.0f + kScrollBarRoom : 14.0f; // badges clear the scroll bar
 
                 float curY = contentTop;
+                if (KeySearching() && g_keySearchMatch.any == 0) {
+                    if (inView(curY, kItemRowH0)) {
+                        DrawLabelAbs(panelX + 16.0f, py + curY, kPanelW - 32.0f, kItemRowH0,
+                            umm_lang::T(umm_lang::Str::NoListMatches), kTextMuted, 0.9f, TextAlignH::Left,
+                            TextAlignV::Center, nullptr, kFilterRowFontScale);
+                    }
+                    curY += kItemRowH0 + 4.0f;
+                }
                 if (!g_categoryOrderSet) ResetCategoryOrder();
                 // Dragging a category's title moves it: a press there starts it, moving 6 px makes it a drag, and the
                 // release drops it before the category under the cursor (a press without a drag switches it as before)
@@ -5931,6 +6531,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     const auto& grp = kCategoryGroups[c];
                     const size_t hashIdx = CategoryHashBase(c);
                     barTopY[oi] = py + curY;
+                    if (!KeySearchCatShown(c)) continue;
+                    const bool catOpen = KeySearching() || !g_categoryCollapsed[c];
                     bool catOn = IsCategoryEnabled(filterEntries, filterCount, grp.category);
 
                     if (inView(curY, kCatRowH)) {
@@ -5945,7 +6547,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
                         // Collapse marker (+ / -) in gold, then the group's title
                         DrawLabelAbs(panelX + 12.0f, py + curY, 22.0f, kCatRowH,
-                            g_categoryCollapsed[c] ? "+" : "-", hovCatCollapse ? kActiveText : kGold, 1.0f,
+                            catOpen ? "-" : "+", hovCatCollapse ? kActiveText : kGold, 1.0f,
                             TextAlignH::Center, TextAlignV::Center);
                         DrawLabelAbs(panelX + 36.0f, py + curY,
                             kPanelW - 50.0f - rowRight - OnOffBadgeWidth() - LockSlotWidth(), kCatRowH,
@@ -5962,7 +6564,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         }
                         if (clicked && hovCatLock) {
                             ToggleCategoryLock(grp.category);
-                        } else if (clicked && hovCatCollapse) {
+                        } else if (clicked && hovCatCollapse && !KeySearching()) {
                             g_categoryCollapsed[c] = !g_categoryCollapsed[c];
                             SaveCollapsedSections();
                             if (catLocked) SaveFilterLocks();
@@ -5978,7 +6580,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
                     curY += kCatRowH + 2.0f;
 
-                    if (g_categoryCollapsed[c]) continue;
+                    if (!catOpen) continue;
 
                     if (grp.category == 4) {
                         if (inView(curY, kPinRowH)) {
@@ -6018,6 +6620,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         });
                         for (size_t k = 0; k < rowN; ++k) {
                             const size_t r = rowOrder[k];
+                            if (!KeySearchRowShown(c, r)) continue;
                             const auto& rowSpec = grp.rows[r];
                             int count = hashCounts[hashIdx + r];
                             if (g_scrollToRow != 0 && rowSpec.typeHash == g_scrollToRow) {
@@ -6084,7 +6687,14 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                     kBadgeRing, rowOn ? 0.9f : 0.35f);
                             }
 
-                            if (IsOreHash(rowSpec.typeHash) && kOreAreaColors[OreIndexOf(rowSpec.typeHash)] != 0) {
+                            if (rowSpec.typeHash == kTownPortalTypeHash) {
+                                // A portal: a violet disc in a bright rim, like the portals on the map
+                                const float bx = panelX + 30.0f, by = py + curY + (kItemRowH - 14.0f) * 0.5f;
+                                DrawAssetRectAbs(anchor.raw, kCirclePrimitive, bx, by, 14.0f, 14.0f, 0xffe050b4u,
+                                    rowOn ? 0.55f : 0.2f);
+                                DrawAssetRectAbs(anchor.raw, kCircleOutlinePrimitive, bx, by, 14.0f, 14.0f, 0xfffff0ffu,
+                                    rowOn ? 0.95f : 0.35f, 1.2f);
+                            } else if (IsOreHash(rowSpec.typeHash) && kOreAreaColors[OreIndexOf(rowSpec.typeHash)] != 0) {
                                 // Tree areas have no icon: their colour on the map, in the badge
                                 const float bx = panelX + 31.0f, by = py + curY + (kItemRowH - 12.0f) * 0.5f;
                                 DrawAssetRectAbs(anchor.raw, kCirclePrimitive, bx, by, 12.0f, 12.0f,
@@ -6363,8 +6973,12 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 }
             }
 
-            if (g_findWheelDeltaPtr) {
-                LONG wheelDelta = InterlockedExchange(g_findWheelDeltaPtr, 0);
+            // The wheel: Find's own wheel catch only runs for its own search, so the Map Key's wheel hook takes it here
+            EnsureMapKeyWheelHook(foreground);
+            g_mapKeyWheelCapture = true;
+            {
+                LONG wheelDelta = InterlockedExchange(&g_mapKeyWheelDelta, 0);
+                if (g_findWheelDeltaPtr) wheelDelta += InterlockedExchange(g_findWheelDeltaPtr, 0);
                 if (wheelDelta != 0 && totalRows > kMaxFindVisibleRows) {
                     int step = -(wheelDelta / 120);
                     if (step == 0) step = (wheelDelta > 0) ? -1 : 1;
@@ -6396,8 +7010,32 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     if (hitVis >= 0 && hitVis < visCount) {
                         g_findHoveredIndex = g_findScrollOffset + hitVis;
                     }
+                    // The scroll bar, just right of the lines (Find draws it there): press on it, or drag its
+                    // thumb, and the list follows the cursor between the top and bottom line.
+                    const int maxScroll = totalRows - kMaxFindVisibleRows;
+                    if (maxScroll > 0) {
+                        const float probeX = uiCurX - 40.0f;
+                        auto lineAt = [&](float y) { return g_findHitTestRow(g_mapFindDialog, visCount, probeX, y); };
+                        const bool onBar = hitVis < 0 && lineAt(uiCurY) >= 0;
+                        if (clicked && onBar) g_findScrollDragging = true;
+                        if (!leftDown) g_findScrollDragging = false;
+                        if (g_findScrollDragging) {
+                            // The lines' top and bottom, found from Find's own hit test along the probe column
+                            float top = uiCurY, bottom = uiCurY;
+                            for (float y = uiCurY; y > uiCurY - 600.0f && lineAt(y - 2.0f) >= 0; y -= 2.0f) top = y - 2.0f;
+                            for (float y = uiCurY; y < uiCurY + 600.0f && lineAt(y + 2.0f) >= 0; y += 2.0f) bottom = y + 2.0f;
+                            static float s_top = 0.0f, s_bottom = 0.0f;
+                            if (bottom - top > 20.0f) { s_top = top; s_bottom = bottom; } // off the bar: keep the last
+                            if (s_bottom - s_top > 20.0f) {
+                                const float t = std::max(0.0f, std::min(1.0f, (uiCurY - s_top) / (s_bottom - s_top)));
+                                g_findScrollOffset = static_cast<int>(t * maxScroll + 0.5f);
+                            }
+                            g_findHoveredIndex = -1;
+                        }
+                    }
                 }
             }
+            if (!leftDown) g_findScrollDragging = false;
 
             auto confirmFindSelection = [&]() {
                 if (g_findSelectedIndex >= 0 && g_findSelectedIndex < static_cast<int>(g_findDisplayRows.size())) {
@@ -6428,7 +7066,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 }
             };
 
-            if (clicked && g_findHoveredIndex >= 0 && g_findHoveredIndex < totalRows) {
+            if (clicked && !g_findScrollDragging && g_findHoveredIndex >= 0 && g_findHoveredIndex < totalRows) {
                 uint64_t nowTick = GetTickCount64();
                 bool alreadySelected = (g_findSelectedIndex == g_findHoveredIndex);
                 bool isDoubleClick = (g_findHoveredIndex == g_lastClickedRow) && ((nowTick - g_lastClickTick) < 600);
@@ -6497,6 +7135,8 @@ bool BlockWorldMapInput(uint8_t* mapState) {
                 float my = g_lastRootY + pt.y * g_lastRootH / static_cast<float>(cr.bottom);
                 cursorInPanel = (mx >= g_lastPanelX && mx <= g_lastPanelX + g_lastPanelW &&
                                  my >= g_lastPanelY && my <= g_lastPanelY + g_lastPanelH) ||
+                                (g_hideRowBtn.active && mx >= g_hideRowBtn.x && mx <= g_hideRowBtn.x + g_hideRowBtn.w &&
+                                 my >= g_hideRowBtn.y && my <= g_hideRowBtn.y + g_hideRowBtn.h) ||
                                 (g_lastSettingsW > 0.0f &&
                                  mx >= g_lastSettingsX && mx <= g_lastSettingsX + g_lastSettingsW &&
                                  my >= g_lastSettingsY && my <= g_lastSettingsY + g_lastSettingsH);
@@ -6517,8 +7157,9 @@ bool BlockWorldMapInput(uint8_t* mapState) {
             }
         }
 
+        // Typing in the Map Key's search box: the map's keys (C recenters, Esc closes) are off, as with Find
         if (g_findDialogOpen || g_findClosingFrames > 0 || g_waitReleaseAfterFindClose ||
-            g_panelClickLatch || shiftFNow || cursorInPanel) {
+            g_panelClickLatch || shiftFNow || cursorInPanel || g_keySearchFocused) {
             blockMapInput = true;
         }
 
@@ -6737,6 +7378,7 @@ void LoadMinimapConfig() {
     int sizePx = GetPrivateProfileIntA("MinimapV2", "Size", 236, cfg.c_str());
     int zoomIdx = GetPrivateProfileIntA("MinimapV2", "ZoomIdx", 2, cfg.c_str());
     int otherPlayers = GetPrivateProfileIntA("MinimapV2", "OtherPlayers", 1, cfg.c_str());
+    const int townPortals = GetPrivateProfileIntA("MinimapV2", "TownPortals", 1, cfg.c_str());
     int showTerrain = GetPrivateProfileIntA("MinimapV2", "ShowTerrain", 1, cfg.c_str());
     int thinBorder = GetPrivateProfileIntA("MinimapV2", "ThinBorder", 0, cfg.c_str());
     int infoBar = GetPrivateProfileIntA("MinimapV2", "InfoBar", 1, cfg.c_str());
@@ -6755,10 +7397,12 @@ void LoadMinimapConfig() {
     const int fogMode = GetPrivateProfileIntA("MinimapV2", "FogRevealMode", -1, cfg.c_str());
     if (fogMode >= 0 && fogMode <= 2 && !g_fogModeFromHotReload) ApplyFogRevealMode(static_cast<FogRevealMode>(fogMode));
     int respawnMins = GetPrivateProfileIntA("Chests", "RespawnMinutes", 30, cfg.c_str());
+    // ResetRadius: before 1.3.16 the mod's stand-in for the game's chunk rule (500 written as the default); now only an
+    // extra hold on top of that rule, 0 by default
     int resetRadius = GetPrivateProfileIntA("Chests", "ResetRadius", -1, cfg.c_str());
-    if (resetRadius < 0) {
-        resetRadius = 500;
-        WritePrivateProfileStringA("Chests", "ResetRadius", "500", cfg.c_str());
+    if (resetRadius < 0 || resetRadius == 500) {
+        resetRadius = 0;
+        WritePrivateProfileStringA("Chests", "ResetRadius", "0", cfg.c_str());
     }
     // [Mining] Ores = one 0/1 per ore, in the Map Key's order
     char ores[512]{};
@@ -6803,6 +7447,7 @@ void LoadMinimapConfig() {
     g_minimapSize = std::max(150.0f, std::min(kMinimapMaxSize, static_cast<float>(sizePx)));
     g_minimapZoomIdx = std::max(0, std::min(kMinimapZoomCount - 1, zoomIdx));
     g_otherPlayersEnabled = (otherPlayers != 0);
+    g_townPortalsEnabled = (townPortals != 0);
     g_goldChestEnabled = GetPrivateProfileIntA("MinimapV2", "GoldChests", 1, cfg.c_str()) != 0;
     g_silverChestEnabled = GetPrivateProfileIntA("MinimapV2", "SilverChests", 1, cfg.c_str()) != 0;
     g_minimapShowTerrain = (showTerrain != 0);
@@ -6946,6 +7591,7 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "ZoomIdx", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_otherPlayersEnabled ? 1 : 0);
     WritePrivateProfileStringA("MinimapV2", "OtherPlayers", buf, cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "TownPortals", g_townPortalsEnabled ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_minimapShowTerrain ? 1 : 0);
     WritePrivateProfileStringA("MinimapV2", "ShowTerrain", buf, cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "ThinBorder", g_minimapThinBorder ? "1" : "0", cfg.c_str());
@@ -8223,7 +8869,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                     else if (dy <= -kChestHeightMinMeters) heightDir = -1;
                 }
 
-                drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, 3, isPulsing, chestCleared, heightDir});
+                drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, 3, isPulsing,
+                                                     chestCleared || g_chestLootStates[c].everLooted, heightDir});
             }
         }
 
@@ -8253,7 +8900,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                     sy < vy + iconPad * 0.5f || sy > vy + vh - iconPad * 0.5f) {
                     continue;
                 }
-                const bool done = KnowledgeDone(d); // read / defeated: hidden or greyed like looted chests
+                // read / defeated: the check mark; hidden or greyed like looted chests (not a boss that came back)
+                const bool checked = KnowledgeDone(d), done = checked && KnowledgeGrayed(d);
                 if (done && g_lootedChestMode == 0) continue;
                 int8_t heightDir = 0;
                 const bool heightCaret = IsKnowledgeDeposit(d) || kOreCategory[dep.ore] == kMiningCategory ||
@@ -8266,7 +8914,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 // Return Beacons and the other world rows layer with their pins; deposits stay under everything
                 drawList.push_back(MinimapMarkerDraw{sx, sy, 13.0f * btnScale, DepositIcon(d),
                     (unexplored || done) ? 0xFF8C9296u : 0xFFFFFFFFu, (unexplored || done) ? 0.55f : 0.95f,
-                    IsResourceCategory(kOreCategory[dep.ore]) ? kMiningCategory : kOreCategory[dep.ore], false, done,
+                    IsResourceCategory(kOreCategory[dep.ore]) ? kMiningCategory : kOreCategory[dep.ore], false, checked,
                     heightDir});
             }
         }
@@ -8351,6 +8999,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                                 md.sy + (up ? -0.32f : 0.32f) * md.size, up, std::max(0.7f, md.alpha));
             }
         }
+
+        // Town Portal's open portals (town_portals.inl), under the players
+        if (g_townPortalsEnabled)
+            DrawTownPortalsOnMinimap(anchor.raw, vcx, vcy, playerX, playerZ, radiusMeters, pxPerMeterX, pxPerMeterY, btnScale);
 
         // Draw other players in multiplayer from client + 0x4642c0 (count at +0x4642c8, stride 0x240)
         if (g_otherPlayersEnabled) {
@@ -8492,7 +9144,9 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         float faceDirX = 0.0f, faceDirZ = 1.0f;
         GetHudPlayerFacingDirs(client, playerX, playerZ, camDirX, camDirZ, faceDirX, faceDirZ);
 
-        DrawPlayerTriangle(anchor.raw, vcx, vcy, faceDirX, faceDirZ, btnScale, 0xFF63A1B8u, 0xFF8CC4DAu, 1.0f);
+        // Your own colour, as every other player sees you (see minimap_players::ColorFor).
+        const uint32_t ownColor = minimap_players::ColorFor(*reinterpret_cast<uint32_t*>(client + 0x18));
+        DrawPlayerTriangle(anchor.raw, vcx, vcy, faceDirX, faceDirZ, btnScale, ownColor, ownColor, 1.0f);
 
         if (thinBorder) {
             // Thin border: a dark outline and a fine gold line round the map, and a small N at the top. The bar
@@ -9340,6 +9994,7 @@ void UseKeptState(KeptState* kept) {
 void PrepareMapKeyPanelForReload() {
     RemoveMapKeyWheelHook();
     SetMinimapMouseControl(false, nullptr);
+    ReleaseTownPortalSource();
     if (g_findDialogOpen) {
         CloseNativeFindDialog();
     }

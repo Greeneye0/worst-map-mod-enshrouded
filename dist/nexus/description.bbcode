@@ -15,7 +15,7 @@
 [*][b]Two more zoom steps out[/b] on the world map, and [b]Page Up / Page Down[/b] (or numpad + and -) to zoom a step at a time.
 [*][b]Find on the map[/b]: press [b]Shift+F[/b], type a name or a kind of place, and the map moves to show it.
 [*][b]Fog and pin modes[/b]: the game's own fog, a light fog over a fully drawn map, or no fog; and pins only where you've been, grayed out in unexplored land, or all of them.
-[*][b]Looted chests[/b]: open a chest and it's hidden or grayed out with a check mark, until it comes back. Shared with other players who have the mod.
+[*][b]Looted chests[/b]: open a chest and it's hidden or grayed out with a check mark until it refills, and it keeps the check mark after. Shared with other players who have the mod.
 [*][b]A minimap on your HUD[/b] with the map's terrain, the time of day or the weather, and other players, that you can move, resize and zoom.
 [*][b]All 15 game languages[/b]: the mod's text follows the game's language.
 [*][b]Client only[/b]: works in single player, hosted games and on any dedicated server. Nothing goes on the server, and other players don't need it.
@@ -33,10 +33,12 @@
 [*][b]Every gold and silver chest in the world is included[/b]: all 448 gold chests and 1032 silver chests have their own rows in the filter, so you can show just the chests you're hunting.
 [*]Click a row to show or hide that marker type.
 [*][b]SHOW ALL / HIDE ALL[/b] at the top switch every marker type at once.
+[*][b]Search this list[/b], under them: type part of a row's name and only the matching rows show, their sections opened (folded or locked ones too). [b]Esc[/b] or the x clears it. It only narrows the panel; Find (Shift+F) searches the map's places.
 [*][b]REGION[/b], under them (with Settings > Advanced > Region Filter on): the arrows step through All Regions and the world's regions in level order (Springlands, Revelwood, Blackmire, Nomad Highlands, Kindlewastes, Albaneve Summits, Veilwater Basin, Cinder's Cradle); click the name to jump to the region you're in. Pins outside the region are dimmed ([b]DIM[/b]) or not shown at all ([b]HIDE[/b]), and its border is drawn as a dotted gold line. Quest pins, lore rumors and your own pins always show. Requested by VintageMarble.
 [*]Click a category header to switch the whole category; [b]+ / -[/b] folds it, and it stays folded the next time you play. [b]Drag a category header[/b] up or down to move the category; the order is remembered.
 [*]The rows in each category are sorted by name in your language.
 [*]The mouse wheel or the scroll bar scrolls the list.
+[*][b]Hide a marker's row from the map[/b]: right-click the marker and click [b]Hide[/b] under the game's menu, or [b]Alt + left click[/b] it. [b]Ctrl+Z[/b] undoes a filter change and [b]Ctrl+Y[/b] redoes it.
 [*][b]CUSTOM PINS[/b]: click a pin icon to show or hide your own pins of that kind.
 [*][b]Tab[/b] (or the - button at the top) folds the panel away; to use another key, set [i]PanelToggle=[/i] under [i][Keys][/i] in [i]minimap_config.ini[/i] (a letter, a digit, F1 to F12, CapsLock, Home, End... or None). The [b]cog[/b] opens Settings.
 [*][b]Filter locks[/b]: the padlock left of a switch locks that filter. A locked filter keeps its ON or OFF through SHOW ALL / HIDE ALL, reloads and updates, and a locked category also stays open or closed; you can still click it. [b]Hold[/b] SHOW ALL or HIDE ALL to change locked filters too.
@@ -44,7 +46,7 @@
 [*][b]Unique Weapons[/b] and [b]Unique Equipment[/b] (World & Resources): the one-of-a-kind weapons (40, like the Wailing Blade and Talion's Bow) and rings and gear (16, like the Gemini Ring and the Flaming Gauntlets), each at the chest or place it is in, with its own icon and name. One in a gold or silver chest counts as found once that chest is looted; for the others [b]Ctrl + left click[/b] it to mark it found, saved per character. [b]Find[/b] finds them by name. Requested by Gadn.
 [*][b]Collectibles[/b] (World & Resources): the journal's collectibles lying in the world, 101: fossils, skeleton pieces, the bard's paintings, Drak reliefs, mosaic pieces, meteorites and more, each with its own icon and name. [b]Ctrl + left click[/b] one to mark it found, saved per character; [b]Find[/b] finds them by name.
 [*][b]Fell Summoning Stones[/b] (World & Resources): the 45 stones where Shroud Spores conjure a Fell enemy, one tier per region.
-[*][b]Bosses[/b] (World & Resources): the world's bosses, named like their health bar; beaten ones are grayed out or hidden. The game keeps no record of beating some of them (the Dire Wolf, the Critter Queens, the Fog Predator...): [b]Ctrl + left click[/b] one on the map to mark it beaten or clear the mark; Ctrl + left click a beaten one to mark it not beaten (with Looted Chests: Grayed Out, beaten bosses show to click). Saved per character.
+[*][b]Bosses[/b] (World & Resources): the world's bosses, named like their health bar. A boss you've beaten gets a check mark for good, and is grayed out or hidden only while it's dead, until it comes back by the same rule as a looted chest. The game keeps no record of beating some of them (the Dire Wolf, the Critter Queens, the Fog Predator...), and none of beating one again: [b]Ctrl + left click[/b] a boss on the map to step it: beaten (grayed), came back (check mark only), never beaten. Beaten marks are saved per character, the timers per world.
 [*][b]Return Beacons[/b] (Shroud & Vaults): all 282.
 [*][b]Water Source[/b] (World & Resources) also shows the world's wells and water barrels you can drink from, and the ones you build.
 [/list]
@@ -101,6 +103,7 @@ On the world map, press [b]Shift+F[/b] or click [b]FIND[/b]. Type a name or a ki
 [*][b]All Matching Places - Zoom to fit[/b] shows every match at once.
 [*][b]F2[/b] (or [b]Ctrl+F[/b]) switches whether Find skips marker types you've hidden with the filters. Pick a result a filter hides and the Map Key opens its row and flashes it.
 [*]Lore notes and bosses are found by their own names.
+[*]The mouse wheel or the scroll bar scrolls a long list of results.
 [*][b]Esc[/b] closes it (Shift+F types a capital F in the search).
 [/list]
 
@@ -136,9 +139,11 @@ Everything is remembered.
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792845223-927762810.jpg[/img][/center]
 
-Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check mark. On the world map, [b]Ctrl + left click[/b] a chest to mark it or clear the mark. Chests you opened before installing the mod aren't known to it: they show until you open them again or Ctrl + left click them. A looted chest comes back after 30 minutes of play with every player at least 500 m away (coming closer starts the 30 minutes over), unless it's in a Flame Altar's build zone. On a dedicated server the time you're away counts too, if the server's clock kept running (one that stands still while nobody is on counts nothing). Looted chests are saved per world. Players who have the mod share them: open a chest and it's marked on their maps too.
+Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check mark. Once it refills it's drawn as usual again but keeps its check mark, so you can see which chests you've looted at least once. On the world map, [b]Ctrl + left click[/b] a chest to step it: looted, refilled (check mark only), never looted. Chests you opened before installing the mod aren't known to it: they show until you open them again or Ctrl + left click them. Players who have the mod share them: open a chest and it's marked on their maps too.
 
-If you open chests with another key than E, set [i]InteractKey=[/i] under [i][Chests][/i] in [i]minimap_config.ini[/i]; [i]RespawnMinutes=[/i] and [i]ResetRadius=[/i] (500 m) are there too.
+Chests refill by the game's own rule: the world is cut into 256 m squares, and 30 minutes after every player has left a square's range (258 m from each of its corners) the game resets it, so its chests refill and its bosses come back. Chests in a Flame Altar's build zone never come back. On a dedicated server the time you're away counts too, if the server's clock kept running (one that stands still while nobody is on counts nothing). Looted chests are saved per world.
+
+If you open chests with another key than E, set [i]InteractKey=[/i] under [i][Chests][/i] in [i]minimap_config.ini[/i]; [i]RespawnMinutes=[/i] and [i]ResetRadius=[/i] (a distance that also holds the timer, 0 at first) are there too.
 
 [line]
 
@@ -155,7 +160,7 @@ A minimap on your HUD with the World Map's terrain, a compass, the time of day (
 [*][b]Mouse wheel[/b] zooms.
 [*][b]Double-click the star at the top[/b] to put it back in its default place.
 [/list]
-Zoom any time with [b][[/b] and [b]][/b] (or numpad - and +), or with the - / + buttons under the minimap; the [b]cog[/b] next to them opens Settings. A gold or silver chest, lore note or boss within 75 m that is 4 m or more above or below you gets a small green up or orange down caret, and so do another player and a player grave (on the world map too). [b]Other Players[/b] in the panel shows other players on the map, and on the minimap as colored arrows that point where they're heading. Position, size and zoom are saved for next time.
+Zoom any time with [b][[/b] and [b]][/b] (or numpad - and +), or with the - / + buttons under the minimap; the [b]cog[/b] next to them opens Settings. A gold or silver chest, lore note or boss within 75 m that is 4 m or more above or below you gets a small green up or orange down caret, and so do another player and a player grave (on the world map too). [b]Other Players[/b] in the panel shows other players on the map, and on the minimap as colored arrows that point where they're heading; each player has the same colour on every screen (the first player in the server yellow, the second blue, then red, green, purple and on). With the Town Portal mod, [b]Town Portals[/b] (Fast Travel & Altars) shows its open portals on the map and the minimap in their owner's colour. Position, size and zoom are saved for next time.
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792845215-1387636545.jpg[/img][/center]
 
@@ -214,6 +219,21 @@ If something doesn't work, please post these files with your report. Both are in
 [line]
 
 [size=4][b]Changelog[/b][/size]
+
+[b]1.3.16[/b]
+[list]
+[*]Chests you've looted keep their check mark for good: a looted chest is grayed out only until it respawns, then shows in full colour with its check mark, so you can see which chests you've looted at least once. Requested by izisot.
+[*]Chests and bosses come back by the game's own rule: 30 minutes after every player has left the 256 m square of the world they're in (ResetRadius=0, the new default, means this).
+[*]Bosses you've beaten keep their check mark too, grayed out until they respawn by the same rule.
+[*]Right-click a marker on the world map: a Hide button under the game's menu turns that marker's Map Key row off. Alt + left click a marker does it straight away. Works on players, Town Portals, quests and rumors too.
+[*]Ctrl+Z / Ctrl+Y on the world map undo and redo filter changes (up to 50), shown on the hint bar while there is one to undo or redo.
+[*]Search this list: a box under Show All / Hide All narrows the Map Key to the rows that match what you type, opening their sections (folded or locked ones too). Esc clears it. It doesn't search the map; Find (Shift+F) does.
+[*]Town Portals (Fast Travel & Altars): with the Town Portal mod, its open portals show on the map and the minimap in their owner's colour.
+[*]Other players: each player has the same colour on every screen, and sees themselves in it (the first player in the server yellow, the second blue, then red, green, purple and on).
+[*]Fixed: chests near you that were marked looted came back as not looted a moment later when the game still had their loot (a chest hidden with Ctrl + left click, or emptied by another mod). Only a chest the game refilled is unmarked now. Reported by izisot and Loling91.
+[*]Fixed: on some setups looted chests never grayed on their own: the mod couldn't tell which of two matching chest states to read. Reported by ryuskyn.
+[*]Fixed: Find's results list (Shift+F) didn't scroll with the mouse wheel, and its scroll bar couldn't be grabbed. The wheel scrolls it now, and you can drag the scroll bar or click on it to jump. Reported by Lomack.
+[/list]
 
 [b]1.3.15[/b]
 [list]

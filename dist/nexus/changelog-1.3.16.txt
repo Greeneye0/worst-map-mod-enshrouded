@@ -1,0 +1,11 @@
+- Chests you've looted keep their check mark for good: a looted chest is grayed out only until it respawns, then shows in full colour with its check mark, so you can see which chests you've looted at least once. Requested by izisot.
+- Chests and bosses come back by the game's own rule: 30 minutes after every player has left the 256 m square of the world they're in (ResetRadius=0, the new default, means this).
+- Bosses you've beaten keep their check mark too, grayed out until they respawn by the same rule.
+- Right-click a marker on the world map: a Hide button under the game's menu turns that marker's Map Key row off. Alt + left click a marker does it straight away. Works on players, Town Portals, quests and rumors too.
+- Ctrl+Z / Ctrl+Y on the world map undo and redo filter changes (up to 50), shown on the hint bar while there is one to undo or redo.
+- Search this list: a box under Show All / Hide All narrows the Map Key to the rows that match what you type, opening their sections (folded or locked ones too). Esc clears it. It doesn't search the map; Find (Shift+F) does.
+- Town Portals (Fast Travel & Altars): with the Town Portal mod, its open portals show on the map and the minimap in their owner's colour.
+- Other players: each player has the same colour on every screen, and sees themselves in it (the first player in the server yellow, the second blue, then red, green, purple and on).
+- Fixed: chests near you that were marked looted came back as not looted a moment later when the game still had their loot (a chest hidden with Ctrl + left click, or emptied by another mod). Only a chest the game refilled is unmarked now. Reported by izisot and Loling91.
+- Fixed: on some setups looted chests never grayed on their own: the mod couldn't tell which of two matching chest states to read. Reported by ryuskyn.
+- Fixed: Find's results list (Shift+F) didn't scroll with the mouse wheel, and its scroll bar couldn't be grabbed. The wheel scrolls it now, and you can drag the scroll bar or click on it to jump. Reported by Lomack.
