@@ -2831,6 +2831,7 @@ int LoreRumorFound(uint8_t* client, uint32_t id08) {
 
 // Classifies a 0xafce0c5f marker into active Main Quest (0xa7cadc08u), active Side Quest (0xc52e92e5u),
 // finished (kCompletedQuestTypeHash; never shown), Lore Rumor (0x8ba7c122u), or 0u (inactive NPC / hidden).
+// vis35 is the marker's game visibility byte (+0x35, patches.h site 2).
 // Done or not comes from the quest itself, not the pin's state (a finished quest's pin often still reads 2):
 // FUN_140d34ef0 (active quest for a marker) returns the quest only while it is started, not finished and this
 // marker's objective is open. A quest found for the marker (FUN_140d26fc0) that is not active for it is done
@@ -2844,7 +2845,13 @@ bool QuestFinished(const uint8_t* quest) {
     return *reinterpret_cast<const int32_t*>(last + 0x18) == 2 || *reinterpret_cast<const int32_t*>(last + 0x1c) == 2;
 }
 
-uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t /*state34*/) {
+// The game itself draws this marker: its visibility for the character (patches.h site 2 keeps it at +0x35 as
+// 0x10 | state) is 1 (undiscovered, drawn faded), 2 (discovered) or 3 (checked). Vanilla skips only 0 (site 1).
+bool GameShowsMarker(uint8_t vis35) {
+    return vis35 >= 0x11u && vis35 <= 0x13u;
+}
+
+uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t vis35) {
     if (id08 == 0u) return 0u;
     if (uint32_t activeQ = GetQuestFilterHashForMarkerId(id08, true)) return activeQ;
     if (g_isLoreRumorMarkerId && g_isLoreRumorMarkerId(id08)) {
@@ -2853,15 +2860,19 @@ uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t /*state34*/) {
         return LoreRumorFound(GetUiClient(), id08) == 1 ? kCompletedQuestTypeHash : 0x8ba7c122u;
     }
     if (const auto* quest = g_getQuestByMarkerId ? static_cast<const uint8_t*>(g_getQuestByMarkerId(id08)) : nullptr) {
-        return QuestFinished(quest) ? kCompletedQuestTypeHash : 0u;
+        if (QuestFinished(quest)) return kCompletedQuestTypeHash;
+        // Not this marker's open objective, but the game shows it (a side quest's search area, like Cat Search at
+        // the Alchemist Tower, or a Customization quest's): under its quest's row, as vanilla. Reported by secretroff.
+        if (!GameShowsMarker(vis35)) return 0u;
+        return *reinterpret_cast<const uint64_t*>(quest + 0x18) >= 0x64ULL ? 0xa7cadc08u : 0xc52e92e5u;
     }
     return g_isLoreRumorMarkerId ? 0u : 0x8ba7c122u;
 }
 
 // A quest area circle (0x454e24f2, Plains For First Base) is shown only while its quest is on: hidden once it is
 // done or before it begins.
-bool IsActiveQuestArea(uint32_t id08, uint8_t state34) {
-    const uint32_t areaHash = ClassifyQuestOrRumorMarker(id08, state34);
+bool IsActiveQuestArea(uint32_t id08, uint8_t vis35) {
+    const uint32_t areaHash = ClassifyQuestOrRumorMarker(id08, vis35);
     return areaHash == 0xa7cadc08u || areaHash == 0xc52e92e5u;
 }
 
@@ -2898,7 +2909,7 @@ bool IsMarkerExplored(uint8_t* client, const uint8_t* m, uint32_t origHash) {
     if (origHash == 0xafce0c5fu || origHash == 0x454e24f2u) {
         uint32_t id08 = IsSlotSaved(m) ? *reinterpret_cast<const uint32_t*>(m + 0x4c) : 0u;
         if (id08 == 0u) id08 = *reinterpret_cast<const uint32_t*>(m + 0x08);
-        if (IsActiveQuestArea(id08, m[0x34])) return true;
+        if (IsActiveQuestArea(id08, m[0x35])) return true;
     }
     uint32_t uid = *reinterpret_cast<const uint32_t*>(m + 0x00);
     if ((uid & 0xFFFF0000u) == kChestMarkerUidPrefix) {
@@ -2912,6 +2923,12 @@ bool IsMarkerExplored(uint8_t* client, const uint8_t* m, uint32_t origHash) {
     int32_t mx = *reinterpret_cast<const int32_t*>(m + 0x14);
     int32_t mz = *reinterpret_cast<const int32_t*>(m + 0x24);
     return IsPositionExploredByCharacter(client, mx, mz);
+}
+
+// Pins: EXPLORED shows a marker where you have been, and never hides one the game itself shows (a place it
+// knows of in land still fogged). Reported by secretroff.
+bool IsMarkerShownForExploredPins(uint8_t* client, const uint8_t* m, uint32_t origHash) {
+    return GameShowsMarker(m[0x35]) || IsMarkerExplored(client, m, origHash);
 }
 
 uint32_t GetMarkerOrigTypeHash(const uint8_t* m) {
@@ -3049,7 +3066,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             uint32_t tHash = *reinterpret_cast<uint32_t*>(m + 0x30);
             uint8_t b48 = m[0x48];
             uint64_t lastChg = *reinterpret_cast<uint64_t*>(m + 0x40);
-            const bool revealedForPinMode = !exploredOnly || IsMarkerExplored(client, m, origHash);
+            const bool revealedForPinMode = !exploredOnly || IsMarkerShownForExploredPins(client, m, origHash);
 
             uint32_t subpinQuestHash = (origHash != 0xafce0c5fu && origHash != 0x454e24f2u)
                                            ? GetQuestFilterHashForMarkerId(savedId08, true)
@@ -3106,7 +3123,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             uint32_t tHash = *reinterpret_cast<uint32_t*>(m + 0x30);
             uint8_t b48 = m[0x48];
             uint64_t lastChg = *reinterpret_cast<uint64_t*>(m + 0x40);
-            const bool revealedForPinMode = !exploredOnly || IsMarkerExplored(client, m, origHash);
+            const bool revealedForPinMode = !exploredOnly || IsMarkerShownForExploredPins(client, m, origHash);
 
             uint32_t subpinQuestHash = (origHash != 0xafce0c5fu && origHash != 0x454e24f2u)
                                            ? GetQuestFilterHashForMarkerId(savedId08, true)
@@ -3115,6 +3132,14 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                                : (subpinQuestHash == 0xc52e92e5u) ? sideQuestFilterOn
                                                                   : false;
             bool allowSubpinId = (subpinQuestHash == 0u) || subpinQuestOn;
+            // An unread rumor about a place not yet explored shows as the game's "?" in the place's stead, like
+            // vanilla; with Pins: EXPLORED only where the game shows the place ("Animals And Pets", a faded
+            // "Undiscovered: Shroud Root", the Alchemist Tower; reported by secretroff)
+            auto isSubpinRumor = [&]() {
+                return (!exploredOnly || GameShowsMarker(m[0x35])) && !subpinQuestHash && rumorFilterOn &&
+                       m[0x34] != 3 && !IsMarkerExplored(client, m, origHash) && g_isLoreRumorMarkerId &&
+                       savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) && LoreRumorFound(client, savedId08) != 1;
+            };
 
             if (origHash == 0xa17072beu) {
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
@@ -3157,7 +3182,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
 
             // Manage non-filterable (filt == 0) marker types so HIDE ALL and category filters control them
             if (origHash == 0xafce0c5fu) {
-                uint32_t effHash = ClassifyQuestOrRumorMarker(savedId08, m[0x34]);
+                uint32_t effHash = ClassifyQuestOrRumorMarker(savedId08, m[0x35]);
                 bool showPin = (effHash == 0u)                     ? false
                              : (effHash == 0xa7cadc08u)            ? mainQuestFilterOn
                              : (effHash == 0xc52e92e5u)            ? sideQuestFilterOn
@@ -3173,7 +3198,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             if (origHash == 0x454e24f2u) {
                 // A main quest's area circle (Plains For First Base): like the quest's own pin, with Main Quest while
                 // the quest is on, hidden once it is done or before it begins
-                const bool areaQuestActive = IsActiveQuestArea(savedId08, m[0x34]);
+                const bool areaQuestActive = IsActiveQuestArea(savedId08, m[0x35]);
                 applyMarkerVisibility(m, origHash, savedId08, areaQuestActive && mainQuestFilterOn && revealedForPinMode);
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
                 if (revealedForPinMode && areaQuestActive) addCountForHash(0xa7cadc08u);
@@ -3190,18 +3215,25 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 continue;
             }
             if (origHash == 0x7b87ef66u || origHash == 0xd11531d2u || origHash == 0x111adadau) {
-                // An active quest objective here shows as the quest (vanilla shows the quest, not the place)
-                applyMarkerVisibility(m, origHash, savedId08, townFilterOn && revealedForPinMode && !subpinQuestOn,
-                                      subpinQuestOn, allowSubpinId);
+                // An active quest objective here shows as the quest (vanilla shows the quest, not the place), and an
+                // unread rumor as the "?"
+                const bool rumor = isSubpinRumor();
+                applyMarkerVisibility(m, origHash, savedId08,
+                                      townFilterOn && revealedForPinMode && !subpinQuestOn && !rumor,
+                                      subpinQuestOn || rumor, allowSubpinId);
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
                 if (revealedForPinMode) addCountForHash(subpinQuestHash);
+                if (rumor) addCountForHash(0x8ba7c122u);
                 continue;
             }
             if (origHash == 0x9786a9f3u) {
-                applyMarkerVisibility(m, origHash, savedId08, passageFilterOn && revealedForPinMode && !subpinQuestOn,
-                                      subpinQuestOn, allowSubpinId);
+                const bool rumor = isSubpinRumor();
+                applyMarkerVisibility(m, origHash, savedId08,
+                                      passageFilterOn && revealedForPinMode && !subpinQuestOn && !rumor,
+                                      subpinQuestOn || rumor, allowSubpinId);
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
                 if (revealedForPinMode) addCountForHash(subpinQuestHash);
+                if (rumor) addCountForHash(0x8ba7c122u);
                 continue;
             }
 
@@ -3211,11 +3243,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 // A place with an active quest objective (Helping Hands at a Hidden Tomb) or an unread rumor
                 // about a place not yet explored shows the quest / "?" like vanilla, not the place's icon
                 // that the unlock patches reveal; the quest even where the map is not explored yet.
-                const bool explored = IsMarkerExplored(client, m, origHash);
-                // (Pins: EXPLORED hides those too: only what you have been near.)
-                const bool subpinRumor = !exploredOnly && !subpinQuestHash && rumorFilterOn && !explored && m[0x34] != 3 &&
-                                         g_isLoreRumorMarkerId && savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) &&
-                                         LoreRumorFound(client, savedId08) != 1;
+                const bool subpinRumor = isSubpinRumor();
                 if (subpinQuestOn || subpinRumor) {
                     applyMarkerVisibility(m, origHash, savedId08, false, true, true);
                     if (subpinRumor) addCountForHash(0x8ba7c122u);
@@ -3263,13 +3291,13 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 uint32_t origHash = 0u, savedId08 = 0u;
                 resolveMarkerMeta(m, origHash, savedId08);
                 if (origHash == 0u) continue;
-                const bool revealed = !exploredOnly || IsMarkerExplored(client, m, origHash);
+                const bool revealed = !exploredOnly || IsMarkerShownForExploredPins(client, m, origHash);
                 applyMarkerVisibility(m, origHash, savedId08, revealed);
                 if (!revealed) continue;
                 countHash = origHash;
             }
             if (countHash == 0) continue;
-            if (exploredOnly && !IsMarkerExplored(client, m, countHash)) continue;
+            if (exploredOnly && !IsMarkerShownForExploredPins(client, m, countHash)) continue;
             for (size_t q = 0; q < numQueries; ++q) {
                 if (queryHashes[q] == countHash) {
                     ++outCounts[q];
@@ -3956,10 +3984,10 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
             if (savedId08 == 0u) savedId08 = *reinterpret_cast<uint32_t*>(m + 0x08);
 
             uint32_t filterHash = (origHash == 0xafce0c5fu)
-                                      ? ClassifyQuestOrRumorMarker(savedId08, m[0x34])
+                                      ? ClassifyQuestOrRumorMarker(savedId08, m[0x35])
                                       : NormalizeFilterTypeHash(origHash);
             if (filterHash == 0u || GameNeverShowsPlace(savedId08)) continue;
-            if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, m[0x34])) continue; // its quest is done
+            if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, m[0x35])) continue; // its quest is done
             bool isFilterOn = IsFilterEnabled(filterEntries, filterCount, filterHash);
             if (!isFilterOn && origHash != 0xafce0c5fu) {
                 uint32_t subpinQuestHash = GetQuestFilterHashForMarkerId(savedId08, true);
@@ -3967,7 +3995,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
                     isFilterOn = true;
                 }
             }
-            if (g_pinRevealMode == PinRevealMode::ExploredOnly && !IsMarkerExplored(client, m, origHash)) {
+            if (g_pinRevealMode == PinRevealMode::ExploredOnly && !IsMarkerShownForExploredPins(client, m, origHash)) {
                 isFilterOn = false;
             }
             const char* typeLabel = GetTypeLabelForHash(filterHash);
@@ -4373,7 +4401,7 @@ bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uin
             if (d2 > best) continue;
             uint32_t savedId08 = IsSlotSaved(m) ? *reinterpret_cast<const uint32_t*>(m + 0x4c) : 0u;
             if (savedId08 == 0u) savedId08 = *reinterpret_cast<const uint32_t*>(m + 0x08);
-            uint32_t fh = origHash == 0xafce0c5fu ? ClassifyQuestOrRumorMarker(savedId08, m[0x34])
+            uint32_t fh = origHash == 0xafce0c5fu ? ClassifyQuestOrRumorMarker(savedId08, m[0x35])
                                                   : NormalizeFilterTypeHash(origHash);
             // A place an active quest or a lore rumor points to shows as a "?" with that row, though its own is off
             // (a cave passage, an enemy encampment): that row is the one to hide, as the map draws it
@@ -4381,7 +4409,7 @@ bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uin
                 uint32_t questRow = GetQuestFilterHashForMarkerId(savedId08, true);
                 if ((questRow == 0u || !IsFilterEnabled(filterEntries, filterCount, questRow)) &&
                     *reinterpret_cast<const uint32_t*>(m + 0x30) == 0xafce0c5fu) {
-                    questRow = ClassifyQuestOrRumorMarker(savedId08, m[0x34]);
+                    questRow = ClassifyQuestOrRumorMarker(savedId08, m[0x35]);
                 }
                 if (questRow != 0u && IsFilterEnabled(filterEntries, filterCount, questRow)) fh = questRow;
             }
@@ -8673,11 +8701,11 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 const uint32_t markerState = static_cast<uint32_t>(m[0x34]);
 
                 uint32_t normHash = (origHash == 0xafce0c5fu)
-                                        ? ClassifyQuestOrRumorMarker(savedId08, static_cast<uint8_t>(markerState))
+                                        ? ClassifyQuestOrRumorMarker(savedId08, m[0x35])
                                         : NormalizeFilterTypeHash(origHash);
                 if (normHash == 0u || GameNeverShowsPlace(savedId08)) continue;
                 // A main quest's area circle (Plains For First Base): only while its quest is on, like the world map
-                if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, static_cast<uint8_t>(markerState))) continue;
+                if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, m[0x35])) continue;
                 const bool visitedSanctum = IsVisitedSanctumMarker(m, origHash);
                 if (g_hideCompletedPlaces && (markerState == 3u || visitedSanctum) && origHash != 0xafce0c5fu) continue; // Completed Places: Hide
                 if (!IsFilterEnabled(filterEntries, filterCount, normHash)) {
@@ -8694,7 +8722,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 // Respect PinRevealMode (Explored / Hybrid / Reveal All) for unexplored pins
                 const bool isUnexploredPin = (g_pinRevealMode != PinRevealMode::RevealAll) &&
                                              !IsMarkerExplored(client, m, origHash);
-                if (isUnexploredPin && g_pinRevealMode == PinRevealMode::ExploredOnly) {
+                if (g_pinRevealMode == PinRevealMode::ExploredOnly && !IsMarkerShownForExploredPins(client, m, origHash)) {
                     continue;
                 }
 
