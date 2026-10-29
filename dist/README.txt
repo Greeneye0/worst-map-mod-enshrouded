@@ -75,10 +75,11 @@ On the right of the world map.
   a gold or silver chest counts as found once that chest is looted; for the others (in
   barrels, crates or lying in the world) Ctrl + left click it to mark it found, saved per
   character. Find (Shift + F) finds them by name.
-- COLLECTIBLES (WORLD & RESOURCES): the journal's collectibles lying in the world, 101: fossils,
-  skeleton pieces, the bard's paintings, Drak reliefs, mosaic pieces, meteorites and more,
-  each with its own icon and name. Ctrl + left click one to mark it found (saved per
-  character); Find finds them by name.
+- COLLECTIBLES (WORLD & RESOURCES): the journal's collectibles, 133, lying in the world or in a
+  chest: fossils, skeleton pieces, the bard's paintings, Drak reliefs, mosaic and map pieces,
+  meteorites and more, each with its own icon and name. One in a chest is found once the chest is
+  looted; Ctrl + left click any other to mark it found (saved per character). Find finds them by
+  name.
 - FELL SUMMONING STONES (WORLD & RESOURCES): the 45 stones where Shroud Spores conjure a Fell
   enemy, one tier per region.
 - RETURN BEACONS (SHROUD & VAULTS): all 282.
@@ -259,6 +260,14 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.20
+- Collectibles: 32 more, the ones that sit in a chest or container instead of lying loose: Flame
+  Mosaic Piece I, the four Dragon's Map pieces, the Embervale Miniature pieces, the orrery rings
+  and a few more (133 in all). One in a chest counts as found once the chest is looted, and G G
+  lights them like the rest. Reported by TheSefer.
+- The bosses and items you marked by hand are now saved by where they are, so adding pins can't
+  move your marks to other pins. Your marks from earlier versions carry over.
+
 1.3.19
 - Regions: show several regions at once. The Region row now opens a drawer with every region and
   an ON / OFF switch each, so you can keep Springlands and Revelwood on and add the next region

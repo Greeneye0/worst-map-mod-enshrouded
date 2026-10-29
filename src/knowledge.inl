@@ -177,10 +177,12 @@ bool IsKnowledgeDeposit(size_t d) {
 // Bosses the game keeps no knowledge for (the Dire Wolf, the Critter Queens, ...: 14 of 25 spawn places have no
 // SceneKnowledgeTrigger) are marked defeated by hand with Ctrl + left click; one the game has as beaten can be marked
 // not beaten the same way. Like the game's knowledge they belong to the character: saved in defeated_bosses.ini under
-// the character's name (Bosses = beaten by hand, NotBeaten = not beaten by hand), by knowledge spot index.
+// the character's name (BossesAt = beaten by hand, NotBeatenAt = not beaten by hand), by the spot's position: a spot
+// index changes whenever spots are added. 1.3.14 - 1.3.19 saved Bosses / NotBeaten / UniqueFound by index; those are
+// read through their spot table (knowledge_legacy.h) and replaced on the next save.
 std::unordered_set<uint16_t> g_manualBosses;
 std::unordered_set<uint16_t> g_notBeatenBosses;
-// Unique items not in a chest the mod tracks (barrels, crates, lying in the world): marked found by hand, by spot index
+// Unique items not in a chest the mod tracks (barrels, crates, lying in the world): marked found by hand (UniqueFoundAt)
 std::unordered_set<uint16_t> g_uniqueFound;
 std::string g_bossCharacter; // empty: not known yet (marks not loaded)
 
@@ -205,16 +207,31 @@ const void* DepositIcon(size_t d) {
 void SaveManualBosses() {
     if (g_bossCharacter.empty()) return;
     const std::string path = greeneye::DataPath("defeated_bosses.ini");
-    auto save = [&](const char* key, const std::unordered_set<uint16_t>& set) {
+    const std::string section = "Character_" + g_bossCharacter;
+    auto save = [&](const char* key, const char* legacyKey, const std::unordered_set<uint16_t>& set) {
         std::vector<uint16_t> spots(set.begin(), set.end());
         std::sort(spots.begin(), spots.end());
         std::string text;
-        for (uint16_t s : spots) text += (text.empty() ? "" : ";") + std::to_string(s);
-        WritePrivateProfileStringA(("Character_" + g_bossCharacter).c_str(), key, text.c_str(), path.c_str());
+        for (uint16_t s : spots) {
+            const OreDeposit& d = kOreDeposits[kKnowledgeFirstDeposit + s];
+            text += (text.empty() ? "" : ";") + std::to_string(d.x) + "," + std::to_string(d.z) + "," + std::to_string(d.topY);
+        }
+        WritePrivateProfileStringA(section.c_str(), key, text.c_str(), path.c_str());
+        WritePrivateProfileStringA(section.c_str(), legacyKey, nullptr, path.c_str());
     };
-    save("Bosses", g_manualBosses);
-    save("NotBeaten", g_notBeatenBosses);
-    save("UniqueFound", g_uniqueFound);
+    save("BossesAt", "Bosses", g_manualBosses);
+    save("NotBeatenAt", "NotBeaten", g_notBeatenBosses);
+    save("UniqueFoundAt", "UniqueFound", g_uniqueFound);
+}
+
+// The boss spot (or unique item spot) at (x, z, top y), or -1. A boss can share its place with the item it drops.
+int KnowledgeSpotAt(bool boss, int x, int z, int y) {
+    for (size_t s = 0; s < kKnowledgeSpotCount; ++s) {
+        const size_t i = kKnowledgeFirstDeposit + s;
+        const OreDeposit& d = kOreDeposits[i];
+        if (d.x == x && d.z == z && d.topY == y && (boss ? IsBossSpot(i) : IsUniqueSpot(i))) return static_cast<int>(s);
+    }
+    return -1;
 }
 
 // Once a second: loads the marks when the local character's name is first known (or changes).
@@ -239,22 +256,38 @@ void UpdateManualBosses(uint8_t* client) {
     if (name.empty() || name == g_bossCharacter) return;
     g_bossCharacter = name;
     const std::string path = greeneye::DataPath("defeated_bosses.ini");
-    auto load = [&](const char* key, std::unordered_set<uint16_t>& set) {
+    const std::string section = "Character_" + name;
+    bool legacy = false;
+    auto load = [&](const char* key, const char* legacyKey, bool boss, std::unordered_set<uint16_t>& set) {
         set.clear();
-        char text[2048]{};
-        GetPrivateProfileStringA(("Character_" + name).c_str(), key, "", text, sizeof(text), path.c_str());
-        for (const char* t = text; *t;) {
-            const int s = std::atoi(t);
-            const size_t d = kKnowledgeFirstDeposit + static_cast<size_t>(s);
-            if (s >= 0 && static_cast<size_t>(s) < kKnowledgeSpotCount && (IsBossSpot(d) || IsUniqueSpot(d)))
-                set.insert(static_cast<uint16_t>(s));
+        std::vector<char> text(32768);
+        GetPrivateProfileStringA(section.c_str(), key, "\x01", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+        const bool old = text[0] == '\x01';
+        if (old) {
+            GetPrivateProfileStringA(section.c_str(), legacyKey, "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+            legacy = legacy || text[0] != 0;
+        }
+        for (const char* t = text.data(); *t;) {
+            int s = -1;
+            if (old) {
+                const int i = std::atoi(t);
+                if (i >= 0 && static_cast<size_t>(i) < kLegacyKnowledgeSpotCount) {
+                    const int16_t* p = kLegacyKnowledgeSpots[i];
+                    s = KnowledgeSpotAt(boss, p[0], p[1], p[2]);
+                }
+            } else {
+                int x = 0, z = 0, y = 0;
+                if (sscanf_s(t, "%d,%d,%d", &x, &z, &y) == 3) s = KnowledgeSpotAt(boss, x, z, y);
+            }
+            if (s >= 0) set.insert(static_cast<uint16_t>(s));
             while (*t && *t != ';') ++t;
             if (*t == ';') ++t;
         }
     };
-    load("Bosses", g_manualBosses);
-    load("NotBeaten", g_notBeatenBosses);
-    load("UniqueFound", g_uniqueFound);
+    load("BossesAt", "Bosses", true, g_manualBosses);
+    load("NotBeatenAt", "NotBeaten", true, g_notBeatenBosses);
+    load("UniqueFoundAt", "UniqueFound", false, g_uniqueFound);
+    if (legacy) SaveManualBosses();
     if (g_log)
         g_log("Bosses: character %s, %zu marked defeated by hand, %zu not beaten by hand, %zu unique items found by hand",
               name.c_str(), g_manualBosses.size(), g_notBeatenBosses.size(), g_uniqueFound.size());

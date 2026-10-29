@@ -32,6 +32,7 @@
 #include "chest_spawns.h"
 #include "chest_loot_ids.h"
 #include "ore_deposits.h"
+#include "knowledge_legacy.h"
 #include "regions.h"
 #include "sanctum_spots.h"
 #include "minimap_art.h"
@@ -763,7 +764,7 @@ constexpr MarkerRowSpec kCategory3Rows[] = {
     // found ones hidden or greyed like looted chests
     {kOreTypeHashBase + static_cast<uint32_t>(kUniqueFirst), 0u, 3, kOreLabels[kUniqueFirst], umm_lang::Str::CatWorld},
     {kOreTypeHashBase + static_cast<uint32_t>(kUniqueFirst + 1), 0u, 3, kOreLabels[kUniqueFirst + 1], umm_lang::Str::CatWorld},
-    // Collectibles: the journal's fossils, paintings, mosaic pieces and the like lying in the world, found by hand
+    // Collectibles: the journal's fossils, paintings, mosaic and map pieces and the like, found with their chest or by hand
     {kOreTypeHashBase + static_cast<uint32_t>(kUniqueFirst + 2), 0u, 3, kOreLabels[kUniqueFirst + 2], umm_lang::Str::CatWorld},
     // Fell Summoning Stones: where Shroud Spores conjure a Fell enemy
     {kOreTypeHashBase + static_cast<uint32_t>(kSummonsFirst), 0u, 3, kOreLabels[kSummonsFirst], umm_lang::Str::CatWorld},

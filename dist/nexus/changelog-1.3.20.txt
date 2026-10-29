@@ -1,0 +1,2 @@
+- Collectibles: 32 more, the ones that sit in a chest or container instead of lying loose: Flame Mosaic Piece I, the four Dragon's Map pieces, the Embervale Miniature pieces, the orrery rings and a few more (133 in all). One in a chest counts as found once the chest is looted, and G G lights them like the rest. Reported by TheSefer.
+- The bosses and items you marked by hand are now saved by where they are, so adding pins can't move your marks to other pins. Your marks from earlier versions carry over.
