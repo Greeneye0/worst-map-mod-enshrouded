@@ -5,18 +5,21 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <tlhelp32.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 #include "patches.h"
 #include "map_key_panel.h"
 #include "scan.h"
 #include "greeneye.h"
 
-#define UMM_VERSION "1.3.18"
+#define UMM_VERSION "1.3.19"
 
 namespace {
 
@@ -161,13 +164,80 @@ bool ApplyAllPatches() {
 
 namespace unlock_map_markers {
 // The mod's switch (Ctrl + Shift + F12) puts the game's own bytes back, and the mod's again.
-void SetMarkerUnlockPatches(bool on) {
+// Ctrl+Shift+F12 switches the patches while the game runs. The marker code they sit in runs on the game's worker
+// threads, and a thread inside a site while its bytes change runs half old, half new code (two crashes reported by
+// secretroff: an access violation, and the game's heap finding a block freed twice). So, as the loader writes its
+// hooks: every other thread suspended, none inside or just before a site. False: one was, every try; nothing written.
+// From the first SuspendThread to the last ResumeThread: no allocation, no log.
+bool SetMarkerUnlockPatches(bool on) {
+    struct Range {
+        uintptr_t lo, hi;
+    };
+    Range ranges[kNumPatchSites]{};
+    size_t rangeCount = 0;
     for (size_t i = 0; i < kNumPatchSites; ++i) {
-        const auto& spec = kPatchSites[i];
-        const auto& site = g_resolvedSites[i];
-        if (!site.patchAddress) continue;
-        WriteProcessBytes(site.patchAddress, on ? spec.replacementBytes : spec.originalBytes, spec.patchSize);
+        if (!g_resolvedSites[i].patchAddress) continue;
+        const auto at = reinterpret_cast<uintptr_t>(g_resolvedSites[i].patchAddress);
+        // Back to the start of the function it is in (sites 1 and 2 are 0x8b9 bytes into replicate_map_markers_for_ui)
+        ranges[rangeCount++] = {at - 0x900, at + kPatchSites[i].patchSize};
     }
+    if (rangeCount == 0) return true;
+    std::vector<HANDLE> threads;
+    threads.reserve(256);
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        threads.clear();
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (snapshot == INVALID_HANDLE_VALUE) return false;
+        const DWORD process = GetCurrentProcessId(), self = GetCurrentThreadId();
+        THREADENTRY32 entry{sizeof(entry)};
+        for (BOOL more = Thread32First(snapshot, &entry); more; more = Thread32Next(snapshot, &entry)) {
+            if (entry.th32OwnerProcessID != process || entry.th32ThreadID == self) continue;
+            if (HANDLE h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_LIMITED_INFORMATION, FALSE,
+                                      entry.th32ThreadID))
+                threads.push_back(h);
+        }
+        CloseHandle(snapshot);
+        bool suspended[1024]{};
+        const size_t n = std::min<size_t>(threads.size(), 1024);
+        bool clear = threads.size() <= 1024;
+        for (size_t t = 0; t < n; ++t) suspended[t] = SuspendThread(threads[t]) != static_cast<DWORD>(-1);
+        for (size_t t = 0; t < n && clear; ++t) {
+            if (!suspended[t]) {
+                DWORD code = 0; // only a thread that has ended may refuse
+                if (!GetExitCodeThread(threads[t], &code) || code == STILL_ACTIVE) clear = false;
+                continue;
+            }
+            CONTEXT context{};
+            context.ContextFlags = CONTEXT_CONTROL; // also waits until the thread has stopped
+            if (!GetThreadContext(threads[t], &context)) {
+                clear = false;
+                continue;
+            }
+            for (size_t r = 0; r < rangeCount; ++r) {
+                if (context.Rip >= ranges[r].lo && context.Rip < ranges[r].hi) clear = false;
+            }
+        }
+        if (clear) {
+            for (size_t i = 0; i < kNumPatchSites; ++i) {
+                const auto& site = g_resolvedSites[i];
+                if (!site.patchAddress) continue;
+                // WriteProcessBytes without its log line
+                DWORD oldProtect = 0, dummy = 0;
+                if (!VirtualProtect(site.patchAddress, kPatchSites[i].patchSize, PAGE_EXECUTE_READWRITE, &oldProtect)) continue;
+                std::memcpy(site.patchAddress, on ? kPatchSites[i].replacementBytes : kPatchSites[i].originalBytes,
+                            kPatchSites[i].patchSize);
+                FlushInstructionCache(GetCurrentProcess(), site.patchAddress, kPatchSites[i].patchSize);
+                VirtualProtect(site.patchAddress, kPatchSites[i].patchSize, oldProtect, &dummy);
+            }
+        }
+        for (size_t t = 0; t < threads.size(); ++t) {
+            if (t < n && suspended[t]) ResumeThread(threads[t]);
+            CloseHandle(threads[t]);
+        }
+        if (clear) return true;
+        Sleep(1);
+    }
+    return false;
 }
 } // namespace unlock_map_markers
 

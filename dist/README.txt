@@ -34,11 +34,12 @@ On the right of the world map.
   their sections opened (folded or locked ones too). Esc or the x clears it. From 3 letters it
   also finds places by their name (a lore note, a boss, a place, a pin): the row they're in
   shows with that name after it, even when the row is off. Find (Shift + F) takes you there.
-- REGION, under them (with Settings > Advanced > Region Filter on): the arrows step through All Regions and the world's regions in level
+- REGIONS, under them (with Settings > Advanced > Region Filter on): a row per region in level
   order (Springlands, Revelwood, Blackmire, Nomad Highlands, Kindlewastes, Albaneve Summits,
-  Veilwater Basin, Cinder's Cradle); click the name to jump to the region you're in. Pins
-  outside the region are dimmed (DIM) or not shown at all (HIDE), and its border is drawn as a
-  dotted gold line. Quest pins, lore rumors and your own pins always show.
+  Veilwater Basin, Cinder's Cradle), each with its own ON / OFF, in a drawer + / - folds away.
+  Click the row's name to switch them all on or all off; Ctrl + click a region to show only that
+  one. Pins outside the regions that are on are dimmed (DIM) or not shown at all (HIDE), and their
+  borders are drawn as a dotted gold line. Quest pins, lore rumors and your own pins always show.
 - Click a category header (FAST TRAVEL & ALTARS, SHROUD & VAULTS, WORLD & RESOURCES, MINING,
   MATERIALS, PLANTS, BAIT, TREES, QUESTS & RUMORS) to switch the whole category, or + / - to
   fold it; folded categories stay folded the next time you play. Drag a category header up
@@ -165,7 +166,7 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
 - ADVANCED > Position (X, Y, Z), off at first: your position under the minimap (Y is your
   height) and, on the world map, the X and Z under the cursor. Click the copy button (or
   middle click the world map) to copy them, like "X 3215, Z 2051".
-- ADVANCED > Region Filter, off at first: the Map Key's REGION row (see above).
+- ADVANCED > Region Filter, off at first: the Map Key's REGIONS row (see above).
 - ADVANCED > Region Colors, off at first: each region tinted in its own colour on the world map.
 Everything is remembered.
 
@@ -258,6 +259,20 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.19
+- Regions: show several regions at once. The Region row now opens a drawer with every region and
+  an ON / OFF switch each, so you can keep Springlands and Revelwood on and add the next region
+  when you're ready for it. Click the row's name to switch them all on or all off, Ctrl + click a
+  region to show only that one, and + / - folds the drawer away. Pins outside the regions that are
+  on are dimmed or hidden as before, and each one's border is drawn. Your region from 1.3.18
+  carries over. Requested by FrostyBou.
+- Town Portals and the water sources you build now follow the Region filter too.
+- Fixed: Ctrl + Shift + F12 could crash the game, rarely, when switching the mod off or on (the
+  map's code was rewritten while the game was running it). Reported by secretroff.
+- Fixed: with a controller that isn't an XInput pad (a PlayStation controller, for one), the world
+  map could stop answering the stick after the Map Key was clicked with the mouse, until the mouse
+  moved. Reported by FamanFortune.
+
 1.3.18
 - The Hide button under a marker's right-click menu is gone, so the game's menu shows only its own
   buttons. Alt + left click a marker still turns its row off.

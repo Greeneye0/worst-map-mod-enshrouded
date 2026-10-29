@@ -220,8 +220,21 @@ void LightNearby(uint8_t* client) {
     g_start = GetTickCount64();
     g_until = g_start + kShowMs;
     g_cellsAt = 0; // gathered on the next frame
-    if (g_log) g_log("Vein sight: %zu veins (%zu chunks), %zu deposits within %.0f m", g_veins.size(), chunks,
-                     g_deposits.size(), kRangeMeters);
+    if (g_log) {
+        // Which ores: "Flintstone 3/2" (veins lit / deposits near)
+        std::string rows;
+        for (size_t r = 0; r < kMiningCount + kMaterialsCount; ++r) {
+            size_t v = 0, d = 0;
+            for (const Vein& vein : g_veins) v += vein.row == r ? 1 : 0;
+            for (size_t dep : g_deposits) d += kOreDeposits[dep].ore == kMiningFirst + r ? 1 : 0;
+            if (!v && !d) continue;
+            char part[64];
+            std::snprintf(part, sizeof(part), "%s%s %zu/%zu", rows.empty() ? "" : ", ", kOreLabels[kMiningFirst + r], v, d);
+            rows += part;
+        }
+        g_log("Vein sight: %zu veins (%zu chunks), %zu deposits within %.0f m: %s", g_veins.size(), chunks,
+              g_deposits.size(), kRangeMeters, rows.c_str());
+    }
 }
 
 // On screen through the ground: each vein's outline (the edge of its chunks as the camera sees them, dents and all) in

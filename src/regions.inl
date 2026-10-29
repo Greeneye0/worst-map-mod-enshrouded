@@ -2,9 +2,11 @@
 // Pins outside the focused region are dimmed or hidden; the region's border is drawn on the map. Included by
 // map_key_panel.cpp.
 
-// Map Key > Region: -1 all regions, else a region (kRegionCount order: by level)
-int g_regionFocus = -1;
-bool g_regionOutsideHide = false; // false: dim pins outside the region, true: hide them
+// Map Key > Regions: the regions shown, a bit each (kRegionCount order: by level); all of them: no region filter
+constexpr uint32_t kAllRegionsMask = (1u << kRegionCount) - 1u;
+uint32_t g_regionMask = kAllRegionsMask;
+bool g_regionDrawerOpen = true;   // the Regions drawer under the Map Key's Region row is unfolded
+bool g_regionOutsideHide = false; // false: dim pins outside the regions, true: hide them
 
 // The region at world (x, z) metres, or -1 off the map
 int RegionAt(float x, float z) {
@@ -19,12 +21,16 @@ int RegionAt(float x, float z) {
     return -1;
 }
 
-// The region the World Map shows this frame (-1: all)
-int g_focusedRegion = -1;
+// The regions the World Map shows this frame; g_regionFiltering: not all of them (Settings > Advanced > Region Filter)
+bool g_regionFiltering = false;
+uint32_t g_focusedRegions = kAllRegionsMask;
 void UpdateFocusedRegion(uint8_t*) {
-    g_focusedRegion = g_regionFilterEnabled && g_regionFocus >= 0 && g_regionFocus < static_cast<int>(kRegionCount)
-                          ? g_regionFocus
-                          : -1;
+    g_regionMask &= kAllRegionsMask;
+    g_regionFiltering = g_regionFilterEnabled && g_regionMask != kAllRegionsMask;
+    g_focusedRegions = g_regionFiltering ? g_regionMask : kAllRegionsMask;
+}
+bool RegionShown(int region) {
+    return !g_regionFiltering || (region >= 0 && region < static_cast<int>(kRegionCount) && (g_focusedRegions >> region) & 1u);
 }
 
 // Settings > Advanced > Region Colors: each region tinted in its own colour under the World Map's markers. Sampled on a
@@ -66,16 +72,16 @@ void DrawRegionColorsOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapS
             if (r == runRegion) continue;
             if (runRegion >= 0)
                 DrawSolidRectAbs(widgetRaw, runX, y, x - runX, kCell, kRegionTint[runRegion],
-                                 g_focusedRegion >= 0 && runRegion != g_focusedRegion ? 0.08f : 0.2f);
+                                 RegionShown(runRegion) ? 0.2f : 0.08f);
             runRegion = r;
             runX = x;
         }
     }
 }
 
-// Outside the focused region: dimmed or hidden
+// Outside the regions shown: dimmed or hidden
 bool OutsideFocusedRegion(float x, float z) {
-    return g_focusedRegion >= 0 && RegionAt(x, z) != g_focusedRegion;
+    return g_regionFiltering && !RegionShown(RegionAt(x, z));
 }
 
 // Outside it and hidden (Hide, not Dim)
@@ -102,7 +108,7 @@ const char* RegionName(int region) {
 
 // One of the game's World Map markers outside the focused region (your own pins and quest pins always show)
 bool MarkerOutsideFocusedRegion(const uint8_t* m) {
-    if (g_focusedRegion < 0 || !m) return false;
+    if (!g_regionFiltering || !m) return false;
     const uint32_t typeHash = *reinterpret_cast<const uint32_t*>(m + 0x30);
     const uint32_t origHash = GetMarkerOrigTypeHash(m);
     for (uint32_t ph : kCustomPinHashes) {
@@ -113,10 +119,10 @@ bool MarkerOutsideFocusedRegion(const uint8_t* m) {
                                 static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24)));
 }
 
-// The focused region's border on the World Map: gold beads evenly spaced on screen (one draw each: the game's UI
+// The shown regions' borders on the World Map: gold beads evenly spaced on screen (one draw each: the game's UI
 // renderer drops the map's own tiles past a few thousand draws a frame, shared with the deposits)
 void DrawRegionBorderOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
-    if (g_focusedRegion < 0 || !widgetRaw || !mapState) return;
+    if (!g_regionFiltering || g_focusedRegions == 0u || !widgetRaw || !mapState) return;
     uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
     if (!mapView) return;
     const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
@@ -135,7 +141,7 @@ void DrawRegionBorderOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapS
     int beads = 0;
     for (size_t o = 0; o < kRegionOutlineCount && beads < kMaxBeads; ++o) {
         const RegionOutline& line = kRegionOutlines[o];
-        if (line.region != g_focusedRegion) continue;
+        if (!RegionShown(line.region)) continue;
         float carry = 0.0f; // screen distance walked since the last bead
         for (uint32_t p = line.first; p + 1 < line.first + line.count && beads < kMaxBeads; ++p) {
             const float ax = originX + kRegionOutlinePoints[p][0] * zoom;

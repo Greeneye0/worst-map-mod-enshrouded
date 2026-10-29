@@ -26,6 +26,6 @@ void UseKeptState(KeptState* kept);
 void PrepareMapKeyPanelForReload();
 
 // main.cpp: the four marker unlock byte patches on (the mod's bytes) or off (the game's own).
-void SetMarkerUnlockPatches(bool on);
+bool SetMarkerUnlockPatches(bool on); // false: a thread stood in the code every try; unchanged
 
 } // namespace unlock_map_markers

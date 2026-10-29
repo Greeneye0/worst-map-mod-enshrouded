@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <psapi.h>
 #include <xinput.h>
+#include <mmsystem.h>
 
 #include <algorithm>
 #include <array>
@@ -3602,6 +3603,55 @@ bool UsingGamepad() {
             if (active) padTick = now;
         }
     }
+    // Pads that are not XInput (a DualShock / DualSense without Steam's XInput, most others) only show as Windows
+    // joysticks: a button down or an axis off where it rested when first seen. The empty slots are looked at one at a
+    // time, one every 200 ms (asking an empty slot can take milliseconds).
+    {
+        using JoyGetPosExFn = MMRESULT(WINAPI*)(UINT, JOYINFOEX*);
+        static JoyGetPosExFn joyGetPos = [] {
+            HMODULE w = LoadLibraryW(L"winmm.dll");
+            return w ? reinterpret_cast<JoyGetPosExFn>(GetProcAddress(w, "joyGetPosEx")) : nullptr;
+        }();
+        constexpr UINT kJoys = 16;
+        static bool present[kJoys]{};
+        static bool restKnown[kJoys]{};
+        static DWORD rest[kJoys][6]{};
+        static uint64_t lastScan = 0;
+        static UINT scanSlot = 0;
+        if (joyGetPos) {
+            UINT probe = kJoys; // the empty slot looked at this time, if any
+            if (now - lastScan >= 200) {
+                lastScan = now;
+                for (UINT k = 0; k < kJoys && probe == kJoys; ++k) {
+                    const UINT j = (scanSlot + k) % kJoys;
+                    if (!present[j]) probe = j;
+                }
+                scanSlot = (probe + 1) % kJoys;
+            }
+            for (UINT j = 0; j < kJoys; ++j) {
+                if (!present[j] && j != probe) continue;
+                JOYINFOEX ji{};
+                ji.dwSize = sizeof(ji);
+                ji.dwFlags = JOY_RETURNALL;
+                present[j] = joyGetPos(j, &ji) == JOYERR_NOERROR;
+                if (!present[j]) {
+                    restKnown[j] = false;
+                    continue;
+                }
+                const DWORD axes[6] = {ji.dwXpos, ji.dwYpos, ji.dwZpos, ji.dwRpos, ji.dwUpos, ji.dwVpos};
+                if (!restKnown[j]) {
+                    std::memcpy(rest[j], axes, sizeof(axes));
+                    restKnown[j] = true;
+                    continue;
+                }
+                bool active = ji.dwButtons != 0 || (ji.dwPOV != JOY_POVCENTERED && ji.dwPOV != 0xffffu);
+                for (int a = 0; a < 6 && !active; ++a) {
+                    active = std::abs(static_cast<long>(axes[a]) - static_cast<long>(rest[j][a])) > 12000;
+                }
+                if (active) padTick = now;
+            }
+        }
+    }
     POINT pt{};
     const bool buttons = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) || (GetAsyncKeyState(VK_RBUTTON) & 0x8000) ||
                          (GetAsyncKeyState(VK_MBUTTON) & 0x8000);
@@ -3656,9 +3706,9 @@ UiText MakeRuntimeUiText(const char* s) {
     return UiText{s, len, h};
 }
 
-void EnsureFindDialogResolved() {
-    if (g_findDllResolved) return;
-
+// Find hot reloaded keeps its old copies loaded: the newest (loaded last) is the one to use. True when it changed.
+HMODULE g_findModule = nullptr;
+bool EnsureFindDialogResolved() {
     auto tryResolveModule = [](HMODULE mod, const wchar_t* modPath) -> bool {
         if (!mod) return false;
         MODULEINFO mi{};
@@ -3695,10 +3745,9 @@ void EnsureFindDialogResolved() {
         g_findRunDialogFrame = reinterpret_cast<FindRunDialogFrameFn>(fnRunFrame);
         g_findGetUiCursorPos = reinterpret_cast<FindGetUiCursorPosFn>(fnGetCursor);
         g_findHitTestRow = reinterpret_cast<FindHitTestRowFn>(fnHitTest);
-        if (fnCloseMid) {
-            g_findCloseDialog = reinterpret_cast<FindCloseDialogFn>(fnCloseMid - 0x13);
-        }
+        g_findCloseDialog = fnCloseMid ? reinterpret_cast<FindCloseDialogFn>(fnCloseMid - 0x13) : nullptr;
         g_findSetTextFieldValue = reinterpret_cast<FindSetTextFieldValueFn>(fnSetText);
+        g_findWheelDeltaPtr = nullptr;
         if (fnWheelXchg) {
             int32_t disp = 0;
             std::memcpy(&disp, fnWheelXchg + 2, 4);
@@ -3713,10 +3762,11 @@ void EnsureFindDialogResolved() {
         return true;
     };
 
+    std::vector<std::pair<HMODULE, std::wstring>> candidates; // in load order
     HMODULE hMods[1024]{};
     DWORD cbNeeded = 0;
     if (EnumProcessModules(GetCurrentProcess(), hMods, sizeof(hMods), &cbNeeded)) {
-        size_t count = cbNeeded / sizeof(HMODULE);
+        size_t count = std::min<size_t>(cbNeeded / sizeof(HMODULE), 1024);
         for (size_t i = 0; i < count; ++i) {
             wchar_t pathBuf[MAX_PATH]{};
             if (!GetModuleFileNameW(hMods[i], pathBuf, MAX_PATH)) continue;
@@ -3731,16 +3781,21 @@ void EnsureFindDialogResolved() {
             bool isFindCandidate = (lowerName == L"find.dll" || lowerName == L"wsock32.dll" ||
                                     (lowerName.rfind(L"find.", 0) == 0 &&
                                      lowerName.compare(lowerName.size() - 4, 4, L".dll") == 0));
-            if (isFindCandidate) {
-                tryResolveModule(hMods[i], pathBuf);
-            }
+            if (isFindCandidate) candidates.emplace_back(hMods[i], pathBuf);
         }
     }
-    if (!g_findDllResolved) {
-        if (HMODULE m = GetModuleHandleW(L"find.dll")) {
-            tryResolveModule(m, L"find.dll");
+    if (candidates.empty()) {
+        if (HMODULE m = GetModuleHandleW(L"find.dll")) candidates.emplace_back(m, L"find.dll");
+    }
+    for (auto it = candidates.rbegin(); it != candidates.rend(); ++it) {
+        if (g_findDllResolved && it->first == g_findModule) return false;
+        if (tryResolveModule(it->first, it->second.c_str())) {
+            const bool changed = g_findModule != nullptr;
+            g_findModule = it->first;
+            return changed;
         }
     }
+    return false;
 }
 
 uint8_t* CreateNativeFindDialogFallback(const char* title, const char* okLabel) {
@@ -5308,8 +5363,10 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
             const float sx = originX + w.x * zoom;
             const float sy = originY + (mapWorldH - w.z) * zoom;
             if (sx < left - size || sx > right + size || sy < top - size || sy > bottom + size) continue;
+            const bool outside = OutsideFocusedRegion(w.x, w.z); // Map Key > Regions
+            if (outside && g_regionOutsideHide) continue;
             const bool underBanner = sy < top + kMapBannerBottom;
-            const float alpha = underBanner ? 0.22f : 1.0f;
+            const float alpha = underBanner ? 0.22f : outside ? 0.3f : 1.0f;
             ++drawn;
             if (backing) {
                 DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - half - 2.0f, sy - half - 2.0f, size + 4.0f, size + 4.0f,
@@ -6138,7 +6195,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
 
     auto openFindDialog = [&]() {
-        EnsureFindDialogResolved();
+        // A dialog made by an older Find copy is left behind (its functions are that copy's)
+        if (EnsureFindDialogResolved()) g_mapFindDialog = nullptr;
         if (!g_mapFindDialog) {
             if (g_findCreateDialog) {
                 g_mapFindDialog = g_findCreateDialog(umm_lang::T(umm_lang::Str::FindTitle), umm_lang::T(umm_lang::Str::FindTitle));
@@ -6359,8 +6417,11 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         constexpr float kPinRowH = 28.0f;
         constexpr float kScrollBarRoom = 10.0f;
         constexpr float kActionRowH = 30.0f; // SHOW ALL / HIDE ALL, under the title bar (does not scroll)
-        // Region: [<  name  >] [Dim | Hide], under it (does not scroll), with Settings > Advanced > Region Filter on
-        const float kRegionRowH = g_regionFilterEnabled ? 30.0f : 0.0f;
+        // Regions: [+/-] [ the regions shown ] [Dim | Hide], and unfolded a drawer with a row per region, under it (does
+        // not scroll), with Settings > Advanced > Region Filter on
+        constexpr float kRegionLineH = 21.0f;
+        const float kRegionRowH = !g_regionFilterEnabled ? 0.0f
+                                  : 30.0f + (g_regionDrawerOpen ? kRegionCount * kRegionLineH + 4.0f : 0.0f);
         constexpr float kSearchRowH = 30.0f; // the search box, under them (does not scroll)
         constexpr float kItemRowH0 = 20.0f;
         if (KeySearching()) KeySearchPlaces(client, mapState);
@@ -6614,55 +6675,54 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     }
                 }
 
-                // REGION: [<] All Regions / a region [>]   [Dim | Hide]
+                // REGIONS: [+/-] [ the regions shown ]   [Dim | Hide]; unfolded, a row per region: on / off each
                 if (g_regionFilterEnabled) {
-                    const float rowY = kTitleBarH + 4.0f + kActionRowH, btnH = kRegionRowH - 4.0f;
+                    const float rowY = kTitleBarH + 4.0f + kActionRowH, btnH = 26.0f;
                     const float segW = std::max(umm_lang::TextWidth(umm_lang::T(umm_lang::Str::Dim)),
                                                 umm_lang::TextWidth(umm_lang::T(umm_lang::Str::Hide))) + 22.0f;
-                    const float arrowW = 26.0f;
+                    const float foldW = 26.0f;
                     const float selX = 8.0f, selW = kPanelW - 16.0f - 2.0f * segW - 10.0f;
                     const float seg0X = selX + selW + 6.0f, seg1X = seg0X + segW + 4.0f;
-                    const bool any = g_regionFocus >= 0;
-                    const char* label = g_regionFocus < 0 ? umm_lang::T(umm_lang::Str::AllRegions) : RegionName(g_regionFocus);
-                    // The arrows: all regions, then the regions by level, round and round. The name: the region you are
-                    // in (all regions again when it already shows)
-                    auto step = [&](int dir) {
-                        const int n = static_cast<int>(kRegionCount) + 1;
-                        g_regionFocus = ((g_regionFocus + 1 + dir + n) % n) - 1;
+                    const uint32_t mask = g_regionMask & kAllRegionsMask;
+                    const bool any = mask != kAllRegionsMask;
+                    int shown = 0, first = -1;
+                    for (int r = 0; r < static_cast<int>(kRegionCount); ++r) {
+                        if (!((mask >> r) & 1u)) continue;
+                        ++shown;
+                        if (first < 0) first = r;
+                    }
+                    // All of them, one by name, the first by level and how many more, or none
+                    char label[96];
+                    if (!any) {
+                        std::snprintf(label, sizeof(label), "%s", umm_lang::T(umm_lang::Str::AllRegions));
+                    } else if (shown == 0) {
+                        std::snprintf(label, sizeof(label), "0 / %d", static_cast<int>(kRegionCount));
+                    } else if (shown == 1) {
+                        std::snprintf(label, sizeof(label), "%s", RegionName(first));
+                    } else {
+                        std::snprintf(label, sizeof(label), "%s +%d", RegionName(first), shown - 1);
+                    }
+                    auto setMask = [&](uint32_t m) {
+                        g_regionMask = m & kAllRegionsMask;
                         UpdateFocusedRegion(client);
                         SaveMinimapConfig();
                     };
-                    auto here = [&]() {
-                        float x = 0.0f, z = 0.0f;
-                        const int r = GetHudPlayerWorldPos(client, x, z) ? RegionAt(x, z) : -1;
-                        g_regionFocus = (r < 0 || r == g_regionFocus) ? -1 : r;
-                        UpdateFocusedRegion(client);
+                    const float fx = panelX + selX, by = panelY + rowY;
+                    const float lx = fx + foldW + 3.0f, lw = selW - foldW - 3.0f;
+                    const bool hovFold = !g_findDialogOpen && isHovered(fx, by, foldW, btnH);
+                    const bool hovLabel = !g_findDialogOpen && isHovered(lx, by, lw, btnH);
+                    DrawKeyButtonAbs(anchor.raw, fx, by, foldW, btnH, hovFold, false);
+                    DrawLabelAbs(fx, by, foldW, btnH, g_regionDrawerOpen ? "-" : "+", hovFold ? kActiveText : kGold, 1.0f,
+                                 TextAlignH::Center, TextAlignV::Center);
+                    DrawKeyButtonAbs(anchor.raw, lx, by, lw, btnH, hovLabel, any);
+                    DrawLabelAbs(lx + 4.0f, by, lw - 8.0f, btnH, label, any ? kActiveText : (hovLabel ? kText : kTextMuted),
+                                 any ? 1.0f : 0.9f, TextAlignH::Center, TextAlignV::Center, nullptr, kFilterRowFontScale);
+                    if (clicked && hovFold) {
+                        g_regionDrawerOpen = !g_regionDrawerOpen;
                         SaveMinimapConfig();
-                    };
-                    const float ax0 = panelX + selX, ax1 = panelX + selX + selW - arrowW, by = panelY + rowY;
-                    const bool hovL = !g_findDialogOpen && isHovered(ax0, by, arrowW, btnH);
-                    const bool hovR = !g_findDialogOpen && isHovered(ax1, by, arrowW, btnH);
-                    const bool hovMid = !g_findDialogOpen && isHovered(ax0 + arrowW + 3.0f, by, selW - 2.0f * arrowW - 6.0f, btnH);
-                    DrawKeyButtonAbs(anchor.raw, ax0, by, arrowW, btnH, hovL, false);
-                    // The arrows are drawn: the game's text reads "<" as the start of a markup tag
-                    auto arrow = [&](float x, float dir, bool hov) {
-                        const float cx = x + arrowW * 0.5f, cy = by + btnH * 0.5f;
-                        for (int i = 0; i < 5; ++i) {
-                            const float half = 5.0f - static_cast<float>(i);
-                            DrawSolidRectAbs(anchor.raw, cx + dir * (static_cast<float>(i) - 2.0f) - 0.75f, cy - half,
-                                             1.5f, half * 2.0f, hov ? kActiveText : kText, 0.95f);
-                        }
-                    };
-                    arrow(ax0, -1.0f, hovL);
-                    DrawKeyButtonAbs(anchor.raw, ax0 + arrowW + 3.0f, by, selW - 2.0f * arrowW - 6.0f, btnH, hovMid, any);
-                    DrawLabelAbs(ax0 + arrowW + 3.0f, by, selW - 2.0f * arrowW - 6.0f, btnH, label,
-                                 any ? kActiveText : (hovMid ? kText : kTextMuted), any ? 1.0f : 0.9f,
-                                 TextAlignH::Center, TextAlignV::Center, nullptr, kFilterRowFontScale);
-                    DrawKeyButtonAbs(anchor.raw, ax1, by, arrowW, btnH, hovR, false);
-                    arrow(ax1, 1.0f, hovR);
-                    if (clicked && hovL) step(-1);
-                    if (clicked && hovR) step(1);
-                    if (clicked && hovMid) here();
+                    }
+                    // The name, like a section's title: every region on, or (all on already) every region off
+                    if (clicked && hovLabel) setMask(mask == kAllRegionsMask ? 0u : kAllRegionsMask);
                     const umm_lang::Str segLabels[2] = {umm_lang::Str::Dim, umm_lang::Str::Hide};
                     const float segXs[2] = {seg0X, seg1X};
                     for (int i = 0; i < 2; ++i) {
@@ -6675,6 +6735,44 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         if (clicked && hov && !act) {
                             g_regionOutsideHide = i == 1;
                             SaveMinimapConfig();
+                        }
+                    }
+                    if (g_regionDrawerOpen) {
+                        const float rowX = panelX + 8.0f, rowW = kPanelW - 16.0f, badgeRight = rowX + rowW - 4.0f;
+                        for (int r = 0; r < static_cast<int>(kRegionCount); ++r) {
+                            const float ry = by + 30.0f + static_cast<float>(r) * kRegionLineH;
+                            const bool on = (mask >> r) & 1u;
+                            const bool hov = !g_findDialogOpen && isHovered(rowX, ry, rowW, kRegionLineH);
+                            if (hov) {
+                                DrawBoxAbs(anchor.raw, kGlowBoxSmallPrimitive, rowX - 3.0f, ry - 3.0f, rowW + 6.0f,
+                                           kRegionLineH + 6.0f, kGold, 0.35f, 8.0f);
+                                DrawFramedBoxAbs(anchor.raw, rowX, ry, rowW, kRegionLineH, kHoverFill, 0.92f, kGold, 0.85f, 4.0f);
+                            }
+                            const float dotCx = rowX + 10.5f, dotCy = ry + kRegionLineH * 0.5f;
+                            if (on) {
+                                DrawAssetRectAbs(anchor.raw, kSoftGlowPrimitive, dotCx - 7.0f, dotCy - 7.0f, 14.0f, 14.0f,
+                                                 kDotOn, 0.45f);
+                            }
+                            DrawAssetRectAbs(anchor.raw, kCirclePrimitive, dotCx - 3.5f, dotCy - 3.5f, 7.0f, 7.0f,
+                                             on ? kDotOn : kDotOff, on ? 0.98f : 0.8f);
+                            // Its colour (Settings > Advanced > Region Colors), in the badge
+                            const float bx = rowX + 19.0f, bby = ry + (kRegionLineH - 18.0f) * 0.5f;
+                            DrawAssetRectAbs(anchor.raw, kCirclePrimitive, bx, bby, 18.0f, 18.0f, kBadgeFill, on ? 0.95f : 0.45f);
+                            DrawAssetRectAbs(anchor.raw, kCircleOutlinePrimitive, bx, bby, 18.0f, 18.0f, kBadgeRing,
+                                             on ? 0.9f : 0.35f);
+                            DrawAssetRectAbs(anchor.raw, kCirclePrimitive, bx + 4.0f, bby + 4.0f, 10.0f, 10.0f,
+                                             kRegionTint[r], on ? 0.95f : 0.35f);
+                            const float nameX = rowX + 42.0f;
+                            const float nameW = rowW - 42.0f - OnOffBadgeWidth() - 8.0f;
+                            DrawLabelAbs(nameX, ry, nameW, kRegionLineH, RegionName(r),
+                                         on ? (hov ? kActiveText : kText) : kOffText, on ? 1.0f : 0.85f,
+                                         TextAlignH::Left, TextAlignV::Center, nullptr, kFilterRowFontScale);
+                            DrawOnOffBadgeAbs(anchor.raw, badgeRight, ry, kRegionLineH, on);
+                            // A click turns it on or off; Ctrl + click shows only this region
+                            if (clicked && hov) {
+                                const bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+                                setMask(ctrl ? (1u << r) : (mask ^ (1u << r)));
+                            }
                         }
                     }
                 }
@@ -7689,8 +7787,15 @@ void LoadMinimapConfig() {
     g_minimapShowPosition = GetPrivateProfileIntA("MinimapV2", "ShowPosition", 0, cfg.c_str()) != 0;
     g_regionFilterEnabled = GetPrivateProfileIntA("MinimapV2", "RegionFilter", 0, cfg.c_str()) != 0;
     g_regionColors = GetPrivateProfileIntA("MinimapV2", "RegionColors", 0, cfg.c_str()) != 0;
-    g_regionFocus = static_cast<int>(GetPrivateProfileIntA("MinimapV2", "RegionFocus", -1, cfg.c_str()));
-    if (g_regionFocus < 0 || g_regionFocus >= static_cast<int>(kRegionCount)) g_regionFocus = -1;
+    // The regions shown, a bit each; before 1.3.19 one region (RegionFocus, -1 all)
+    const int regionMask = static_cast<int>(GetPrivateProfileIntA("MinimapV2", "RegionMask", -1, cfg.c_str()));
+    if (regionMask >= 0) {
+        g_regionMask = static_cast<uint32_t>(regionMask) & kAllRegionsMask;
+    } else {
+        const int focus = static_cast<int>(GetPrivateProfileIntA("MinimapV2", "RegionFocus", -1, cfg.c_str()));
+        g_regionMask = focus >= 0 && focus < static_cast<int>(kRegionCount) ? 1u << focus : kAllRegionsMask;
+    }
+    g_regionDrawerOpen = GetPrivateProfileIntA("MinimapV2", "RegionDrawerOpen", 1, cfg.c_str()) != 0;
     g_regionOutsideHide = GetPrivateProfileIntA("MinimapV2", "RegionOutsideHide", 0, cfg.c_str()) != 0;
     int showMinimap = GetPrivateProfileIntA("MinimapV2", "ShowMinimap", 1, cfg.c_str());
     int clockWeather = GetPrivateProfileIntA("MinimapV2", "ClockWeather", 0, cfg.c_str());
@@ -7909,8 +8014,10 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "ShowPosition", g_minimapShowPosition ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionFilter", g_regionFilterEnabled ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionColors", g_regionColors ? "1" : "0", cfg.c_str());
-    std::snprintf(buf, sizeof(buf), "%d", g_regionFocus);
-    WritePrivateProfileStringA("MinimapV2", "RegionFocus", buf, cfg.c_str());
+    std::snprintf(buf, sizeof(buf), "%u", g_regionMask & kAllRegionsMask);
+    WritePrivateProfileStringA("MinimapV2", "RegionMask", buf, cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "RegionFocus", nullptr, cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "RegionDrawerOpen", g_regionDrawerOpen ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionOutsideHide", g_regionOutsideHide ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_minimapVisible ? 1 : 0);
     WritePrivateProfileStringA("MinimapV2", "ShowMinimap", buf, cfg.c_str());
@@ -9756,6 +9863,12 @@ void RestoreGameZoomSteps() {
 
 void SetModOff(bool off) {
     if (off == g_modOff) return;
+    // The game's code first (SetMarkerUnlockPatches): if its threads never leave it alone, nothing changes
+    if (!SetMarkerUnlockPatches(!off)) {
+        if (g_log) g_log("Ctrl+Shift+F12: the game's marker code stayed busy; the mod stays %s, press it again",
+                         g_modOff ? "OFF" : "ON");
+        return;
+    }
     g_modOff = off;
     static FogRevealMode s_fogMode = FogRevealMode::RevealAll;
     if (off) {
@@ -9764,11 +9877,9 @@ void SetModOff(bool off) {
         ApplyFogRevealMode(FogRevealMode::ExploredOnly); // the game's own fog values
         g_fogRevealMode = s_fogMode;
         if (g_kept) g_kept->fogMode = static_cast<int>(s_fogMode);
-        SetMarkerUnlockPatches(false);
         if (uint8_t* client = GetUiClient()) RestoreGameMarkerArrays(client);
         RestoreGameZoomSteps();
     } else {
-        SetMarkerUnlockPatches(true);
         ApplyFogRevealMode(s_fogMode);
     }
     RefreshMapMarkers();
@@ -10041,7 +10152,7 @@ void DrawMarkerPlateAndPop(void* widget, uint8_t* entry, const float* rect4, voi
 // outside the region has none (the game picks the hovered marker from its list each frame, drawn or not). The mod's own
 // calls (Find) go to the game's function itself (g_getMarkerTitleText is the original after the hook).
 bool TitleHiddenByRegion(const void* m) {
-    if (!g_regionOutsideHide || g_focusedRegion < 0 || !m) return false;
+    if (!g_regionOutsideHide || !g_regionFiltering || !m) return false;
     __try {
         return MarkerOutsideFocusedRegion(static_cast<const uint8_t*>(m));
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -10116,6 +10227,17 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
         changed = true;
     } else if (std::strcmp(action, "recenter") == 0 && worldMap) {
         g_bridgeRecenterMap = true;
+    } else if (std::strcmp(action, "modoff") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
+        SetModOff(std::strcmp(value, "on") == 0); // Ctrl+Shift+F12 without the keys ("on": the mod off)
+    } else if (std::strcmp(action, "gg") == 0 && hud) {
+        // G G without the keys: the chests and veins around you
+        chest_glow::LightNearbyChests(client);
+        vein_sight::LightNearby(client);
+    } else if (std::strcmp(action, "regions") == 0) {
+        // The Map Key's regions shown, as a bit mask ("3": Springlands and Revelwood)
+        g_regionMask = static_cast<uint32_t>(std::strtoul(value, nullptr, 0)) & kAllRegionsMask;
+        UpdateFocusedRegion(client);
+        changed = true;
     } else return -1;
     if (changed) {
         SaveMinimapConfig();

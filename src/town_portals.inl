@@ -171,8 +171,11 @@ void DrawTownPortalsOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapSt
         const float nudge = m.side == 1 ? -h * 0.55f : 0.0f;
         const float sx = originX + m.x * zoom + nudge, sy = originY + (mapWorldH - m.z) * zoom + nudge;
         if (sx < left - h || sx > right + h || sy < top - h || sy > bottom + h) continue;
+        // Map Key > Regions: outside the regions shown, dimmed or not drawn
+        const bool outside = OutsideFocusedRegion(m.x, m.z);
+        if (outside && g_regionOutsideHide) continue;
         const bool underBanner = sy < top + kMapBannerBottom;
-        DrawTownPortalIcon(widgetRaw, sx, sy, h, m, underBanner ? 0.22f : 1.0f);
+        DrawTownPortalIcon(widgetRaw, sx, sy, h, m, underBanner ? 0.22f : outside ? 0.3f : 1.0f);
         if (!underBanner && haveCursor && std::fabs(mx - sx) <= h * 0.5f + 2.0f && std::fabs(my - sy) <= h * 0.5f + 2.0f)
             g_hoveredDepositRow = kTownPortalTypeHash; // right-click Hide / Alt+click
         if (!underBanner && haveCursor && m.ownerName[0] && std::fabs(mx - sx) <= h * 0.5f + 2.0f &&
@@ -193,6 +196,7 @@ void DrawTownPortalsOnMinimap(void* widgetRaw, float vcx, float vcy, float playe
     const float clampLimit = radiusMeters * 0.91f;
     for (size_t i = 0; i < n; ++i) {
         const TownPortalMarker& m = portals[i];
+        if (RegionHidesAt(m.x, m.z)) continue;
         float dxM = m.x - playerX, dzM = m.z - playerZ;
         bool isClamped = false;
         const float maxAxis = std::max(std::abs(dxM), std::abs(dzM));
