@@ -266,6 +266,11 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.23
+- Pins: HYBRID: lore notes and bosses in unexplored fog sit on a gray ring instead of the amber
+  one, so they no longer look like places you've been to, and still stand out among the grayed
+  chests.
+
 1.3.22
 - Bosses gray out by themselves when you beat them, also when you beat one again after it came
   back (the game only records the first kill): the mod sees the boss alive at its spot and gone

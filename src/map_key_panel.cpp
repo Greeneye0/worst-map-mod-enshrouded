@@ -5349,12 +5349,13 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         // Under the menu banner along the top the game's own pins show through dimmed; so do these
         const bool underBanner = sy < top + kMapBannerBottom;
         const float alpha = (unexplored ? 0.55f : 1.0f) * (underBanner ? 0.22f : 1.0f) * (outside ? 0.3f : 1.0f);
-        // A lore note or boss not done yet stands out: a third bigger, on an amber ring (they are few and far apart)
+        // A lore note or boss not done yet stands out: a third bigger, on an amber ring (they are few and far apart); in
+        // unexplored fog (Pins: HYBRID) the ring is gray like the pin, so it still shows among the grayed chests
         const bool standOut = pass == 2 && !checked;
         const float iconSz = standOut ? size * 1.35f : size, iconHalf = iconSz * 0.5f;
         if (standOut) {
             DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - iconHalf - 4.0f, sy - iconHalf - 4.0f, iconSz + 8.0f,
-                             iconSz + 8.0f, 0xff3cc8f8u, 0.9f * alpha);
+                             iconSz + 8.0f, unexplored ? 0xff8c9296u : 0xff3cc8f8u, 0.9f * alpha);
         }
         if (backing || standOut) {
             DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - iconHalf - 2.0f, sy - iconHalf - 2.0f, iconSz + 4.0f,

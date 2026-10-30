@@ -1,0 +1,1 @@
+- Pins: HYBRID: lore notes and bosses in unexplored fog sit on a gray ring instead of the amber one, so they no longer look like places you've been to, and still stand out among the grayed chests.
