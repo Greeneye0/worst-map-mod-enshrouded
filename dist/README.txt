@@ -1,8 +1,8 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.15
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.24
 =========================================================================================
 
-Every marker on the world map, every ore deposit, material, plant, bait spot and forest, lore
-notes and bosses, a Map Key & Filters panel, Find on the map, fog and pin modes, looted chests,
+Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
+creature's spawn points, lore notes and bosses, a Map Key & Filters panel, Find on the map, fog and pin modes, looted chests,
 a minimap on your HUD, and G G to make what's nearby glow through walls.
 
 
@@ -41,7 +41,7 @@ On the right of the world map.
   one. Pins outside the regions that are on are dimmed (DIM) or not shown at all (HIDE), and their
   borders are drawn as a dotted gold line. Quest pins, lore rumors and your own pins always show.
 - Click a category header (FAST TRAVEL & ALTARS, SHROUD & VAULTS, WORLD & RESOURCES, MINING,
-  MATERIALS, PLANTS, BAIT, TREES, QUESTS & RUMORS) to switch the whole category, or + / - to
+  MATERIALS, PLANTS, BAIT, TREES, QUESTS & RUMORS, CREATURES) to switch the whole category, or + / - to
   fold it; folded categories stay folded the next time you play. Drag a category header up
   or down to move the category; the order is remembered.
 - The rows in each category are sorted by name in your language.
@@ -116,6 +116,16 @@ Read from the game's own world files, so every spot is where the game put it.
   carry their name.
 Each kind has its own row, all off at first. Hover an icon on the world map for its name.
 Deposits, materials, plants and bait also show on the minimap and in Find.
+
+
+CREATURES
+---------
+Where every creature spawns, read from the game's world files: 136 kinds, from the animals you
+can tame (Flightless Redtail, Common Goat, Fae Deer, Yak...) and the wildlife to the Fell,
+Scavengers, Vukah, Drak'Dal, the Hollow and the Ancient Constructs. Each has its own row in the
+CREATURES category, all off at first, with the game's own names; type a name in the Map Key's
+search to find it. Spawn points close together make one marker. Creatures also show on the
+minimap. Bosses keep their own Boss row.
 
 
 FIND ON THE MAP (Shift+F)
@@ -266,6 +276,13 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.24
+- Creatures: a new Map Key category with where every creature spawns, 136 kinds, each with its
+  own row: the animals you can tame (to find all the Flightless Redtails, say), the wildlife,
+  the Fell, Scavengers, Vukah, Drak'Dal, the Hollow and the Ancient Constructs.
+- The Map Key: a name too long for its row is drawn a little smaller instead of running under
+  its ON / OFF switch.
+
 1.3.23
 - Pins: HYBRID: lore notes and bosses in unexplored fog sit on a gray ring instead of the amber
   one, so they no longer look like places you've been to, and still stand out among the grayed

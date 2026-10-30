@@ -1,0 +1,2 @@
+- Creatures: a new Map Key category with where every creature spawns, 136 kinds, each with its own row: the animals you can tame (to find all the Flightless Redtails, say), the wildlife, the Fell, Scavengers, Vukah, Drak'Dal, the Hollow and the Ancient Constructs.
+- The Map Key: a name too long for its row is drawn a little smaller instead of running under its ON / OFF switch.
