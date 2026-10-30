@@ -1,0 +1,3 @@
+- Bosses gray out by themselves when you beat them, also when you beat one again after it came back (the game only records the first kill): the mod sees the boss alive at its spot and gone after the fight. Not for the Fell Critter Queens and the Fog Predator, which still need a Ctrl + click. Reported by GARONNN.
+- A place the game never marks discovered (like a Scavenger Camp west of Pikemead) stops being grayed out once you've been there. Reported by GARONNN.
+- Fixed: lore rumor "?" pins disappeared where the place they point to has its row switched off. They stay now. Reported by GARONNN.

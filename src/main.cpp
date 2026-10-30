@@ -19,7 +19,7 @@
 #include "scan.h"
 #include "greeneye.h"
 
-#define UMM_VERSION "1.3.21"
+#define UMM_VERSION "1.3.22"
 
 namespace {
 

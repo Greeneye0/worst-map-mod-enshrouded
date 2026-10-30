@@ -64,11 +64,11 @@ On the right of the world map.
   amber ring so they stand out. Hover one for its title.
 - BOSSES (WORLD & RESOURCES): the world's bosses, named like their health bar. A boss you've
   beaten gets a check mark for good; it's hidden or grayed out only while it's dead, until it
-  comes back by the same rule as a looted chest (its 256 m square reset 30 minutes after
-  everyone left). The game keeps no record of beating some of them (the Dire Wolf, the Critter
-  Queens, the Fog Predator...), and none of beating one again: Ctrl + left click a boss on the
-  map to step it: beaten (grayed), came back (check mark only), never beaten. The beaten marks
-  are saved per character, the timers per world.
+  comes back by the same rule as a looted chest (its 256 m square reset 30 minutes after everyone
+  left). A boss you kill is seen dying when you're there, so beating one again grays it too. The
+  game keeps no record of beating some of them, and the mod can't see the Fell Critter Queens and
+  the Fog Predator: Ctrl + left click a boss on the map to step it: beaten (grayed), came back
+  (check mark only), never beaten. The beaten marks are saved per character, the timers per world.
 - UNIQUE WEAPONS and UNIQUE EQUIPMENT (WORLD & RESOURCES): the one-of-a-kind weapons (40, like
   the Wailing Blade and Talion's Bow) and rings and gear (16, like the Gemini Ring and the
   Flaming Gauntlets), each at the chest or place it is in, with its own icon and name. One in
@@ -266,6 +266,16 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.22
+- Bosses gray out by themselves when you beat them, also when you beat one again after it came
+  back (the game only records the first kill): the mod sees the boss alive at its spot and gone
+  after the fight. Not for the Fell Critter Queens and the Fog Predator, which still need a Ctrl +
+  click. Reported by GARONNN.
+- A place the game never marks discovered (like a Scavenger Camp west of Pikemead) stops being
+  grayed out once you've been there. Reported by GARONNN.
+- Fixed: lore rumor "?" pins disappeared where the place they point to has its row switched off.
+  They stay now. Reported by GARONNN.
+
 1.3.21
 - Settings > Advanced > Vanilla World Map: the world map exactly as the game draws it, so it
   matches what your friends without the mod see, while the minimap stays. Vanilla Minimap, under

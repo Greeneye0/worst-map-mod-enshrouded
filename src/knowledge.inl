@@ -185,6 +185,16 @@ std::unordered_set<uint16_t> g_notBeatenBosses;
 // Unique items not in a chest the mod tracks (barrels, crates, lying in the world): marked found by hand (UniqueFoundAt)
 std::unordered_set<uint16_t> g_uniqueFound;
 std::string g_bossCharacter; // empty: not known yet (marks not loaded)
+// Places the character has been at (within 50 m of the pin) that the game still has as undiscovered: some camps never
+// turn discovered (a Scavenger Camp west of Pikemead, reported by GARONNN), so they stayed grayed. Saved with the marks
+// (VisitedAt = x,z;...); a pin at one of them is not grayed as undiscovered.
+std::unordered_set<uint64_t> g_visitedPlaces;
+uint64_t PlaceKey(int32_t x, int32_t z) {
+    return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 32) | static_cast<uint32_t>(z);
+}
+bool PlaceVisited(int32_t x, int32_t z) {
+    return !g_visitedPlaces.empty() && g_visitedPlaces.count(PlaceKey(x, z)) != 0;
+}
 
 bool IsBossSpot(size_t d) {
     return IsKnowledgeDeposit(d) && kOreDeposits[d].ore == kBossesFirst;
@@ -222,6 +232,14 @@ void SaveManualBosses() {
     save("BossesAt", "Bosses", g_manualBosses);
     save("NotBeatenAt", "NotBeaten", g_notBeatenBosses);
     save("UniqueFoundAt", "UniqueFound", g_uniqueFound);
+    std::vector<uint64_t> places(g_visitedPlaces.begin(), g_visitedPlaces.end());
+    std::sort(places.begin(), places.end());
+    std::string text;
+    for (uint64_t k : places) {
+        text += (text.empty() ? "" : ";") + std::to_string(static_cast<int32_t>(k >> 32)) + "," +
+                std::to_string(static_cast<int32_t>(k & 0xffffffffu));
+    }
+    WritePrivateProfileStringA(section.c_str(), "VisitedAt", text.c_str(), path.c_str());
 }
 
 // The boss spot (or unique item spot) at (x, z, top y), or -1. A boss can share its place with the item it drops.
@@ -287,6 +305,17 @@ void UpdateManualBosses(uint8_t* client) {
     load("BossesAt", "Bosses", true, g_manualBosses);
     load("NotBeatenAt", "NotBeaten", true, g_notBeatenBosses);
     load("UniqueFoundAt", "UniqueFound", false, g_uniqueFound);
+    g_visitedPlaces.clear();
+    {
+        std::vector<char> text(32768);
+        GetPrivateProfileStringA(section.c_str(), "VisitedAt", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+        for (const char* t = text.data(); *t;) {
+            int x = 0, z = 0;
+            if (sscanf_s(t, "%d,%d", &x, &z) == 2) g_visitedPlaces.insert(PlaceKey(x, z));
+            while (*t && *t != ';') ++t;
+            if (*t == ';') ++t;
+        }
+    }
     if (legacy) SaveManualBosses();
     if (g_log)
         g_log("Bosses: character %s, %zu marked defeated by hand, %zu not beaten by hand, %zu unique items found by hand",
@@ -389,6 +418,225 @@ void NoteBossKills(uint8_t* client) {
             if (g_log) g_log("Bosses: boss spot %zu beaten; grayed until it comes back", i);
         }
         was[i] = beaten;
+    }
+}
+
+// Bosses as they live (reported by GARONNN): the game records only a boss's first kill, and none for 13 of the 25, so a
+// boss beaten again after it came back stayed bright until marked by hand. The client holds the entities near the
+// player (built_water.inl). Its health bar stays on the server, but a boss entity carries its music (BossMusicTag: one of
+// the bosses' sound GUIDs, kBossMusic in ore_deposits.h); the one within 100 m of a boss spot is that spot's boss. A
+// boss seen alive at its spot that is gone while the player is still there was killed: grayed, checked and timed like
+// a kill the game reports. One seen alive while its timer runs came back. The Fell Critter Queens and the Fog Predator
+// have no music: not seen.
+namespace boss_live {
+
+struct RegistryTypes {
+    void* registry = nullptr;
+    uint16_t position = 0, music = 0;
+};
+RegistryTypes g_types[kMaxWaterRegistries];
+
+bool IsBossMusic(const uint8_t* c, uint16_t size) {
+    if (!c || size != 16) return false;
+    for (size_t i = 0; i < kBossMusicCount; ++i) {
+        if (std::memcmp(c, kBossMusic[i], 16) == 0) return true;
+    }
+    return false;
+}
+
+// The position type (most common plausible one) and the music type (a boss's music GUID) of a registry. The search
+// for the music reads every component of the entities within 150 m of (px, pz): at most every 5 s while it finds
+// none (a full pass over a busy registry took up to 12 ms).
+bool DetectTypes(uint8_t* reg, RegistryTypes& t, float px, float pz) {
+    if (t.registry != reg) t = RegistryTypes{reg, 0, 0};
+    if (!t.position) {
+        int counts[kEcsTypeBits]{};
+        int sampled = 0;
+        ForEachEcsEntity(reg, [&](uint8_t* rec) {
+            if (sampled >= 3000) return;
+            ++sampled;
+            const auto* bits = *reinterpret_cast<const uint64_t**>(rec + 0x18);
+            for (int ty = 0; ty < kEcsTypeBits; ++ty) {
+                if (!(bits[ty >> 6] >> (ty & 63) & 1)) continue;
+                float p[3];
+                if (EcsPosition(rec, static_cast<uint16_t>(ty), p) && PlausibleWorldPos(p)) ++counts[ty];
+            }
+        });
+        int best = 0;
+        for (int ty = 1; ty < kEcsTypeBits; ++ty) {
+            if (counts[ty] > counts[best]) best = ty;
+        }
+        if (counts[best] < 100) return false;
+        t.position = static_cast<uint16_t>(best);
+    }
+    if (!t.music) {
+        static uint64_t nextTry = 0;
+        const uint64_t now = GetTickCount64();
+        if (now < nextTry) return false;
+        nextTry = now + 5000ULL;
+        ForEachEcsEntity(reg, [&](uint8_t* rec) {
+            if (t.music) return;
+            float p[3];
+            if (!EcsPosition(rec, t.position, p) || (p[0] - px) * (p[0] - px) + (p[2] - pz) * (p[2] - pz) > 150.0f * 150.0f)
+                return;
+            const auto* bits = *reinterpret_cast<const uint64_t**>(rec + 0x18);
+            for (int ty = 0; ty < kEcsTypeBits; ++ty) {
+                if (!(bits[ty >> 6] >> (ty & 63) & 1) || ty == t.position) continue;
+                uint16_t size = 0;
+                const uint8_t* c = EcsComponent(rec, static_cast<uint16_t>(ty), &size);
+                if (IsBossMusic(c, size)) {
+                    t.music = static_cast<uint16_t>(ty);
+                    return;
+                }
+            }
+        });
+        if (!t.music) return false; // no boss loaded yet
+        if (g_log) g_log("Bosses: registry %p, boss music type %u, position type %u", reg, t.music, t.position);
+    }
+    return true;
+}
+
+struct LiveBoss {
+    float x, z;
+};
+
+bool ScanInner(std::vector<LiveBoss>& out, float px, float pz) {
+    bool any = false;
+    for (int i = 0; i < kMaxWaterRegistries; ++i) {
+        auto* reg = static_cast<uint8_t*>(g_waterRegistries[i].load(std::memory_order_relaxed));
+        if (!reg) continue;
+        RegistryTypes& t = g_types[i];
+        if (!DetectTypes(reg, t, px, pz)) continue;
+        any = true;
+        ForEachEcsEntity(reg, [&](uint8_t* rec) {
+            uint16_t size = 0;
+            const uint8_t* c = EcsComponent(rec, t.music, &size);
+            float p[3];
+            if (IsBossMusic(c, size) && EcsPosition(rec, t.position, p) && PlausibleWorldPos(p) && out.size() < 64)
+                out.push_back({p[0], p[2]});
+        });
+    }
+    return any;
+}
+
+bool Scan(std::vector<LiveBoss>& out, float px, float pz) {
+    __try {
+        return ScanInner(out, px, pz);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        out.clear();
+        return false;
+    }
+}
+
+// Once a second in a world.
+void Update(uint8_t* client) {
+    static uint64_t last = 0;
+    static std::vector<uint8_t> seenAlive, gone;
+    const uint64_t now = GetTickCount64();
+    if (now - last < 1000ULL) return;
+    last = now;
+    if (g_bossCharacter.empty() || g_lootSection.empty()) return;
+    float px = 0.0f, pz = 0.0f;
+    if (!GetHudPlayerWorldPos(client, px, pz)) return;
+    // Only with a boss spot within reach: the scan reads every entity
+    bool nearBoss = false;
+    for (size_t s = 0; s < kKnowledgeSpotCount && !nearBoss; ++s) {
+        const OreDeposit& dep = kOreDeposits[kKnowledgeFirstDeposit + s];
+        nearBoss = IsBossSpot(kKnowledgeFirstDeposit + s) &&
+               (dep.x - px) * (dep.x - px) + (dep.z - pz) * (dep.z - pz) <= 150.0f * 150.0f;
+    }
+    if (seenAlive.size() != kKnowledgeSpotCount) {
+        seenAlive.assign(kKnowledgeSpotCount, 0);
+        gone.assign(kKnowledgeSpotCount, 0);
+    }
+    if (!nearBoss) {
+        std::fill(seenAlive.begin(), seenAlive.end(), uint8_t{0});
+        return;
+    }
+    std::vector<LiveBoss> live;
+    if (!Scan(live, px, pz)) {
+        // Near a boss spot without the health bar type: what the registries hold (once a minute)
+        static uint64_t lastWhy = 0;
+        if (g_log && now - lastWhy >= 60000ULL) {
+            lastWhy = now;
+            for (int i = 0; i < kMaxWaterRegistries; ++i) {
+                if (void* reg = g_waterRegistries[i].load(std::memory_order_relaxed))
+                    g_log("Bosses: near a boss spot, no boss music found yet in registry %p (position type %u)", reg,
+                          g_types[i].position);
+            }
+        }
+        return;
+    }
+    for (size_t s = 0; s < kKnowledgeSpotCount; ++s) {
+        const size_t d = kKnowledgeFirstDeposit + s;
+        if (!IsBossSpot(d)) continue;
+        const OreDeposit& dep = kOreDeposits[d];
+        const float dist2 = (dep.x - px) * (dep.x - px) + (dep.z - pz) * (dep.z - pz);
+        if (dist2 > 150.0f * 150.0f) {
+            seenAlive[s] = gone[s] = 0;
+            continue;
+        }
+        bool alive = false;
+        for (const auto& b : live) {
+            const float bx = b.x - dep.x, bz = b.z - dep.z;
+            alive = alive || bx * bx + bz * bz <= 100.0f * 100.0f;
+        }
+        const auto spot = static_cast<uint16_t>(s);
+        if (alive) {
+            if (!seenAlive[s] && BossDeadNow(d)) {
+                g_bossDead.erase(spot);
+                g_lootSaveDirty = true;
+                if (g_log) g_log("Bosses: boss spot %zu is alive again", s);
+            }
+            seenAlive[s] = 1;
+            gone[s] = 0;
+            continue;
+        }
+        // Gone for two seconds in a row with the player still at it (not out of the client's range): killed
+        if (!seenAlive[s] || dist2 > 90.0f * 90.0f || ++gone[s] < 2) continue;
+        seenAlive[s] = gone[s] = 0;
+        g_bossDead[spot] = 0.0;
+        g_lootSaveDirty = true;
+        if (!KnowledgeDone(d)) {
+            g_notBeatenBosses.erase(spot);
+            if (!KnowledgeDoneInGame(d)) g_manualBosses.insert(spot);
+            SaveManualBosses();
+        }
+        if (g_log) g_log("Bosses: boss spot %zu killed (seen alive, now gone); grayed until it comes back", s);
+    }
+}
+
+} // namespace boss_live
+
+// Once a second: the pins the game still has as undiscovered within 50 m of the player become visited places.
+void NoteVisitedPlaces(uint8_t* client) {
+    static uint64_t last = 0;
+    const uint64_t now = GetTickCount64();
+    if (now - last < 1000ULL || g_bossCharacter.empty()) return;
+    last = now;
+    float px = 0.0f, pz = 0.0f;
+    if (!client || !GetHudPlayerWorldPos(client, px, pz)) return;
+    bool added = false;
+    __try {
+        constexpr size_t kArrays[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+        for (size_t at : kArrays) {
+            uint8_t* base = *reinterpret_cast<uint8_t**>(client + at);
+            const uint64_t count = *reinterpret_cast<uint64_t*>(client + at + 8);
+            if (!base || count > 10000) continue;
+            for (uint64_t i = 0; i < count; ++i) {
+                const uint8_t* m = base + i * 0xA0;
+                if (m[0x35] != 0x10 || (*reinterpret_cast<const uint32_t*>(m) & 0xFFFF0000u) == kChestMarkerUidPrefix) continue;
+                const int32_t x = *reinterpret_cast<const int32_t*>(m + 0x14), z = *reinterpret_cast<const int32_t*>(m + 0x24);
+                const float dx = static_cast<float>(x) - px, dz = static_cast<float>(z) - pz;
+                if (dx * dx + dz * dz > 50.0f * 50.0f) continue;
+                added = g_visitedPlaces.insert(PlaceKey(x, z)).second || added;
+            }
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    if (added) {
+        SaveManualBosses();
+        if (g_log) g_log("Places: %zu visited that the game has as undiscovered", g_visitedPlaces.size());
     }
 }
 

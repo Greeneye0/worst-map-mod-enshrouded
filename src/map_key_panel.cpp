@@ -125,6 +125,9 @@ const char* KnowledgeSpotName(size_t d);
 void UpdateKnowledge();
 void UpdateManualBosses(uint8_t* client);
 void NoteBossKills(uint8_t* client);
+namespace boss_live { void Update(uint8_t* client); } // knowledge.inl
+void NoteVisitedPlaces(uint8_t* client);
+bool PlaceVisited(int32_t x, int32_t z);
 std::string BossTimersText();
 void LoadBossTimers(const char* text);
 extern std::unordered_map<uint16_t, double> g_bossDead;
@@ -2545,6 +2548,8 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     UpdateKnowledge();
     UpdateManualBosses(client);
     NoteBossKills(client);
+    boss_live::Update(client);
+    NoteVisitedPlaces(client);
     chest_glow::UpdateKey(client, appFocused);
 
     // 1. A chest counts as looted when the interact key is pressed next to it and the game switches to its
@@ -3073,6 +3078,8 @@ bool IsMarkerTypeAlwaysRevealed(uint32_t origHash, uint8_t b48, uint64_t lastChg
 bool IsMarkerUndiscovered(const uint8_t* m, uint32_t origHash) {
     if (g_pinRevealMode == PinRevealMode::RevealAll) return false;
     if (!m || m[0x35] != 0x10) return false;
+    // A place the character has been at, though the game never marked it discovered (knowledge.inl)
+    if (PlaceVisited(*reinterpret_cast<const int32_t*>(m + 0x14), *reinterpret_cast<const int32_t*>(m + 0x24))) return false;
     for (const auto& row : kCategory0Rows) {
         if (row.typeHash == origHash) return false;
     }
@@ -3312,10 +3319,11 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             bool allowSubpinId = (subpinQuestHash == 0u) || subpinQuestOn;
             // An unread rumor about a place not yet explored shows as the game's "?" in the place's stead, like
             // vanilla; with Pins: EXPLORED only where the game shows the place ("Animals And Pets", a faded
-            // "Undiscovered: Shroud Root", the Alchemist Tower; reported by secretroff)
-            auto isSubpinRumor = [&]() {
+            // "Undiscovered: Shroud Root", the Alchemist Tower; reported by secretroff). Explored too while the
+            // place's own row is off: the game's "?" stays, not nothing (reported by GARONNN)
+            auto isSubpinRumor = [&](bool placeRowOn) {
                 return (!exploredOnly || GameShowsMarker(m[0x35])) && !subpinQuestHash && rumorFilterOn &&
-                       m[0x34] != 3 && !IsMarkerExplored(client, m, origHash) && g_isLoreRumorMarkerId &&
+                       m[0x34] != 3 && (!placeRowOn || !IsMarkerExplored(client, m, origHash)) && g_isLoreRumorMarkerId &&
                        savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) && LoreRumorFound(client, savedId08) != 1;
             };
 
@@ -3395,7 +3403,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             if (origHash == 0x7b87ef66u || origHash == 0xd11531d2u || origHash == 0x111adadau) {
                 // An active quest objective here shows as the quest (vanilla shows the quest, not the place), and an
                 // unread rumor as the "?"
-                const bool rumor = isSubpinRumor();
+                const bool rumor = isSubpinRumor(townFilterOn);
                 applyMarkerVisibility(m, origHash, savedId08,
                                       townFilterOn && revealedForPinMode && !subpinQuestOn && !rumor,
                                       subpinQuestOn || rumor, allowSubpinId);
@@ -3405,7 +3413,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 continue;
             }
             if (origHash == 0x9786a9f3u) {
-                const bool rumor = isSubpinRumor();
+                const bool rumor = isSubpinRumor(passageFilterOn);
                 applyMarkerVisibility(m, origHash, savedId08,
                                       passageFilterOn && revealedForPinMode && !subpinQuestOn && !rumor,
                                       subpinQuestOn || rumor, allowSubpinId);
@@ -3419,9 +3427,9 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 uint32_t poiFilterHash = (origHash == 0x6a56c5b3u) ? 0xa447cba3u : origHash;
                 bool poiFilterOn = IsFilterEnabled(filterEntries, filterCount, poiFilterHash);
                 // A place with an active quest objective (Helping Hands at a Hidden Tomb) or an unread rumor
-                // about a place not yet explored shows the quest / "?" like vanilla, not the place's icon
-                // that the unlock patches reveal; the quest even where the map is not explored yet.
-                const bool subpinRumor = isSubpinRumor();
+                // about a place not yet explored (or whose row is off) shows the quest / "?" like vanilla, not the
+                // place's icon that the unlock patches reveal; the quest even where the map is not explored yet.
+                const bool subpinRumor = isSubpinRumor(poiFilterOn);
                 if (subpinQuestOn || subpinRumor) {
                     applyMarkerVisibility(m, origHash, savedId08, false, true, true);
                     if (subpinRumor) addCountForHash(0x8ba7c122u);
@@ -9181,6 +9189,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                                                    : 0u;
                     if (subpinQuestHash != 0u && IsFilterEnabled(filterEntries, filterCount, subpinQuestHash)) {
                         normHash = subpinQuestHash;
+                    } else if (subpinQuestHash == 0u && markerState != 3u && IsFilterEnabled(filterEntries, filterCount, 0x8ba7c122u) &&
+                               g_isLoreRumorMarkerId && savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) &&
+                               LoreRumorFound(client, savedId08) != 1) {
+                        normHash = 0x8ba7c122u; // an unread rumor about a place whose row is off: the game's "?", as on the World Map
                     } else {
                         continue;
                     }
