@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.24
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.25
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -276,6 +276,13 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.25
+- Fixed: a lore rumor "?" was covered by the place it points to where the land around it is
+  explored but the place isn't discovered yet. The "?" stays until you discover the place, like
+  the game. Reported by GARONNN.
+- Fixed: G G lit no ore veins on Linux / Proton, where Wine can't unpack the mod's ore file; the
+  mod now unpacks it itself, and logs why if it still can't load it. Reported by Halfclick.
+
 1.3.24
 - Creatures: a new Map Key category with where every creature spawns, 136 kinds, each with its
   own row: the animals you can tame (to find all the Flightless Redtails, say), the wildlife,

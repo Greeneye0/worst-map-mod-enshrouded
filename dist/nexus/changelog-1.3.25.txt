@@ -1,0 +1,2 @@
+- Fixed: a lore rumor "?" was covered by the place it points to where the land is explored but the place isn't discovered yet. Reported by GARONNN.
+- Fixed: G G lit no ore veins on Linux / Proton; the mod now unpacks its ore file itself. Reported by Halfclick.
