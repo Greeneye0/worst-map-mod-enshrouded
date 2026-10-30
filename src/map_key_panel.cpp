@@ -3341,10 +3341,13 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             // An unread rumor about a place not yet explored shows as the game's "?" in the place's stead, like
             // vanilla; with Pins: EXPLORED only where the game shows the place ("Animals And Pets", a faded
             // "Undiscovered: Shroud Root", the Alchemist Tower; reported by secretroff). Explored too while the
-            // place's own row is off: the game's "?" stays, not nothing (reported by GARONNN)
+            // place's own row is off: the game's "?" stays, not nothing (reported by GARONNN). And in explored land
+            // while the place itself is not discovered yet: vanilla keeps the "?" there too (Traveller's Watch, GARONNN)
+            const bool placeUndiscovered =
+                m[0x35] == 0x10 && !PlaceVisited(*reinterpret_cast<const int32_t*>(m + 0x14), *reinterpret_cast<const int32_t*>(m + 0x24));
             auto isSubpinRumor = [&](bool placeRowOn) {
-                return (!exploredOnly || GameShowsMarker(m[0x35])) && !subpinQuestHash && rumorFilterOn &&
-                       m[0x34] != 3 && (!placeRowOn || !IsMarkerExplored(client, m, origHash)) && g_isLoreRumorMarkerId &&
+                return (!exploredOnly || GameShowsMarker(m[0x35])) && !subpinQuestHash && rumorFilterOn && m[0x34] != 3 &&
+                       (!placeRowOn || placeUndiscovered || !IsMarkerExplored(client, m, origHash)) && g_isLoreRumorMarkerId &&
                        savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) && LoreRumorFound(client, savedId08) != 1;
             };
 

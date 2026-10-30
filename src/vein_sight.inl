@@ -43,6 +43,77 @@ const uint8_t* g_masks = nullptr; // each point's u64 cell mask (version 2)
 uint32_t g_tiles = 0;
 bool g_tried = false;
 
+// XPRESS Huffman (MS-XCA 2.2.4), for where ntdll can't (Wine / Proton has no RtlDecompressBufferEx for it): per 64 KB
+// of output a 256-byte table of 512 4-bit code lengths (literals, then matches), then the bit stream in 16-bit words
+bool XpressHuffDecode(const uint8_t* in, size_t inSize, uint8_t* out, size_t outSize) {
+    std::vector<uint16_t> table(1u << 15); // symbol | length << 9, by the next 15 bits
+    size_t inPos = 0, outPos = 0;
+    while (outPos < outSize) {
+        if (inPos + 256 + 4 > inSize) return false;
+        std::fill(table.begin(), table.end(), uint16_t(0));
+        uint32_t code = 0;
+        for (unsigned len = 1; len <= 15; ++len) {
+            for (unsigned s = 0; s < 512; ++s) {
+                if (((in[inPos + s / 2] >> (4 * (s & 1))) & 15u) != len) continue;
+                const uint32_t first = code << (15 - len), n = 1u << (15 - len);
+                if (first + n > table.size()) return false;
+                std::fill(table.begin() + first, table.begin() + first + n, static_cast<uint16_t>(s | len << 9));
+                ++code;
+            }
+            code <<= 1;
+        }
+        size_t pos = inPos + 256;
+        auto read16 = [&](size_t at) -> uint32_t { return at + 1 < inSize ? in[at] | in[at + 1] << 8 : 0u; };
+        uint32_t bits = read16(pos) << 16 | read16(pos + 2);
+        pos += 4;
+        int extra = 16;
+        auto consume = [&](unsigned n) {
+            bits = n ? bits << n : bits;
+            extra -= static_cast<int>(n);
+            if (extra < 0) {
+                bits |= read16(pos) << -extra;
+                extra += 16;
+                pos += 2;
+            }
+        };
+        const size_t blockEnd = std::min(outSize, outPos + 65536);
+        while (outPos < blockEnd) {
+            const uint16_t e = table[bits >> 17];
+            const unsigned len = e >> 9, sym = e & 511;
+            if (!len) return false;
+            consume(len);
+            if (sym < 256) {
+                out[outPos++] = static_cast<uint8_t>(sym);
+                continue;
+            }
+            size_t matchLen = sym & 15;
+            const unsigned offBits = (sym >> 4) & 15;
+            if (matchLen == 15) {
+                if (pos >= inSize) return false;
+                matchLen = in[pos++];
+                if (matchLen == 255) {
+                    matchLen = read16(pos);
+                    pos += 2;
+                    if (matchLen == 0) { // a longer one: 32 bits
+                        matchLen = read16(pos) | static_cast<size_t>(read16(pos + 2)) << 16;
+                        pos += 4;
+                    }
+                    if (matchLen < 15) return false;
+                    matchLen -= 15;
+                }
+                matchLen += 15;
+            }
+            matchLen += 3;
+            const size_t offset = (offBits ? bits >> (32 - offBits) : 0u) + (size_t(1) << offBits);
+            consume(offBits);
+            if (offset > outPos || matchLen > outSize - outPos) return false;
+            for (size_t k = 0; k < matchLen; ++k, ++outPos) out[outPos] = out[outPos - offset];
+        }
+        inPos = pos;
+    }
+    return true;
+}
+
 bool Load() {
     if (g_tried) return g_points != nullptr;
     g_tried = true;
@@ -52,6 +123,11 @@ bool Load() {
         if (g_log) g_log("Vein sight: %s not found; GG lights no veins", path.c_str());
         return false;
     }
+    auto fail = [](const char* why) {
+        g_data.clear();
+        if (g_log) g_log("Vein sight: veins.bin %s; GG lights no veins", why);
+        return false;
+    };
     LARGE_INTEGER size{};
     std::vector<uint8_t> packed;
     DWORD got = 0;
@@ -60,10 +136,11 @@ bool Load() {
                       ReadFile(f, packed.data(), static_cast<DWORD>(packed.size()), &got, nullptr) && got == packed.size();
     CloseHandle(f);
     uint32_t rawSize = 0, packedSize = 0;
-    if (!read || std::memcmp(packed.data(), "VNZ1", 4) != 0) return false;
+    if (!read) return fail("could not be read");
+    if (std::memcmp(packed.data(), "VNZ1", 4) != 0) return fail("is not this version's (reinstall the mod)");
     std::memcpy(&rawSize, packed.data() + 4, 4);
     std::memcpy(&packedSize, packed.data() + 8, 4);
-    if (packedSize + 12 > packed.size() || rawSize > (64u << 20)) return false;
+    if (packedSize + 12 > packed.size() || rawSize > (64u << 20) || rawSize < 16) return fail("is cut short (reinstall the mod)");
     using DecompressFn = LONG(NTAPI*)(USHORT, PUCHAR, ULONG, PUCHAR, ULONG, PULONG, PVOID);
     using WorkSizeFn = LONG(NTAPI*)(USHORT, PULONG, PULONG);
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
@@ -71,25 +148,27 @@ bool Load() {
     auto workSize = reinterpret_cast<WorkSizeFn>(GetProcAddress(ntdll, "RtlGetCompressionWorkSpaceSize"));
     constexpr USHORT kXpressHuff = 4;
     ULONG ws = 0, fws = 0;
-    if (!decompress || !workSize || workSize(kXpressHuff, &ws, &fws) != 0) return false;
-    std::vector<uint8_t> work(ws);
     g_data.resize(rawSize);
     ULONG out = 0;
-    if (decompress(kXpressHuff, g_data.data(), rawSize, packed.data() + 12, packedSize, &out, work.data()) != 0 ||
-        out != rawSize || rawSize < 16 || std::memcmp(g_data.data(), "VEIN", 4) != 0) {
-        g_data.clear();
-        if (g_log) g_log("Vein sight: veins.bin unreadable");
-        return false;
+    bool unpacked = false;
+    if (decompress && workSize && workSize(kXpressHuff, &ws, &fws) == 0) {
+        std::vector<uint8_t> work(ws);
+        unpacked = decompress(kXpressHuff, g_data.data(), rawSize, packed.data() + 12, packedSize, &out, work.data()) == 0 &&
+                   out == rawSize;
     }
+    if (!unpacked) {
+        unpacked = XpressHuffDecode(packed.data() + 12, packedSize, g_data.data(), rawSize);
+        if (g_log) g_log("Vein sight: Windows can't unpack veins.bin here (Wine?), the mod's own unpacker %s",
+                         unpacked ? "did" : "failed too");
+    }
+    if (!unpacked || std::memcmp(g_data.data(), "VEIN", 4) != 0) return fail("unreadable");
     uint32_t version = 0, count = 0;
     std::memcpy(&version, g_data.data() + 4, 4);
     std::memcpy(&g_tiles, g_data.data() + 8, 4);
     std::memcpy(&count, g_data.data() + 12, 4);
     const size_t headerEnd = 16 + (static_cast<size_t>(g_tiles) * g_tiles + 1) * 4;
-    if (version != 2 || g_tiles == 0 || g_tiles > 256 || headerEnd + static_cast<size_t>(count) * (sizeof(Point) + 8) != rawSize) {
-        g_data.clear();
-        return false;
-    }
+    if (version != 2 || g_tiles == 0 || g_tiles > 256 || headerEnd + static_cast<size_t>(count) * (sizeof(Point) + 8) != rawSize)
+        return fail("is not this version's (reinstall the mod)");
     g_first = reinterpret_cast<const uint32_t*>(g_data.data() + 16);
     g_points = reinterpret_cast<const Point*>(g_data.data() + headerEnd);
     g_masks = g_data.data() + headerEnd + static_cast<size_t>(count) * sizeof(Point);
