@@ -169,6 +169,12 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
   middle click the world map) to copy them, like "X 3215, Z 2051".
 - ADVANCED > Region Filter, off at first: the Map Key's REGIONS row (see above).
 - ADVANCED > Region Colors, off at first: each region tinted in its own colour on the world map.
+- ADVANCED > Vanilla World Map, off at first: the world map exactly as the game draws it, as your
+  friends without the mod see it (the game's markers, fog, zoom and filter menu; no Map Key or
+  added pins). The minimap stays, and its cog is then the way to Settings.
+- ADVANCED > Vanilla Minimap, under it: the minimap shows only what the game's world map shows,
+  the game's own markers and the players, and none of the mod's chests, resources, lore notes,
+  portals and the like.
 Everything is remembered.
 
 
@@ -260,6 +266,11 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.21
+- Settings > Advanced > Vanilla World Map: the world map exactly as the game draws it, so it
+  matches what your friends without the mod see, while the minimap stays. Vanilla Minimap, under
+  it, makes the minimap show only the game's own markers too. Requested by menelothar.
+
 1.3.20
 - Collectibles: 32 more, the ones that sit in a chest or container instead of lying loose: Flame
   Mosaic Piece I, the four Dragon's Map pieces, the Embervale Miniature pieces, the orrery rings

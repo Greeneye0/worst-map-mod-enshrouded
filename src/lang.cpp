@@ -470,6 +470,15 @@ const Row kTable[] = {
     {"Wooden Sarcophagus", "Holzsarkophag", "Sarcophage en bois", "Sarcofago di legno", "Sarcófago de madera",
      "Sarcófago de madeira", "Drewniany sarkofag", "Деревянный саркофаг", "Дерев'яний саркофаг", "Ahşap Lahit",
      "木の石棺", "나무 석관", "木石棺", "木石棺", "โลงศพไม้"},
+    // VanillaWorldMap: Settings > Advanced; the World Map as the game draws it without the mod, the minimap stays
+    {"Vanilla World Map", "Weltkarte ohne Mod", "Carte du monde d'origine", "Mappa del mondo originale",
+     "Mapa del mundo original", "Mapa-múndi original", "Oryginalna mapa świata", "Обычная карта мира",
+     "Звичайна карта світу", "Orijinal Dünya Haritası", "ワールドマップを標準に", "기본 월드 맵", "原版世界地图",
+     "原版世界地圖", "แผนที่โลกแบบดั้งเดิม"},
+    // VanillaMinimap: Settings > Advanced, under Vanilla World Map; the minimap with the game's own markers only
+    {"Vanilla Minimap", "Minikarte ohne Mod", "Mini-carte d'origine", "Minimappa originale", "Minimapa original",
+     "Minimapa original", "Oryginalna minimapa", "Обычная мини-карта", "Звичайна мінікарта", "Orijinal Mini Harita",
+     "ミニマップを標準に", "기본 미니맵", "原版小地图", "原版小地圖", "มินิแมพแบบดั้งเดิม"},
 };
 // clang-format on
 

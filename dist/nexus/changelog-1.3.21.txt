@@ -1,0 +1,1 @@
+- Settings > Advanced > Vanilla World Map: the world map exactly as the game draws it, so it matches what your friends without the mod see, while the minimap stays. Vanilla Minimap, under it, makes the minimap show only the game's own markers too. Requested by menelothar.

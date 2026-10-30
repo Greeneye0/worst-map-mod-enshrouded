@@ -100,7 +100,7 @@ void DrawCombinedMapHints(MapHintSpan* span, void* options) {
 
 void MapHintsHook(MapHintSpan* span, void* options) {
     greeneye::Lease lease;
-    auto* client = lease ? GetUiClient() : nullptr;
+    auto* client = lease && g_worldMapModded ? GetUiClient() : nullptr;
     if (client && client[0x1cd8] == 5 && !g_findDialogOpen && span && span->data && span->count && span->count <= 16 && g_originalMapHint)
         DrawCombinedMapHints(span, options);
     else g_originalMapHints(span, options);

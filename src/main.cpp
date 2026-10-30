@@ -19,7 +19,7 @@
 #include "scan.h"
 #include "greeneye.h"
 
-#define UMM_VERSION "1.3.20"
+#define UMM_VERSION "1.3.21"
 
 namespace {
 
@@ -135,10 +135,18 @@ bool ApplyAllPatches() {
         return false;
     }
 
+    // Settings > Advanced > Vanilla World Map: the game's bytes stay (a hot reload finding them patched leaves that to
+    // the mod's switch, which waits until no thread is in them)
+    const bool vanilla = unlock_map_markers::VanillaWorldMapInConfig();
+    bool allPatched = true;
     for (size_t i = 0; i < unlock_map_markers::kNumPatchSites; ++i) {
         const auto& spec = unlock_map_markers::kPatchSites[i];
         const auto& site = g_resolvedSites[i];
         if (site.state == unlock_map_markers::SiteMatchState::AlreadyPatched) {
+            continue;
+        }
+        if (vanilla) {
+            allPatched = false;
             continue;
         }
         if (!WriteProcessBytes(site.patchAddress, spec.replacementBytes, spec.patchSize)) {
@@ -149,6 +157,9 @@ bool ApplyAllPatches() {
         LogMessage("Applied patch %zu (%s, %zu bytes) at %p", i + 1, spec.name, spec.patchSize, site.patchAddress);
     }
     g_patchesApplied = true;
+    unlock_map_markers::SetWorldMapPatchedAtLoad(allPatched);
+    if (vanilla) LogMessage("Vanilla World Map: the marker patches are %s; the hooks below still go in",
+                            allPatched ? "on, coming off" : "left off");
 
     if (!unlock_map_markers::InstallMapKeyPanelHook(&LogMessage)) {
         WriteStatusFile("error_hooks_failed");

@@ -32,6 +32,7 @@ enum class Str : int {
     MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar,
     FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show, TimeFormat,
     Advanced, ShowPosition, AllRegions, Dim, HintCopyPosition, RegionFilter, RegionColors, TownPortals, HintHideFilter, HintUndoFilter, HintRedoFilter, SearchList, NoListMatches, WoodChest, WoodSarcophagus,
+    VanillaWorldMap, VanillaMinimap,
     Count
 };
 

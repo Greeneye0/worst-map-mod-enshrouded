@@ -28,4 +28,9 @@ void PrepareMapKeyPanelForReload();
 // main.cpp: the four marker unlock byte patches on (the mod's bytes) or off (the game's own).
 bool SetMarkerUnlockPatches(bool on); // false: a thread stood in the code every try; unchanged
 
+// Settings > Advanced > Vanilla World Map, read before the patches are written (on: they aren't), and whether
+// they are on once main.cpp is done with them.
+bool VanillaWorldMapInConfig();
+void SetWorldMapPatchedAtLoad(bool patched);
+
 } // namespace unlock_map_markers

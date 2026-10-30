@@ -578,6 +578,15 @@ using DoPlayStateUiFn = void (*)();
 using BuildWorldMapPlayersFn = void (*)(void* outVec, void* mapState);
 DrawMapFilterMenuFn g_origDrawMapFilterMenu = nullptr;
 bool g_modOff = false;             // Ctrl + Shift + F12: the whole mod switched off (SetModOff)
+// Settings > Advanced > Vanilla World Map: the World Map as the game draws it, as players without the mod see it; the
+// minimap and the rest stay on. g_worldMapModded is what is in force: the marker patches on and the mod's World Map
+// hooks at work. It follows !g_modOff && !g_vanillaWorldMap once the patches could be switched (SwitchWorldMap).
+bool g_vanillaWorldMap = false;
+// Settings > Advanced > Vanilla Minimap, under it (only with Vanilla World Map on): the minimap shows what the game's World
+// Map shows, the game's own markers and the players, and none of the mod's (chests, resources, lore, portals...)
+bool g_vanillaMinimap = false;
+bool VanillaMinimapData() { return g_vanillaWorldMap && g_vanillaMinimap; }
+bool g_worldMapModded = true;
 uint8_t* g_lastMapState = nullptr; // the World Map's state, last seen by DrawMapKeyOverlay
 GetMarkerTypeFn g_origGetMarkerType = nullptr;
 uint8_t* g_worldMapInputHookTarget = nullptr;
@@ -612,6 +621,7 @@ void ApplyFogRevealMode(FogRevealMode mode) {
         g_kept->fogMode = static_cast<int>(mode);
         g_kept->valid = 1;
     }
+    if (!g_worldMapModded) mode = FogRevealMode::ExploredOnly; // the game's own fog; the choice is kept for later
     uint32_t colR = 0x3e2cacadu;
     uint32_t colG = 0x3e2cacadu;
     uint32_t colB = 0x3e2cacadu;
@@ -5544,7 +5554,7 @@ void DrawGearIconAbs(void* widgetRaw, float cx, float cy, float r, uint32_t col,
 
 const PanelLayout& CurrentPanelLayout();
 
-constexpr float kSettingsCardH = 548.0f;
+constexpr float kSettingsCardH = 604.0f;
 
 float SettingsSegWidth() {
     using umm_lang::Str;
@@ -5576,10 +5586,14 @@ float SettingsCardWidth() {
         TextWidth(T(Str::ShowPosition)),
         TextWidth(T(Str::RegionFilter)),
         TextWidth(T(Str::RegionColors)),
+        TextWidth(T(Str::VanillaWorldMap)),
+        TextWidth(T(Str::VanillaMinimap)) + 14.0f, // indented under Vanilla World Map
         TextWidth(T(Str::FilterLocks)) + 40.0f // " (12)"
     });
     return std::max(CurrentPanelLayout().panelW, std::min(580.0f, std::max(448.0f, 12.0f + maxLbl + 18.0f + 2.0f * segW + 4.0f + 12.0f)));
 }
+
+bool SetVanillaWorldMap(bool on); // below
 
 // Draws the Settings modal card (accessible from the [⚙] cog on both the World Map and HUD Minimap).
 // Returns true if any setting was changed this frame.
@@ -5749,7 +5763,8 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::ShowMinimap), 0xffd6e6eeu, 0.96f,
                      TextAlignH::Left, TextAlignV::Center);
         DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_minimapVisible);
-        if (clicked && hovRow) {
+        // With Vanilla World Map on, the minimap's cog is the only way to Settings: it stays on
+        if (clicked && hovRow && !(g_vanillaWorldMap && g_minimapVisible)) {
             g_minimapVisible = !g_minimapVisible;
             SaveMinimapConfig();
             changed = true;
@@ -6012,6 +6027,38 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         if (clicked && hovRow) {
             g_regionColors = !g_regionColors;
             SaveMinimapConfig();
+            changed = true;
+        }
+    }
+
+    // Row A4: Vanilla World Map (the World Map as the game draws it; the minimap stays) [ON / OFF]
+    {
+        ry += kRowH;
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::VanillaWorldMap), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_vanillaWorldMap);
+        if (clicked && hovRow && SetVanillaWorldMap(!g_vanillaWorldMap)) changed = true;
+    }
+
+    // Row A5: Vanilla Minimap, under Vanilla World Map and only with it: the minimap with the game's markers only
+    {
+        ry += kRowH;
+        const bool usable = g_vanillaWorldMap;
+        bool hovRow = usable && isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 26.0f, ry, cardW - 50.0f - OnOffBadgeWidth(), kRowH, T(Str::VanillaMinimap),
+                     usable ? 0xffd6e6eeu : kOffText, usable ? 0.96f : 0.6f, TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, usable && g_vanillaMinimap);
+        if (clicked && hovRow) {
+            g_vanillaMinimap = !g_vanillaMinimap;
+            SaveMinimapConfig();
+            if (g_log) g_log("Vanilla Minimap %s", g_vanillaMinimap ? "on: the game's markers only" : "off");
             changed = true;
         }
     }
@@ -7582,7 +7629,7 @@ bool BlockWorldMapInput(uint8_t* mapState) {
 void WorldMapInputHook(void* mapRootWidget, uint8_t* mapState) {
     {
         greeneye::Lease lease; // released before the game's code runs on
-        if (lease && !g_modOff && BlockWorldMapInput(mapState)) return;
+        if (lease && g_worldMapModded && BlockWorldMapInput(mapState)) return;
     }
     if (g_origWorldMapInput) {
         g_origWorldMapInput(mapRootWidget, mapState);
@@ -7607,7 +7654,7 @@ void DrawMapFilterMenuHook(void* mapState) {
     // calls on instead.
     {
         greeneye::Lease lease;
-        if (lease && !g_modOff) {
+        if (lease && g_worldMapModded) {
             SafeDrawMapKeyOverlay(mapState);
             return;
         }
@@ -7788,6 +7835,8 @@ void LoadMinimapConfig() {
     g_minimapShowPosition = GetPrivateProfileIntA("MinimapV2", "ShowPosition", 0, cfg.c_str()) != 0;
     g_regionFilterEnabled = GetPrivateProfileIntA("MinimapV2", "RegionFilter", 0, cfg.c_str()) != 0;
     g_regionColors = GetPrivateProfileIntA("MinimapV2", "RegionColors", 0, cfg.c_str()) != 0;
+    g_vanillaWorldMap = GetPrivateProfileIntA("MinimapV2", "VanillaWorldMap", 0, cfg.c_str()) != 0;
+    g_vanillaMinimap = GetPrivateProfileIntA("MinimapV2", "VanillaMinimap", 0, cfg.c_str()) != 0;
     // The regions shown, a bit each; before 1.3.19 one region (RegionFocus, -1 all)
     const int regionMask = static_cast<int>(GetPrivateProfileIntA("MinimapV2", "RegionMask", -1, cfg.c_str()));
     if (regionMask >= 0) {
@@ -7864,7 +7913,7 @@ void LoadMinimapConfig() {
     g_minimapShowTerrain = (showTerrain != 0);
     g_minimapThinBorder = (thinBorder != 0);
     g_minimapInfoBar = (infoBar != 0);
-    g_minimapVisible = (showMinimap != 0);
+    g_minimapVisible = showMinimap != 0 || g_vanillaWorldMap; // Vanilla World Map: the minimap's cog leads to Settings
     g_minimapClockWeatherMode = (clockWeather != 0);
     g_lootedChestMode = (lootedChestMode != 0) ? 1 : 0;
     g_hideCompletedPlaces = GetPrivateProfileIntA("MinimapV2", "HideCompletedPlaces", 0, cfg.c_str()) != 0;
@@ -8015,6 +8064,8 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "ShowPosition", g_minimapShowPosition ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionFilter", g_regionFilterEnabled ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionColors", g_regionColors ? "1" : "0", cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "VanillaWorldMap", g_vanillaWorldMap ? "1" : "0", cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "VanillaMinimap", g_vanillaMinimap ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%u", g_regionMask & kAllRegionsMask);
     WritePrivateProfileStringA("MinimapV2", "RegionMask", buf, cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionFocus", nullptr, cfg.c_str());
@@ -9056,6 +9107,9 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
         const bool hideClearedOnBigMap = (client[0x4642b1] != 0);
         const float customScale = kMarkerScaleLevels[g_customMarkerScaleIdx];
+        // Vanilla Minimap: the game's markers as its World Map shows them (every pin it has, no Completed Places: Hide)
+        const bool vanillaData = VanillaMinimapData();
+        const PinRevealMode pinMode = vanillaData ? PinRevealMode::RevealAll : g_pinRevealMode;
 
         uint64_t nowTick = GetTickCount64();
         const bool pulseActive = !g_pulsingPlaces.empty() && (nowTick - g_pulseStartTick <= 14000ULL);
@@ -9120,7 +9174,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 // A main quest's area circle (Plains For First Base): only while its quest is on, like the world map
                 if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, m[0x35])) continue;
                 const bool visitedSanctum = IsVisitedSanctumMarker(m, origHash);
-                if (g_hideCompletedPlaces && (markerState == 3u || visitedSanctum) && origHash != 0xafce0c5fu) continue; // Completed Places: Hide
+                if (!vanillaData && g_hideCompletedPlaces && (markerState == 3u || visitedSanctum) && origHash != 0xafce0c5fu) continue; // Completed Places: Hide
                 if (!IsFilterEnabled(filterEntries, filterCount, normHash)) {
                     uint32_t subpinQuestHash = (origHash != 0xafce0c5fu)
                                                    ? GetQuestFilterHashForMarkerId(savedId08, true)
@@ -9133,9 +9187,9 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 }
 
                 // Respect PinRevealMode (Explored / Hybrid / Reveal All) for unexplored pins
-                const bool isUnexploredPin = (g_pinRevealMode != PinRevealMode::RevealAll) &&
+                const bool isUnexploredPin = (pinMode != PinRevealMode::RevealAll) &&
                                              !IsMarkerExplored(client, m, origHash);
-                if (g_pinRevealMode == PinRevealMode::ExploredOnly && !IsMarkerShownForExploredPins(client, m, origHash)) {
+                if (pinMode == PinRevealMode::ExploredOnly && !IsMarkerShownForExploredPins(client, m, origHash)) {
                     continue;
                 }
 
@@ -9193,7 +9247,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 if (sortCat == 4) {
                     iconSize *= customScale;
                 }
-                if ((isUnexploredPin && g_pinRevealMode == PinRevealMode::Hybrid) || IsMarkerUndiscovered(m, origHash)) {
+                if ((isUnexploredPin && pinMode == PinRevealMode::Hybrid) || IsMarkerUndiscovered(m, origHash)) {
                     tint = 0xFF8C9296u;
                     alpha = 0.52f;
                 }
@@ -9219,7 +9273,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
 
         UMM_LAP(PerfMmMarkers);
         // 2b. Gold, Silver & Wooden Chests directly from kChestSpawns (100% flicker-free!)
-        if (AnyChestRowEnabled()) {
+        if (!vanillaData && AnyChestRowEnabled()) {
             const void* goldIconRef = g_goldChestEnabled ? GetIconRefForType(client, kGoldChestTypeHash) : nullptr;
             const void* silverIconRef = g_silverChestEnabled ? GetIconRefForType(client, kSilverChestTypeHash) : nullptr;
             const void* woodIconRef = g_woodChestEnabled ? GetIconRefForType(client, kWoodChestTypeHash) : nullptr;
@@ -9299,7 +9353,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
 
         UMM_LAP(PerfMmChests);
         // 2c. Ore deposits (Mining), under everything else
-        if (AnyOreEnabled()) {
+        if (!vanillaData && AnyOreEnabled()) {
             // Lore notes, bosses and mining / materials deposits nearby get the chests' height caret (many notes are in
             // cellars, crypts, towers; ores in caves and on cliffs)
             float knowPlayerY = 0.0f;
@@ -9344,7 +9398,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         }
 
         // 2d. Built water (built_water.inl), with the world's wells and barrels under Water Source
-        if (g_oreEnabled[kWaterFirst]) {
+        if (!vanillaData && g_oreEnabled[kWaterFirst]) {
             for (const auto& w : g_builtWater) {
                 const float dxMeters = w.x - playerX;
                 const float dzMeters = w.z - playerZ;
@@ -9426,11 +9480,12 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         }
 
         // Town Portal's open portals (town_portals.inl), under the players
-        if (g_townPortalsEnabled)
+        if (!vanillaData && g_townPortalsEnabled)
             DrawTownPortalsOnMinimap(anchor.raw, vcx, vcy, playerX, playerZ, radiusMeters, pxPerMeterX, pxPerMeterY, btnScale);
 
-        // Draw other players in multiplayer from client + 0x4642c0 (count at +0x4642c8, stride 0x240)
-        if (g_otherPlayersEnabled) {
+        // Draw other players in multiplayer from client + 0x4642c0 (count at +0x4642c8, stride 0x240); the game's
+        // World Map always shows them
+        if (g_otherPlayersEnabled || vanillaData) {
             uint8_t* playerArray = *reinterpret_cast<uint8_t**>(client + 0x4642c0);
             uint64_t playerCount = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
             uint32_t localPlayerId = *reinterpret_cast<uint32_t*>(client + 0x18);
@@ -9862,29 +9917,59 @@ void RestoreGameZoomSteps() {
     }
 }
 
+// The World Map with the mod (true) or as the game draws it. The game's code first (SetMarkerUnlockPatches): if its
+// threads never leave it alone, nothing changes (false). Without the mod: the game's fog, the chest pins the mod added
+// leave the game's marker arrays, every pin gets back its type and quest link, and the zoom steps are the game's.
+bool SwitchWorldMap(bool modded) {
+    if (modded == g_worldMapModded) return true;
+    if (!SetMarkerUnlockPatches(modded)) return false;
+    g_worldMapModded = modded;
+    ApplyFogRevealMode(g_fogRevealMode);
+    if (!modded) {
+        if (uint8_t* client = GetUiClient()) RestoreGameMarkerArrays(client);
+        RestoreGameZoomSteps();
+    }
+    RefreshMapMarkers();
+    return true;
+}
+
 void SetModOff(bool off) {
     if (off == g_modOff) return;
-    // The game's code first (SetMarkerUnlockPatches): if its threads never leave it alone, nothing changes
-    if (!SetMarkerUnlockPatches(!off)) {
+    if (!SwitchWorldMap(!off && !g_vanillaWorldMap)) {
         if (g_log) g_log("Ctrl+Shift+F12: the game's marker code stayed busy; the mod stays %s, press it again",
                          g_modOff ? "OFF" : "ON");
         return;
     }
     g_modOff = off;
-    static FogRevealMode s_fogMode = FogRevealMode::RevealAll;
-    if (off) {
-        PrepareMapKeyPanelForReload(); // the minimap's window procedure and mouse, the Find dialog
-        s_fogMode = g_fogRevealMode;
-        ApplyFogRevealMode(FogRevealMode::ExploredOnly); // the game's own fog values
-        g_fogRevealMode = s_fogMode;
-        if (g_kept) g_kept->fogMode = static_cast<int>(s_fogMode);
-        if (uint8_t* client = GetUiClient()) RestoreGameMarkerArrays(client);
-        RestoreGameZoomSteps();
-    } else {
-        ApplyFogRevealMode(s_fogMode);
-    }
-    RefreshMapMarkers();
+    if (off) PrepareMapKeyPanelForReload(); // the minimap's window procedure and mouse, the Find dialog
     if (g_log) g_log("Ctrl+Shift+F12: the mod is %s", off ? "OFF (the game as it is)" : "ON again");
+}
+
+// Settings > Advanced > Vanilla World Map. The minimap stays on with it: its cog is then the way back to Settings.
+bool SetVanillaWorldMap(bool on) {
+    if (on == g_vanillaWorldMap) return true;
+    if (!SwitchWorldMap(!g_modOff && !on)) {
+        if (g_log) g_log("Vanilla World Map: the game's marker code stayed busy; still %s, click it again", on ? "off" : "on");
+        return false;
+    }
+    g_vanillaWorldMap = on;
+    if (on) g_minimapVisible = true;
+    SaveMinimapConfig();
+    if (g_log) g_log("Vanilla World Map %s", on ? "on: the World Map as the game draws it" : "off: the mod's World Map");
+    return true;
+}
+
+// At load with Vanilla World Map on, the patches can still be on (a hot reload from a generation without it): they
+// come off as soon as the game's code allows, tried once a second.
+void SyncWorldMapMode() {
+    if (!g_minimapConfigLoaded) return; // Vanilla World Map isn't known yet
+    const bool want = !g_modOff && !g_vanillaWorldMap;
+    if (want == g_worldMapModded) return;
+    static uint64_t s_nextTry = 0;
+    const uint64_t now = GetTickCount64();
+    if (now < s_nextTry) return;
+    s_nextTry = now + 1000;
+    if (SwitchWorldMap(want) && g_log) g_log("Vanilla World Map: the World Map is %s", want ? "the mod's" : "the game's");
 }
 
 void PollModOffKey() {
@@ -9909,6 +9994,7 @@ void PlayStateUiHook() {
     greeneye::Lease lease;
     if (lease) {
         PollModOffKey();
+        SyncWorldMapMode();
         if (!g_modOff) {
             UMM_PERF(PerfHud);
             SafeDrawHudMinimapOverlay();
@@ -9985,7 +10071,7 @@ void BuildWorldMapPlayersHook(void* outVec, void* mapState) {
         g_origBuildWorldMapPlayers(outVec, mapState);
     }
     greeneye::Lease lease;
-    if (lease && !g_modOff) {
+    if (lease && g_worldMapModded) {
         FilterWorldMapPlayerMarkers(outVec);
         // BuildWorldMapPlayers is called by 0x140d8f270 immediately before iterating arr0..arr3
         // to populate mapState+0x56318. Syncing arr0 here ensures newly replicated ECS markers
@@ -10104,8 +10190,8 @@ void DrawWorldMapMarkerIconWithOverrides(void* mapState, uint8_t* m, uint8_t* dr
 void DrawWorldMapMarkerIconHook(void* mapState, uint8_t* m, uint8_t* drawParams) {
     if (!g_origDrawWorldMapMarkerIcon) return;
     greeneye::Lease lease;
-    if (lease && !g_modOff && g_regionOutsideHide && MarkerOutsideFocusedRegion(m)) return; // Map Key > Region: Hide
-    if (lease && !g_modOff) DrawWorldMapMarkerIconWithOverrides(mapState, m, drawParams);
+    if (lease && g_worldMapModded && g_regionOutsideHide && MarkerOutsideFocusedRegion(m)) return; // Map Key > Region: Hide
+    if (lease && g_worldMapModded) DrawWorldMapMarkerIconWithOverrides(mapState, m, drawParams);
     else g_origDrawWorldMapMarkerIcon(mapState, m, drawParams);
 }
 
@@ -10164,7 +10250,7 @@ bool TitleHiddenByRegion(const void* m) {
 UiText* MarkerTitleTextHook(UiText* outText, const void* uiMarker) {
     {
         greeneye::Lease lease;
-        if (lease && !g_modOff && outText && TitleHiddenByRegion(uiMarker)) {
+        if (lease && g_worldMapModded && outText && TitleHiddenByRegion(uiMarker)) {
             *outText = MakeUiText("");
             return outText;
         }
@@ -10179,7 +10265,7 @@ void DrawWorldMapMarkerPlateHook(void* widget, uint8_t* entry, const float* rect
     void* pushedUiCtx = nullptr;
     bool pushed = false;
     {
-        if (lease && !g_modOff) {
+        if (lease && g_worldMapModded) {
             pushed = TryPushMarkerPlateDimOpacity(entry, pushedUiCtx);
         }
     }
@@ -10230,6 +10316,11 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
         g_bridgeRecenterMap = true;
     } else if (std::strcmp(action, "modoff") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
         SetModOff(std::strcmp(value, "on") == 0); // Ctrl+Shift+F12 without the keys ("on": the mod off)
+    } else if (std::strcmp(action, "vanilla") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
+        SetVanillaWorldMap(std::strcmp(value, "on") == 0); // Settings > Advanced > Vanilla World Map
+    } else if (std::strcmp(action, "vanillamm") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
+        g_vanillaMinimap = std::strcmp(value, "on") == 0; // Settings > Advanced > Vanilla Minimap
+        SaveMinimapConfig();
     } else if (std::strcmp(action, "gg") == 0 && hud) {
         // G G without the keys: the chests and veins around you
         chest_glow::LightNearbyChests(client);
@@ -10479,6 +10570,14 @@ bool InstallMapKeyPanelHook(LogFn logger) {
             g_playStateHookTarget, g_drawWorldMapMarkerIconHookTarget);
     }
     return true;
+}
+
+// At load (main.cpp): with Vanilla World Map saved on, the patches aren't written at all.
+bool VanillaWorldMapInConfig() {
+    return GetPrivateProfileIntA("MinimapV2", "VanillaWorldMap", 0, GetMinimapConfigPath().c_str()) != 0;
+}
+void SetWorldMapPatchedAtLoad(bool patched) {
+    g_worldMapModded = patched;
 }
 
 void UseKeptState(KeptState* kept) {
