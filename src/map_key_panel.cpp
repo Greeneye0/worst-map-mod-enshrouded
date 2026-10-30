@@ -34,6 +34,7 @@
 #include "ore_deposits.h"
 #include "knowledge_legacy.h"
 #include "regions.h"
+#include "levels.h"
 #include "sanctum_spots.h"
 #include "minimap_art.h"
 #include "scan.h"
@@ -237,7 +238,7 @@ bool g_minimapShowTerrain = true;
 bool g_minimapThinBorder = false; // a thin line instead of the ornate frame
 bool g_minimapShowPosition = false; // Settings > Advanced: your X, Y (height), Z under the minimap
 bool g_regionFilterEnabled = false; // Settings > Advanced: the Map Key's Region row (regions.inl)
-bool g_regionColors = false;        // Settings > Advanced: each region tinted on the World Map
+bool g_levelAreas = false;          // Settings > Advanced: the World Map in level areas (levels.inl)
 bool g_minimapInfoBar = true;     // the tray under the minimap (time, weather, zoom); off puts the cog on the map
 bool g_minimapVisible = true;
 bool g_minimapClockWeatherMode = false; // false = Sun/Moon, true = Weather Status
@@ -5121,6 +5122,7 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
 
 #include "knowledge.inl"
 #include "regions.inl"
+#include "levels.inl"
 #include "cursor_position.inl"
 #include "chest_silhouette.inl"
 #include "vein_sight.inl"
@@ -5618,7 +5620,7 @@ float SettingsCardWidth() {
         TextWidth(T(Str::TimeFormat)),
         TextWidth(T(Str::ShowPosition)),
         TextWidth(T(Str::RegionFilter)),
-        TextWidth(T(Str::RegionColors)),
+        TextWidth(T(Str::LevelAreas)),
         TextWidth(T(Str::VanillaWorldMap)),
         TextWidth(T(Str::VanillaMinimap)) + 14.0f, // indented under Vanilla World Map
         TextWidth(T(Str::FilterLocks)) + 40.0f // " (12)"
@@ -6047,18 +6049,18 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         }
     }
 
-    // Row A3: Region Colors (each region tinted on the World Map) [ON / OFF]
+    // Row A3: Level Areas (the World Map in the areas of the enemies' levels) [ON / OFF]
     {
         ry += kRowH;
         bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
         if (hovRow) {
             DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
         }
-        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::RegionColors), 0xffd6e6eeu, 0.96f,
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::LevelAreas), 0xffd6e6eeu, 0.96f,
                      TextAlignH::Left, TextAlignV::Center);
-        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_regionColors);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_levelAreas);
         if (clicked && hovRow) {
-            g_regionColors = !g_regionColors;
+            g_levelAreas = !g_levelAreas;
             SaveMinimapConfig();
             changed = true;
         }
@@ -6426,7 +6428,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
         // Forests and deposits share one budget of extra draws a frame (see DrawTreeAreasOnMap)
         UpdateFocusedRegion(client);
-        DrawRegionColorsOnMap(root.raw, rootRect, mapState);
+        DrawLevelAreasOnMap(root.raw, rootRect, mapState);
         // A marker's menu (Fast Travel / Send Ping / Set as Waypoint) is open: the mod's icons are drawn after the
         // game's, so they stay out of its box (mapState +0xf8 is 3 and +0x56310 holds the marker while it is open; the
         // menu opens beside the marker, on its right unless that runs off the screen)
@@ -6453,6 +6455,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             }
         }
         DrawRegionBorderOnMap(root.raw, rootRect, mapState);
+        DrawLevelBordersOnMap(root.raw, rootRect, mapState);
         const int treeDraws = DrawTreeAreasOnMap(root.raw, rootRect, mapState);
         DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my,
                              std::max(500, std::min(1500, 2000 - treeDraws)));
@@ -7873,7 +7876,9 @@ void LoadMinimapConfig() {
     int infoBar = GetPrivateProfileIntA("MinimapV2", "InfoBar", 1, cfg.c_str());
     g_minimapShowPosition = GetPrivateProfileIntA("MinimapV2", "ShowPosition", 0, cfg.c_str()) != 0;
     g_regionFilterEnabled = GetPrivateProfileIntA("MinimapV2", "RegionFilter", 0, cfg.c_str()) != 0;
-    g_regionColors = GetPrivateProfileIntA("MinimapV2", "RegionColors", 0, cfg.c_str()) != 0;
+    // Level Areas took the place of Region Colors (1.3.26): whoever had the regions tinted gets the level areas
+    g_levelAreas = GetPrivateProfileIntA("MinimapV2", "LevelAreas",
+                                         GetPrivateProfileIntA("MinimapV2", "RegionColors", 0, cfg.c_str()), cfg.c_str()) != 0;
     g_vanillaWorldMap = GetPrivateProfileIntA("MinimapV2", "VanillaWorldMap", 0, cfg.c_str()) != 0;
     g_vanillaMinimap = GetPrivateProfileIntA("MinimapV2", "VanillaMinimap", 0, cfg.c_str()) != 0;
     // The regions shown, a bit each; before 1.3.19 one region (RegionFocus, -1 all)
@@ -8124,7 +8129,7 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "FogRevealMode", buf, cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "ShowPosition", g_minimapShowPosition ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionFilter", g_regionFilterEnabled ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "RegionColors", g_regionColors ? "1" : "0", cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "LevelAreas", g_levelAreas ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "VanillaWorldMap", g_vanillaWorldMap ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "VanillaMinimap", g_vanillaMinimap ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%u", g_regionMask & kAllRegionsMask);

@@ -33,9 +33,7 @@ bool RegionShown(int region) {
     return !g_regionFiltering || (region >= 0 && region < static_cast<int>(kRegionCount) && (g_focusedRegions >> region) & 1u);
 }
 
-// Settings > Advanced > Region Colors: each region tinted in its own colour under the World Map's markers. Sampled on a
-// grid of 8 px screen cells and drawn as one strip per run of a region in a row (a few hundred draws), like the
-// zoomed-out forests.
+// Each region's colour: its swatch in the Map Key's Region rows
 constexpr uint32_t kRegionTint[kRegionCount] = {
     0xff5ac87au, // Springlands: green
     0xff3a8a3au, // Revelwood: forest green
@@ -46,38 +44,6 @@ constexpr uint32_t kRegionTint[kRegionCount] = {
     0xffb4a03cu, // Veilwater Basin: teal
     0xff4646d2u, // Cinder's Cradle: red
 };
-
-void DrawRegionColorsOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
-    if (!g_regionColors || !widgetRaw || !mapState) return;
-    uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
-    if (!mapView) return;
-    const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
-    float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
-    if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
-    if (!(zoom > 0.0f)) return;
-    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
-                          *reinterpret_cast<float*>(mapView + 0x1e8);
-    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
-                          *reinterpret_cast<float*>(mapView + 0x1ec);
-    const float left = rootRect[0], top = rootRect[1] + 114.0f; // below the menu banner
-    const float right = rootRect[0] + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
-    const float bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
-    constexpr float kCell = 8.0f;
-    for (float y = top; y < bottom; y += kCell) {
-        const float wz = mapWorldH - (y + kCell * 0.5f - originY) / zoom;
-        int runRegion = -1;
-        float runX = left;
-        for (float x = left; x <= right; x += kCell) {
-            const int r = x < right ? RegionAt((x + kCell * 0.5f - originX) / zoom, wz) : -1;
-            if (r == runRegion) continue;
-            if (runRegion >= 0)
-                DrawSolidRectAbs(widgetRaw, runX, y, x - runX, kCell, kRegionTint[runRegion],
-                                 RegionShown(runRegion) ? 0.2f : 0.08f);
-            runRegion = r;
-            runX = x;
-        }
-    }
-}
 
 // Outside the regions shown: dimmed or hidden
 bool OutsideFocusedRegion(float x, float z) {

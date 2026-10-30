@@ -31,7 +31,7 @@ enum class Str : int {
     HintClearChest, HintToggleKey, HintFind, CtrlClick, CatMining, CatMaterials, CatPlants, CatBait, CatTrees, CatCreatures,
     MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar,
     FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show, TimeFormat,
-    Advanced, ShowPosition, AllRegions, Dim, HintCopyPosition, RegionFilter, RegionColors, TownPortals, HintHideFilter, HintUndoFilter, HintRedoFilter, SearchList, NoListMatches, WoodChest, WoodSarcophagus,
+    Advanced, ShowPosition, AllRegions, Dim, HintCopyPosition, RegionFilter, LevelAreas, TownPortals, HintHideFilter, HintUndoFilter, HintRedoFilter, SearchList, NoListMatches, WoodChest, WoodSarcophagus,
     VanillaWorldMap, VanillaMinimap,
     Count
 };

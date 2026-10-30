@@ -435,10 +435,10 @@ const Row kTable[] = {
     {"Region Filter", "Regionsfilter", "Filtre de région", "Filtro regione", "Filtro de región", "Filtro de região",
      "Filtr regionu", "Фильтр регионов", "Фільтр регіонів", "Bölge filtresi", "地域フィルター", "지역 필터", "地区筛选",
      "地區篩選", "ตัวกรองภูมิภาค"},
-    // RegionColors: Settings > Advanced, each region tinted in its own colour on the World Map
-    {"Region Colors", "Regionsfarben", "Couleurs des régions", "Colori delle regioni", "Colores de región",
-     "Cores das regiões", "Kolory regionów", "Цвета регионов", "Кольори регіонів", "Bölge renkleri", "地域の色分け",
-     "지역 색상", "地区颜色", "地區顏色", "สีภูมิภาค"},
+    // LevelAreas: Settings > Advanced, the World Map in the areas of the enemies' levels, each with its level
+    {"Level Areas", "Levelgebiete", "Zones de niveau", "Aree di livello", "Zonas de nivel", "Áreas de nível",
+     "Obszary poziomów", "Зоны уровней", "Зони рівнів", "Seviye bölgeleri", "レベル帯", "레벨 구역", "等级区域",
+     "等級區域", "พื้นที่ตามเลเวล"},
     // TownPortals: Fast Travel & Altars row, the open portals of the Town Portal mod
     {"Town Portals", "Stadtportale", "Portails de ville", "Portali cittadini", "Portales de ciudad",
      "Portais da cidade", "Portale miejskie", "Городские порталы", "Міські портали", "Şehir Portalları",
