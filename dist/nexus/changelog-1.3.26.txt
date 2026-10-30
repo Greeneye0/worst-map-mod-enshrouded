@@ -1,0 +1,1 @@
+- Settings > Advanced > Level Areas: the world map in the areas of the enemies' levels (1 to 48), each tinted by level with its borders and its level in a badge, read from the game's own data. It takes the place of Region Colors.

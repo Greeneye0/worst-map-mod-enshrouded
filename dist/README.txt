@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.25
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.26
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -178,7 +178,10 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
   height) and, on the world map, the X and Z under the cursor. Click the copy button (or
   middle click the world map) to copy them, like "X 3215, Z 2051".
 - ADVANCED > Region Filter, off at first: the Map Key's REGIONS row (see above).
-- ADVANCED > Region Colors, off at first: each region tinted in its own colour on the world map.
+- ADVANCED > Level Areas, off at first: the world map in the areas of the enemies' levels, each
+  tinted from green (low) through orange and red to purple and blue (high), with the borders
+  between them and each area's level in a badge. Read from the levels the game gives its
+  spawners, loot and props.
 - ADVANCED > Vanilla World Map, off at first: the world map exactly as the game draws it, as your
   friends without the mod see it (the game's markers, fog, zoom and filter menu; no Map Key or
   added pins). The minimap stays, and its cog is then the way to Settings.
@@ -276,6 +279,12 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.26
+- Settings > Advanced > Level Areas: the world map in the areas of the enemies' levels, from 1
+  at the start to 48 in the Albaneve Summits, each tinted by level with its borders and its
+  level in a badge. Read from the levels the game gives its spawners, loot and props. It takes
+  the place of Region Colors (if you had that on, Level Areas is on).
+
 1.3.25
 - Fixed: a lore rumor "?" was covered by the place it points to where the land around it is
   explored but the place isn't discovered yet. The "?" stays until you discover the place, like
