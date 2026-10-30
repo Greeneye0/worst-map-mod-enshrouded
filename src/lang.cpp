@@ -362,6 +362,9 @@ const Row kTable[] = {
     // CatTrees
     {"TREES", "BÄUME", "ARBRES", "ALBERI", "ÁRBOLES", "ÁRVORES", "DRZEWA", "ДЕРЕВЬЯ", "ДЕРЕВА", "AĞAÇLAR", "木",
      "나무", "树木", "樹木", "ต้นไม้"},
+    // CatCreatures: every creature's spawn points
+    {"CREATURES", "KREATUREN", "CRÉATURES", "CREATURE", "CRIATURAS", "CRIATURAS", "STWORZENIA", "СУЩЕСТВА", "ІСТОТИ",
+     "YARATIKLAR", "生き物", "생물", "生物", "生物", "สิ่งมีชีวิต"},
     // MinimapBorder
     {"Minimap Border", "Minikarte Rahmen", "Bordure minicarte", "Bordo minimappa", "Borde del minimapa",
      "Borda do minimapa", "Ramka minimapy", "Рамка миникарты", "Рамка мінімапи", "Mini Harita Çerçevesi",
@@ -592,6 +595,8 @@ const Row kResourceNames[] = {
     {"Stapelia Starflower", "Stapelia-Sternblume", "Stapélie étoilée", "Stapelia stellata", "Estapelia estrellada", "Estapélia estrelada", "Stapelia gwiaździsta", "Звёздная стапелия", "Зоряна стапелія", "Yıldız stapelya", "スタペリアの星花", "스타펠리아 별꽃", "星花犀角", "星花犀角", "สตาเพเลียดาว"},
     {"Passionflower", "Passionsblume", "Passiflore", "Passiflora", "Pasionaria", "Maracujá-flor", "Męczennica", "Пассифлора", "Пасифлора", "Çarkıfelek", "トケイソウ", "시계꽃", "西番莲", "西番蓮", "เสาวรส"},
     {"Gleam Root", "Glanzwurzel", "Racine lumineuse", "Radice lucente", "Raíz brillante", "Raiz cintilante", "Lśniący korzeń", "Сияющий корень", "Сяючий корінь", "Parıltı kökü", "グリームルート", "빛나는 뿌리", "微光根", "微光根", "รากเรืองแสง"},
+    {"Crocodile", "Krokodil", "Crocodile", "Coccodrillo", "Cocodrilo", "Crocodilo", "Krokodyl", "Крокодил", "Крокодил", "Timsah", "ワニ", "악어", "鳄鱼", "鱷魚", "จระเข้"},
+    {"Wasp Swarm", "Wespenschwarm", "Essaim de guêpes", "Sciame di vespe", "Enjambre de avispas", "Enxame de vespas", "Rój os", "Осиный рой", "Осиний рій", "Eşek arısı sürüsü", "スズメバチの群れ", "말벌 떼", "黄蜂群", "黃蜂群", "ฝูงตัวต่อ"},
 };
 // clang-format on
 

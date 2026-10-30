@@ -107,7 +107,8 @@ constexpr uint8_t kMaterialsCategory = 6; // farm soil, bones, tar, archaic esse
 constexpr uint8_t kPlantsCategory = 7;    // harvestable plants
 constexpr uint8_t kBaitCategory = 8;      // fishing bait critters
 constexpr uint8_t kTreesCategory = 9;     // tree areas (coloured, no icons)
-bool IsResourceCategory(uint8_t c) { return c >= kMiningCategory && c <= kTreesCategory; }
+constexpr uint8_t kCreaturesCategory = 10; // every creature's spawn points
+bool IsResourceCategory(uint8_t c) { return c >= kMiningCategory && c <= kCreaturesCategory; }
 static_assert(sizeof(kOreCategory) / sizeof(kOreCategory[0]) == static_cast<size_t>(Ore::Count), "one category per row");
 static_assert(sizeof(kOreAreaColors) / sizeof(kOreAreaColors[0]) == static_cast<size_t>(Ore::Count), "one colour per row");
 static_assert(sizeof(kOreLabels) / sizeof(kOreLabels[0]) == kOreCount, "one label per ore");
@@ -835,12 +836,14 @@ constexpr auto kBaitRows = MakeResourceRows<kBaitFirst, kBaitCategory, umm_lang:
     std::make_index_sequence<kBaitCount>{});
 constexpr auto kTreesRows = MakeResourceRows<kTreesFirst, kTreesCategory, umm_lang::Str::CatTrees>(
     std::make_index_sequence<kTreesCount>{});
+constexpr auto kCreaturesRows = MakeResourceRows<kCreaturesFirst, kCreaturesCategory, umm_lang::Str::CatCreatures>(
+    std::make_index_sequence<kCreaturesCount>{});
 static_assert(kWaterCount == 2, "Water Well and Water Barrel rows");
 static_assert(kLoreCount == 1 && kBossesCount == 1, "one Lore Note row, one Boss row");
 static_assert(kUniqueCount == 3, "Unique Weapons, Unique Equipment and Collectibles rows");
 static_assert(kSummonsCount == 1, "one Fell Summoning Stone row");
 static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount +
-                  kLoreCount + kBossesCount + kUniqueCount + kSummonsCount + kNightPlantsCount == kOreCount,
+                  kLoreCount + kBossesCount + kUniqueCount + kSummonsCount + kNightPlantsCount + kCreaturesCount == kOreCount,
               "every row in one category");
 
 struct CategoryGroupSpec {
@@ -861,6 +864,8 @@ constexpr CategoryGroupSpec kCategoryGroups[] = {
     {kTreesCategory, umm_lang::Str::CatTrees, kTreesRows.data(), kTreesRows.size()},
     {0, umm_lang::Str::CatQuests, kCategory0Rows, sizeof(kCategory0Rows) / sizeof(kCategory0Rows[0])},
     {4, umm_lang::Str::CatCustomPins, nullptr,        0},
+    // last, so the saved category order and the hash list keep their places
+    {kCreaturesCategory, umm_lang::Str::CatCreatures, kCreaturesRows.data(), kCreaturesRows.size()},
 };
 
 bool g_panelCollapsed = false;
@@ -935,6 +940,18 @@ void RemoveMapKeyWheelHook() {
     }
 }
 constexpr size_t kCategoryGroupCount = sizeof(kCategoryGroups) / sizeof(kCategoryGroups[0]);
+constexpr size_t MaxCategoryRows() {
+    size_t n = 0;
+    for (const auto& grp : kCategoryGroups) n = grp.rowCount > n ? grp.rowCount : n;
+    return n;
+}
+constexpr size_t kMaxCategoryRows = MaxCategoryRows();
+constexpr size_t TotalCategoryRows() {
+    size_t n = 0;
+    for (const auto& grp : kCategoryGroups) n += grp.rowCount;
+    return n;
+}
+constexpr size_t kTotalCategoryRows = TotalCategoryRows();
 const char* RowText(const MarkerRowSpec& row);
 
 // The Map Key's search: a row shows when its name (shown or English) or its section's title holds the text typed, or
@@ -943,8 +960,8 @@ const char* RowText(const MarkerRowSpec& row);
 std::string g_keySearch; // UTF-8
 struct KeySearchMatch {
     bool cat[kCategoryGroupCount]{};
-    bool row[kCategoryGroupCount][64]{};
-    std::string place[kCategoryGroupCount][64]; // the place named so that brought the row in
+    bool row[kCategoryGroupCount][kMaxCategoryRows]{};
+    std::string place[kCategoryGroupCount][kMaxCategoryRows]; // the place named so that brought the row in
     int any = 0;
 };
 KeySearchMatch g_keySearchMatch;
@@ -967,7 +984,7 @@ void UpdateKeySearchMatch() {
         const auto& grp = kCategoryGroups[c];
         const bool title = has(umm_lang::T(grp.title));
         if (grp.category == 4) g_keySearchMatch.cat[c] = title || has("custom pin");
-        for (size_t r = 0; r < grp.rowCount && r < 64; ++r) {
+        for (size_t r = 0; r < grp.rowCount; ++r) {
             bool m = title || has(RowText(grp.rows[r])) || has(grp.rows[r].label);
             if (!m) {
                 const MarkerRowSpec& row = grp.rows[r];
@@ -987,7 +1004,7 @@ void UpdateKeySearchMatch() {
 }
 bool KeySearching() { return !g_keySearch.empty(); }
 bool KeySearchCatShown(size_t c) { return !KeySearching() || g_keySearchMatch.cat[c]; }
-bool KeySearchRowShown(size_t c, size_t r) { return !KeySearching() || r >= 64 || g_keySearchMatch.row[c][r]; }
+bool KeySearchRowShown(size_t c, size_t r) { return !KeySearching() || g_keySearchMatch.row[c][r]; }
 size_t KeySearchRowCount(size_t c) {
     size_t n = 0;
     for (size_t r = 0; r < kCategoryGroups[c].rowCount; ++r) n += KeySearchRowShown(c, r) ? 1 : 0;
@@ -1019,6 +1036,10 @@ void ParseCategoryOrder(const char* text) {
         seen[v] = true;
         parsed[n++] = v;
         t = *end == ',' ? end + 1 : end;
+    }
+    // a category added since the order was saved (Creatures) goes at the end
+    for (size_t c = 0; c < kCategoryGroupCount && n > 0; ++c) {
+        if (!seen[c]) parsed[n++] = c;
     }
     if (n != kCategoryGroupCount) return;
     std::memcpy(g_categoryOrder, parsed, sizeof(parsed));
@@ -6241,14 +6262,14 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
     UpdateChestLootTracking(client, focused);
 
-    uint32_t allHashes[256]{};
+    uint32_t allHashes[kTotalCategoryRows]{};
     size_t numHashes = 0;
     for (const auto& grp : kCategoryGroups) {
         for (size_t r = 0; r < grp.rowCount; ++r) {
             if (numHashes < sizeof(allHashes) / sizeof(allHashes[0])) allHashes[numHashes++] = grp.rows[r].typeHash;
         }
     }
-    int hashCounts[256]{};
+    int hashCounts[kTotalCategoryRows]{};
     SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
 
     auto openFindDialog = [&]() {
@@ -7061,8 +7082,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         curY += kPinRowH + 4.0f;
                     } else {
                         // Rows by name in the current language (counts stay in kCategoryGroups order)
-                        size_t rowOrder[64]{};
-                        const size_t rowN = std::min<size_t>(grp.rowCount, 64);
+                        size_t rowOrder[kMaxCategoryRows]{};
+                        const size_t rowN = grp.rowCount;
                         for (size_t r = 0; r < rowN; ++r) rowOrder[r] = r;
                         std::sort(rowOrder, rowOrder + rowN, [&](size_t a, size_t b) {
                             return NameLess(RowText(grp.rows[a]), RowText(grp.rows[b]));
@@ -7171,7 +7192,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                 std::snprintf(rowText, sizeof(rowText), "%s", RowText(rowSpec));
                             }
                             // Brought in by a place's name: which one ("Lore Note (12): Song of the ...")
-                            if (KeySearching() && r < 64 && !g_keySearchMatch.place[c][r].empty()) {
+                            if (KeySearching() && !g_keySearchMatch.place[c][r].empty()) {
                                 const size_t used = std::strlen(rowText);
                                 std::snprintf(rowText + used, sizeof(rowText) - used, ": %s",
                                               g_keySearchMatch.place[c][r].c_str());
@@ -7180,10 +7201,16 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             if (rowOn && rowSpec.typeHash == kGoldChestTypeHash) {
                                 textCol = 0xff78dcffu;
                             }
-                            DrawLabelAbs(panelX + 52.0f, py + curY,
-                                kPanelW - 46.0f - rowRight - OnOffBadgeWidth() - LockSlotWidth(), kItemRowH,
+                            // a name too long for the row (the constructs' "Ancient G.A.R.D. Construct (Dozer)") is
+                            // drawn smaller instead of running under the ON / OFF badge
+                            const float labelW = kPanelW - 46.0f - rowRight - OnOffBadgeWidth() - LockSlotWidth();
+                            const float textW = umm_lang::TextWidth(rowText) * kFilterRowFontScale;
+                            const float rowFont = textW > labelW
+                                ? std::max(kFilterRowFontScale * 0.7f, kFilterRowFontScale * labelW / textW)
+                                : kFilterRowFontScale;
+                            DrawLabelAbs(panelX + 52.0f, py + curY, labelW, kItemRowH,
                                 rowText, textCol, rowOn ? 0.96f : 0.75f,
-                                TextAlignH::Left, TextAlignV::Center, nullptr, kFilterRowFontScale);
+                                TextAlignH::Left, TextAlignV::Center, nullptr, rowFont);
 
                             DrawFilterLockAbs(anchor.raw, panelX + kPanelW - rowRight, py + curY, kItemRowH, rowLocked,
                                 rowCatLocked, hovRow, hovRowLock);
@@ -7873,7 +7900,7 @@ void LoadMinimapConfig() {
         WritePrivateProfileStringA("Chests", "ResetRadius", "0", cfg.c_str());
     }
     // [Mining] Ores = one 0/1 per ore, in the Map Key's order
-    char ores[512]{};
+    char ores[kOreCount + 64]{};
     GetPrivateProfileStringA("Mining", "Ores", "", ores, sizeof(ores), cfg.c_str());
     // 1.3.3 split Fertilised Farm Soil off Farm Soil, one row after it: an older 86-row string gets that row's bit
     // copied from Farm Soil so every later row keeps its setting. Rows added at the end since (Return Beacon) are
@@ -7974,6 +8001,22 @@ void LoadMinimapConfig() {
             }
         }
     }
+    // A section added since the config was saved starts closed (Creatures, 136 rows): KnownSections lists the sections
+    // there were when it was last saved (none saved: every one before Creatures)
+    char known[128]{};
+    GetPrivateProfileStringA("MinimapV2", "KnownSections", "", known, sizeof(known), cfg.c_str());
+    bool knownIds[kMaxCategoryId]{};
+    if (known[0]) {
+        for (char *ctx = nullptr, *tok = strtok_s(known, ", ", &ctx); tok; tok = strtok_s(nullptr, ", ", &ctx)) {
+            const unsigned long id = std::strtoul(tok, nullptr, 10);
+            if (id < kMaxCategoryId) knownIds[id] = true;
+        }
+    } else {
+        for (const auto& grp : kCategoryGroups) knownIds[grp.category] = grp.category != kCreaturesCategory;
+    }
+    for (size_t c = 0; c < kCategoryGroupCount; ++c) {
+        if (!knownIds[kCategoryGroups[c].category]) g_categoryCollapsed[c] = true;
+    }
     // RowStates = hash:1 / hash:0 for every locked row
     char states[4096]{};
     GetPrivateProfileStringA("Locks", "RowStates", "", states, sizeof(states), cfg.c_str());
@@ -7997,6 +8040,12 @@ void SaveCollapsedSections() {
     }
     WritePrivateProfileStringA("MinimapV2", "CollapsedSections", ids.empty() ? "none" : ids.c_str(),
                                GetMinimapConfigPath().c_str());
+    std::string known;
+    for (const auto& grp : kCategoryGroups) {
+        std::snprintf(buf, sizeof(buf), "%s%u", known.empty() ? "" : ",", static_cast<unsigned>(grp.category));
+        known += buf;
+    }
+    WritePrivateProfileStringA("MinimapV2", "KnownSections", known.c_str(), GetMinimapConfigPath().c_str());
 }
 
 void SaveFilterLocks() {

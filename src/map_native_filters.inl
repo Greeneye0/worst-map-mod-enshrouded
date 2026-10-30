@@ -5,7 +5,7 @@ namespace {
 
 // Stable names for kCategoryGroups, in order (the panel titles follow the game's language).
 constexpr const char* kCategorySlugs[] = {
-    "fast_travel", "shroud", "world", "mining", "materials", "plants", "bait", "trees", "quests", "custom_pins",
+    "fast_travel", "shroud", "world", "mining", "materials", "plants", "bait", "trees", "quests", "custom_pins", "creatures",
 };
 static_assert(sizeof(kCategorySlugs) / sizeof(kCategorySlugs[0]) == kCategoryGroupCount, "one slug per Map Key category");
 

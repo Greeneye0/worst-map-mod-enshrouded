@@ -28,7 +28,7 @@ enum class Str : int {
     Day, Dawn, Dusk, Night, ZoomFmt, Terrain, CompassN, CompassS, CompassW, CompassE,
     Pins, SettingsTitle, PinSize, ShowMinimap, MinimapTerrain, ClockIcon, SunMoon, Weather,
     LootedChests, Hide, GreyedOut, WeatherClear, WeatherRain, WeatherStorm, WeatherSnow, WeatherFog,
-    HintClearChest, HintToggleKey, HintFind, CtrlClick, CatMining, CatMaterials, CatPlants, CatBait, CatTrees,
+    HintClearChest, HintToggleKey, HintFind, CtrlClick, CatMining, CatMaterials, CatPlants, CatBait, CatTrees, CatCreatures,
     MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar,
     FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show, TimeFormat,
     Advanced, ShowPosition, AllRegions, Dim, HintCopyPosition, RegionFilter, RegionColors, TownPortals, HintHideFilter, HintUndoFilter, HintRedoFilter, SearchList, NoListMatches, WoodChest, WoodSarcophagus,
