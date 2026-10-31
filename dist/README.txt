@@ -250,8 +250,7 @@ textures: the floor you're on bright, the hall's other levels dimmed. It opens w
 hall in view. Its Return Beacons are numbered in the order you reach them; the end room's
 sarcophagi count as gold chests. Overworld Map at the top switches to the world, centred on
 the hall's entrance, and back; C centres the hall on you.
-The minimap shows the same textures: only the hall you're in and the floors you can walk to
-from where you stand, with your footprints of the last 10 minutes or 100 m. Outside, the world
+On the minimap, footprints show where you've walked in the last 10 minutes or 100 m. Outside, the world
 map shows nothing of the Hollow Halls in the corner of the world they're carved in.
 
 
@@ -303,8 +302,7 @@ CHANGES
   Beacons are numbered in the order you reach them, players show as colored arrows with their
   names, and Overworld Map switches to the world, centred on the hall's entrance. C centres the
   hall on you.
-- Hollow Halls minimap: the same textures, only the hall you're in and the floors you can walk
-  to from where you stand, so it no longer changes as you climb or drop; footprints of the last
+- Hollow Halls minimap: the same textures, and footprints of where you've walked in the last
   10 minutes or 100 m.
 - The Hollow Halls' end-room sarcophagi, 66, show as gold chests.
 - The world map no longer shows Hollow Halls markers in the corner of the world the halls are
