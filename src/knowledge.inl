@@ -201,7 +201,9 @@ bool IsBossSpot(size_t d) {
 }
 
 bool IsUniqueSpot(size_t d) {
-    return IsKnowledgeDeposit(d) && kOreDeposits[d].ore >= kUniqueFirst && kOreDeposits[d].ore < kUniqueFirst + kUniqueCount;
+    const size_t ore = kOreDeposits[d].ore;
+    // The unique weapons, equipment and collectibles, and the cosmetic pieces (a row of their own, added last)
+    return IsKnowledgeDeposit(d) && ((ore >= kUniqueFirst && ore < kUniqueFirst + kUniqueCount) || ore == kCosmeticFirst);
 }
 
 const void* DepositIcon(size_t d) {
@@ -329,10 +331,12 @@ bool KnowledgeDoneInGame(size_t d) {
     return id != 0 && g_knownKnowledge.count(id) != 0;
 }
 
-// The game's answer, or for a boss the character's mark by hand when there is one. A unique item is found once its
-// chest is looted, or (in no chest the mod tracks) once marked found by hand.
+// The game's answer, or for a boss the character's mark by hand when there is one. A unique item is found once the
+// character has picked it up (the game keeps every item ever picked up as knowledge under the item's id: one an enemy
+// dropped, or a loot mod took, too; reported by FWSWBN), once its chest is looted, or once marked found by hand.
 bool KnowledgeDone(size_t d) {
     if (IsUniqueSpot(d)) {
+        if (KnowledgeDoneInGame(d)) return true;
         const size_t i = d - kKnowledgeFirstDeposit;
         const uint16_t chest = kKnowledgeChest[i];
         if (chest < kTotalChestCount) return g_chestLootStates[chest].everLooted;
@@ -608,7 +612,9 @@ void Update(uint8_t* client) {
 
 } // namespace boss_live
 
-// Once a second: the pins the game still has as undiscovered within 50 m of the player become visited places.
+// Once a second: the places the game still has as undiscovered (Hidden or only a Hint) within 50 m of the player become
+// visited places. Only places: the game has no such rule (a place is discovered by its own knowledge queries), so
+// rumors, quests, Ancient Spires and Fast Travel points are left out (reported by GARONNN).
 void NoteVisitedPlaces(uint8_t* client) {
     static uint64_t last = 0;
     const uint64_t now = GetTickCount64();
@@ -625,7 +631,11 @@ void NoteVisitedPlaces(uint8_t* client) {
             if (!base || count > 10000) continue;
             for (uint64_t i = 0; i < count; ++i) {
                 const uint8_t* m = base + i * 0xA0;
-                if (m[0x35] != 0x10 || (*reinterpret_cast<const uint32_t*>(m) & 0xFFFF0000u) == kChestMarkerUidPrefix) continue;
+                if (!MarkerNotDiscovered(m[0x35]) || (*reinterpret_cast<const uint32_t*>(m) & 0xFFFF0000u) == kChestMarkerUidPrefix) continue;
+                const uint32_t orig = GetMarkerOrigTypeHash(m);
+                if (orig == 0u || orig == 0xafce0c5fu || orig == 0x454e24f2u || orig == 0x8ba7c122u || orig == 0xa17072beu ||
+                    orig == 0x98b2d65du || orig == 0x1095684eu || orig == kLockedFastTravelTypeHash || orig == 0x813080bcu)
+                    continue;
                 const int32_t x = *reinterpret_cast<const int32_t*>(m + 0x14), z = *reinterpret_cast<const int32_t*>(m + 0x24);
                 const float dx = static_cast<float>(x) - px, dz = static_cast<float>(z) - pz;
                 if (dx * dx + dz * dz > 50.0f * 50.0f) continue;
@@ -695,6 +705,15 @@ int StackSide(size_t d) {
     }
     if (IsUniqueSpot(d) && kKnowledgeChest[i] < kTotalChestCount)
         partnerShown = partnerShown || ChestRowEnabled(kKnowledgeChest[i]);
+    // The game's lore "?" within 8 m: the icon steps aside so the "?" stays readable (reported by GARONNN)
+    if (!partnerShown) {
+        const OreDeposit& dep = kOreDeposits[d];
+        for (const auto& r : g_rumorSpots)
+            if (std::abs(r.first - dep.x) <= 8 && std::abs(r.second - dep.z) <= 8) {
+                partnerShown = true;
+                break;
+            }
+    }
     if (!partnerShown) return 0;
     return IsBossSpot(d) ? -1 : 1;
 }

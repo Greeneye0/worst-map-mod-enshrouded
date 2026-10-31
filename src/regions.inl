@@ -72,17 +72,33 @@ const char* RegionName(int region) {
     return state[region] == 1 ? names[region] : kRegionNameEnglish[region];
 }
 
-// One of the game's World Map markers outside the focused region (your own pins and quest pins always show)
+namespace halls {
+bool MapHides(float x, float z); // halls.inl: another dungeon's marker while the map shows a Hollow Hall
+bool MapHidesChest(float x, float y, float z);
+}
+
+// One of the game's World Map markers outside the focused region, or in another Hollow Hall than the one the map
+// shows (your own pins and quest pins always show)
 bool MarkerOutsideFocusedRegion(const uint8_t* m) {
-    if (!g_regionFiltering || !m) return false;
+    if (!m) return false;
+    const float mx = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14));
+    const float mz = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24));
+    if (halls::MapHides(mx, mz)) return true; // the dungeon map shows that dungeon only, your pins too
+    if (!g_regionFiltering) return false;
     const uint32_t typeHash = *reinterpret_cast<const uint32_t*>(m + 0x30);
     const uint32_t origHash = GetMarkerOrigTypeHash(m);
     for (uint32_t ph : kCustomPinHashes) {
         if (typeHash == ph || origHash == ph) return false;
     }
     if (origHash == 0xafce0c5fu || origHash == 0x454e24f2u) return false; // quest pin / quest area
-    return OutsideFocusedRegion(static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)),
-                                static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24)));
+    return OutsideFocusedRegion(mx, mz);
+}
+
+// Not drawn at all: outside the focused region with Hide, or in another Hollow Hall
+bool MarkerHiddenOnMap(const uint8_t* m) {
+    if (!MarkerOutsideFocusedRegion(m)) return false;
+    return g_regionOutsideHide || halls::MapHides(static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)),
+                                                  static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24)));
 }
 
 // The shown regions' borders on the World Map: gold beads evenly spaced on screen (one draw each: the game's UI

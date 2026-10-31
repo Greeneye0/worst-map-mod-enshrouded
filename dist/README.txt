@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.26
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.27
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -54,14 +54,15 @@ On the right of the world map.
   Backquote, Insert, Delete, Home, End, or None for no key.
 - Every gold and silver chest in the world is included: all 448 gold and 1032 silver
   chests have their own filter rows. WOODEN CHEST (World & Resources, off at first): the
-  world's 1562 wooden chests, wooden sarcophagi and locked wooden chests.
+  world's 1562 wooden chests, wooden sarcophagi and locked wooden chests. The Hollow Halls' 66
+  end-room sarcophagi count as gold chests.
 - FILTER LOCKS: the padlock left of a switch locks that filter. A locked filter keeps its ON
   or OFF through SHOW ALL / HIDE ALL, reloads and updates (a locked category also keeps it
   open or closed); you can still click it. Hold SHOW ALL or HIDE ALL to change locked
   filters too. Settings > Filter Locks > Remove All unlocks everything.
 - LORE NOTES (QUESTS & RUMORS): every note and diary in the world, 574. Notes you've read
-  are hidden or grayed out (Settings > Looted Chests); unread ones are drawn bigger on an
-  amber ring so they stand out. Hover one for its title.
+  are hidden or grayed out (Settings > Looted / Read / Beaten); unread ones are drawn
+  bigger on an amber ring so they stand out. Hover one for its title.
 - BOSSES (WORLD & RESOURCES): the world's bosses, named like their health bar. A boss you've
   beaten gets a check mark for good; it's hidden or grayed out only while it's dead, until it
   comes back by the same rule as a looted chest (its 256 m square reset 30 minutes after everyone
@@ -71,15 +72,19 @@ On the right of the world map.
   (check mark only), never beaten. The beaten marks are saved per character, the timers per world.
 - UNIQUE WEAPONS and UNIQUE EQUIPMENT (WORLD & RESOURCES): the one-of-a-kind weapons (40, like
   the Wailing Blade and Talion's Bow) and rings and gear (16, like the Gemini Ring and the
-  Flaming Gauntlets), each at the chest or place it is in, with its own icon and name. One in
-  a gold or silver chest counts as found once that chest is looted; for the others (in
-  barrels, crates or lying in the world) Ctrl + left click it to mark it found, saved per
+  Flaming Gauntlets), each at the chest or place it is in, with its own icon and name. It
+  counts as found once you've picked it up, however (an enemy's drop, a loot mod), or its gold
+  or silver chest is looted; Ctrl + left click one to mark it found by hand, saved per
   character. Find (Shift + F) finds them by name.
 - COLLECTIBLES (WORLD & RESOURCES): the journal's collectibles, 133, lying in the world or in a
   chest: fossils, skeleton pieces, the bard's paintings, Drak reliefs, mosaic and map pieces,
-  meteorites and more, each with its own icon and name. One in a chest is found once the chest is
-  looted; Ctrl + left click any other to mark it found (saved per character). Find finds them by
-  name.
+  meteorites and more, each with its own icon and name. Found once you've picked it up (or its
+  chest is looted); Ctrl + left click one to mark it found by hand (saved per character). Find
+  finds them by name.
+- COSMETICS (WORLD & RESOURCES): the cosmetic set pieces placed in the world, 115: Efflorescent
+  Hope, Mothling, Royal, Winterly, Hollow's Eve and the other sets, each piece with its own icon and
+  name. Found once you've picked it up (or its chest is looted); Ctrl + left click one to mark it
+  found by hand (saved per character).
 - FELL SUMMONING STONES (WORLD & RESOURCES): the 45 stones where Shroud Spores conjure a Fell
   enemy, one tier per region.
 - RETURN BEACONS (SHROUD & VAULTS): all 282.
@@ -169,7 +174,8 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
 - Minimap Info Bar: off hides the bar under the minimap; the cog moves to the map's
   bottom-left corner, and [ and ] still zoom. With Show Minimap off and the info bar on, the
   bar (time, weather, cog) stays on screen by itself.
-- Looted Chests        hide them or gray them out (read lore notes and beaten bosses too).
+- Looted / Read / Beaten  hide looted chests, read lore notes and beaten bosses, or gray them
+                         out with a check mark.
 - Completed Places     SHOW or HIDE the places the game marks done (cleared roots, used
                        obelisks, cleared vaults) and the Flame and Night Sanctums you've
                        visited. Shown, visited sanctums get a check mark.
@@ -194,8 +200,8 @@ Everything is remembered.
 LOOTED CHESTS
 -------------
 Open a gold or silver chest and the mod marks it looted: hidden, or grayed out with a check
-mark (Settings > Looted Chests). Once it refills it's drawn as usual again but keeps its check
-mark, so you can see which chests you've looted at least once. On the world map, Ctrl + left
+mark (Settings > Looted / Read / Beaten). Once it refills it's drawn as usual again but keeps
+its check mark, so you can see which chests you've looted at least once. On the world map, Ctrl + left
 click a chest to step it: looted, refilled (check mark only), never looted. Chests you opened
 before installing the mod aren't known to it: they show until you open them again or Ctrl +
 left click them. Players who have the mod share their looted chests: open one and it's marked
@@ -235,6 +241,18 @@ and so do another player and a player grave (on the world map too).
 - Town Portals (FAST TRAVEL & ALTARS): with the Town Portal mod, its open portals show on the
   map and the minimap in their owner's colour, the same colour as that player's arrow.
 - Position, size and zoom are saved in greeneye\unlock-map-markers\minimap_config.ini.
+
+
+HOLLOW HALLS
+------------
+Inside a Hollow Hall the World Map shows that hall alone, seen from above in the game's own
+textures: the floor you're on bright, the hall's other levels dimmed. It opens with the whole
+hall in view. Its Return Beacons are numbered in the order you reach them; the end room's
+sarcophagi count as gold chests. Overworld Map at the top switches to the world, centred on
+the hall's entrance, and back; C centres the hall on you.
+The minimap shows the same textures: only the hall you're in and the floors you can walk to
+from where you stand, with your footprints of the last 10 minutes or 100 m. Outside, the world
+map shows nothing of the Hollow Halls in the corner of the world they're carved in.
 
 
 LANGUAGES
@@ -279,6 +297,33 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.27
+- Hollow Halls: inside a hall the World Map shows that hall alone, seen from above in the game's
+  own textures, the floor you're on bright and the hall's other levels dimmed. Its Return
+  Beacons are numbered in the order you reach them, players show as colored arrows with their
+  names, and Overworld Map switches to the world, centred on the hall's entrance. C centres the
+  hall on you.
+- Hollow Halls minimap: the same textures, only the hall you're in and the floors you can walk
+  to from where you stand, so it no longer changes as you climb or drop; footprints of the last
+  10 minutes or 100 m.
+- The Hollow Halls' end-room sarcophagi, 66, show as gold chests.
+- The world map no longer shows Hollow Halls markers in the corner of the world the halls are
+  carved in.
+- Cosmetics (World & Resources): the 115 cosmetic set pieces placed in the world, each with its
+  icon and name. Requested by FrostyBou.
+- Unique gear, collectibles and cosmetics count as found once you've picked them up, however you
+  got them (an enemy's drop, a loot mod). Reported by FWSWBN.
+- Settings > Looted Chests is now Looted / Read / Beaten: it covers read lore notes and beaten
+  bosses too. Thanks to AlianVineck.
+- Level Areas follow Regions: outside the regions shown they're dimmed or hidden like the
+  markers.
+- Fixed: a minimap moved against the left or top edge of the screen lost its place on the next
+  start. Reported by Grezexx.
+- Fixed: a place's icon could cover a lore "?": it steps aside so the "?" stays readable, and
+  only places you've been near count as visited (no rumors or quests). Reported by GARONNN.
+- A marker's menu (Fast Travel, Set as Waypoint...) stays clear of the mod's icons, even with
+  other mods' buttons in it.
+
 1.3.26
 - Settings > Advanced > Level Areas: the world map in the areas of the enemies' levels, from 1
   at the start to 48 in the Albaneve Summits, each tinted by level with its borders and its

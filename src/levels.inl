@@ -35,6 +35,13 @@ uint32_t LevelAreaColor(int area) {
     return 0xff000000u | mix(lo->b, hi->b) << 16 | mix(lo->g, hi->g) << 8 | mix(lo->r, hi->r);
 }
 
+// How much of the level areas shows at world (x, z): 1 inside the regions shown, faint or none outside them
+constexpr float kLevelOutsideDim = 0.3f;
+float LevelAreaShown(float x, float z) {
+    if (!OutsideFocusedRegion(x, z)) return 1.0f;
+    return g_regionOutsideHide ? 0.0f : kLevelOutsideDim;
+}
+
 // The World Map's view: zoom (px per metre) and where world (0, mapWorldH) sits on screen
 bool LevelMapView(uint8_t* mapState, float& zoom, float& originX, float& originY, float& mapWorldH) {
     if (!mapState) return false;
@@ -63,12 +70,16 @@ void DrawLevelAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapSta
     for (float y = top; y < bottom; y += kCell) {
         const float wz = mapWorldH - (y + kCell * 0.5f - originY) / zoom;
         int runArea = -1;
-        float runX = left;
+        float runShown = 0.0f, runX = left;
         for (float x = left; x <= right; x += kCell) {
-            const int a = x < right ? LevelAreaAt((x + kCell * 0.5f - originX) / zoom, wz) : -1;
-            if (a == runArea) continue;
-            if (runArea >= 0) DrawSolidRectAbs(widgetRaw, runX, y, x - runX, kCell, LevelAreaColor(runArea), 0.5f);
+            const float wx = (x + kCell * 0.5f - originX) / zoom;
+            int a = x < right ? LevelAreaAt(wx, wz) : -1;
+            const float shown = a >= 0 ? LevelAreaShown(wx, wz) : 0.0f;
+            if (shown <= 0.0f) a = -1;
+            if (a == runArea && shown == runShown) continue;
+            if (runArea >= 0) DrawSolidRectAbs(widgetRaw, runX, y, x - runX, kCell, LevelAreaColor(runArea), 0.5f * runShown);
             runArea = a;
+            runShown = shown;
             runX = x;
         }
     }
@@ -94,15 +105,15 @@ void DrawLevelBordersOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapS
                  std::min(ay, by) > bottom + 8.0f);
     };
     // Every border on screen gets its beads: 7 px apart, wider when that would run over the budget
-    float shown = 0.0f;
+    float shownLength = 0.0f;
     for (size_t o = 0; o < kLevelOutlineCount; ++o) {
         const LevelOutline& line = kLevelOutlines[o];
         for (uint32_t p = line.first; p + 1 < line.first + line.count; ++p) {
             float ax, ay, bx, by;
-            if (segment(p, ax, ay, bx, by)) shown += std::sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+            if (segment(p, ax, ay, bx, by)) shownLength += std::sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
         }
     }
-    const float spacing = std::max(7.0f, shown / kMaxBeads);
+    const float spacing = std::max(7.0f, shownLength / kMaxBeads);
     int beads = 0;
     for (size_t o = 0; o < kLevelOutlineCount && beads < kMaxBeads; ++o) {
         const LevelOutline& line = kLevelOutlines[o];
@@ -116,8 +127,10 @@ void DrawLevelBordersOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapS
                 for (float t = spacing - carry; t <= len && beads < kMaxBeads; t += spacing) {
                     const float x = ax + (bx - ax) * t / len, y = ay + (by - ay) * t / len;
                     if (y < top + 114.0f) continue;
+                    const float shown = LevelAreaShown((x - originX) / zoom, mapWorldH - (y - originY) / zoom);
+                    if (shown <= 0.0f) continue;
                     DrawAssetRectAbs(widgetRaw, kCirclePrimitive, x - kBead * 0.5f, y - kBead * 0.5f, kBead, kBead,
-                                     0xff202020u, 0.75f);
+                                     0xff202020u, 0.75f * shown);
                     ++beads;
                 }
             }
@@ -130,11 +143,13 @@ void DrawLevelBordersOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapS
         const float x = originX + l.x * zoom, y = originY + (mapWorldH - l.z) * zoom;
         constexpr float kW = 48.0f, kH = 34.0f;
         if (x < left + kW || x > right - kW || y < top + 114.0f + kH || y > bottom - kH) continue;
+        const float shown = LevelAreaShown(l.x, l.z);
+        if (shown <= 0.0f) continue;
         char text[8];
         std::snprintf(text, sizeof(text), "%u", static_cast<unsigned>(kLevelAreaLevels[l.area]));
-        DrawFramedBoxAbs(widgetRaw, x - kW * 0.5f, y - kH * 0.5f, kW, kH, 0xff141414u, 0.88f, LevelAreaColor(l.area), 1.0f,
-                         5.0f);
-        DrawLabelAbs(x - kW * 0.5f, y - kH * 0.5f, kW, kH, text, 0xffffffffu, 1.0f, TextAlignH::Center, TextAlignV::Center,
+        DrawFramedBoxAbs(widgetRaw, x - kW * 0.5f, y - kH * 0.5f, kW, kH, 0xff141414u, 0.88f * shown, LevelAreaColor(l.area),
+                         shown, 5.0f);
+        DrawLabelAbs(x - kW * 0.5f, y - kH * 0.5f, kW, kH, text, 0xffffffffu, shown, TextAlignH::Center, TextAlignV::Center,
                      nullptr, 1.5f);
     }
 }

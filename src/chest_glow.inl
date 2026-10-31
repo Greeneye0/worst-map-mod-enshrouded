@@ -387,7 +387,7 @@ void LightNearbyChests(uint8_t* client) {
     // The nearby unlooted chests from the chest list
     std::vector<NearChest> nearChests;
     for (size_t c = 0; c < kTotalChestCount; ++c) {
-        const bool gold = c < kGoldChestCount;
+        const bool gold = IsGoldChest(c);
         if (IsChestCurrentlyCleared(c) || !ChestRowEnabled(c)) continue;
         const ChestSpawn& sp = kChestSpawns[c];
         const float x = sp.px1 + sp.px0 / 65536.0f, y = sp.py1 + sp.py0 / 65536.0f, z = sp.pz1 + sp.pz0 / 65536.0f;
@@ -514,7 +514,7 @@ void DrawMarkersInner(uint8_t* client, void* widgetRaw) {
         const float dist = std::sqrt((c.x - px) * (c.x - px) + (c.z - pz) * (c.z - pz));
         const float size = std::max(18.0f, std::min(40.0f, 40.0f * 12.0f / std::max(12.0f, dist)));
         const float glow = size * (1.8f + 0.5f * breathe), ring = size * (1.15f + 0.25f * breathe);
-        const bool gold = c.chest < kGoldChestCount;
+        const bool gold = c.chest < kTotalChestCount && IsGoldChest(c.chest);
         const uint32_t tint = c.chest >= kTotalChestCount ? 0xffffffffu
                               : gold                         ? 0xff3cc8ffu
                               : IsWoodChest(c.chest)         ? kWoodChestTint

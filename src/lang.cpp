@@ -306,10 +306,12 @@ const Row kTable[] = {
     // Weather
     {"Weather", "Wetter", "Météo", "Meteo", "Clima", "Clima", "Pogoda", "Погода", "Погода", "Hava Durumu",
      "天気", "날씨", "天气", "天氣", "สภาพอากาศ"},
-    // LootedChests
-    {"Looted Chests", "Geplünderte Truhen", "Coffres pillés", "Forzieri saccheggiati", "Cofres saqueados",
-     "Baús saqueados", "Otwarte skrzynie", "Открытые сундуки", "Відкриті скрині", "Yağmalanan Sandıklar",
-     "開封済みの宝箱", "획득한 상자", "已开启宝箱", "已開啟寶箱", "หีบที่เปิดแล้ว"},
+    // LootedChests: Settings, how looted chests, read lore notes and beaten bosses show
+    {"Looted / Read / Beaten", "Geplündert / Gelesen / Besiegt", "Pillé / Lu / Vaincu",
+     "Saccheggiato / Letto / Sconfitto", "Saqueado / Leído / Derrotado", "Saqueado / Lido / Derrotado",
+     "Splądrowane / Przeczytane / Pokonane", "Разграблено / Прочитано / Побеждено",
+     "Пограбовано / Прочитано / Переможено", "Yağmalandı / Okundu / Yenildi", "回収済み / 既読 / 撃破済み",
+     "약탈함 / 읽음 / 처치함", "已搜刮 / 已读 / 已击败", "已搜刮 / 已讀 / 已擊敗", "ปล้นแล้ว / อ่านแล้ว / ชนะแล้ว"},
     // Hide
     {"Hide", "Ausblenden", "Masquer", "Nascondi", "Ocultar", "Ocultar", "Ukryj", "Скрыть", "Сховати", "Gizle",
      "非表示", "숨김", "隐藏", "隱藏", "ซ่อน"},
@@ -482,6 +484,14 @@ const Row kTable[] = {
     {"Vanilla Minimap", "Minikarte ohne Mod", "Mini-carte d'origine", "Minimappa originale", "Minimapa original",
      "Minimapa original", "Oryginalna minimapa", "Обычная мини-карта", "Звичайна мінікарта", "Orijinal Mini Harita",
      "ミニマップを標準に", "기본 미니맵", "原版小地图", "原版小地圖", "มินิแมพแบบดั้งเดิม"},
+    // DungeonMap: the World Map's button inside a Hollow Hall, back to the hall's own floor plan
+    {"Dungeon Map", "Dungeonkarte", "Carte du donjon", "Mappa del dungeon", "Mapa de la mazmorra", "Mapa da masmorra",
+     "Mapa lochu", "Карта подземелья", "Карта підземелля", "Zindan Haritası", "ダンジョンマップ", "던전 지도", "地下城地图",
+     "地下城地圖", "แผนที่ดันเจี้ยน"},
+    // OverworldMap: the World Map's button inside a Hollow Hall, the world above (centred on the hall's entrance)
+    {"Overworld Map", "Oberweltkarte", "Carte du monde", "Mappa del mondo", "Mapa del mundo", "Mapa do mundo",
+     "Mapa świata", "Карта мира", "Карта світу", "Dünya Haritası", "ワールドマップ", "월드 맵", "世界地图", "世界地圖",
+     "แผนที่โลก"},
 };
 // clang-format on
 
