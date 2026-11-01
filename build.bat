@@ -32,6 +32,7 @@ if errorlevel 1 exit /b 1
 copy /y mod.json bin\loader\mod.json >nul
 if errorlevel 1 exit /b 1
 copy /y data\veins.bin bin\loader\veins.bin >nul
+copy /y data\ground.bin bin\loader\ground.bin >nul
 copy /y data\halls.bin bin\loader\halls.bin >nul
 if errorlevel 1 exit /b 1
 rem The Hollow Halls' floor textures for the HD dungeon maps (tools\resources\make_halls_hd.py textures)
@@ -53,6 +54,11 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++20 /O2 /EHsc /MT /W4 tests\test_player_markers.cpp /Fo:build\test_player_markers.obj /Fe:bin\test_player_markers.exe
 if errorlevel 1 exit /b 1
 bin\test_player_markers.exe
+if errorlevel 1 exit /b 1
+
+cl /nologo /std:c++20 /O2 /EHsc /MT /W4 tests\test_hd_pool.cpp /Fo:build\test_hd_pool.obj /Fe:bin\test_hd_pool.exe
+if errorlevel 1 exit /b 1
+bin\test_hd_pool.exe
 if errorlevel 1 exit /b 1
 
 echo Built bin\loader\unlock-map-markers.dll for Greeneye Loader API 2

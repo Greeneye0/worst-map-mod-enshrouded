@@ -32,7 +32,7 @@ enum class Str : int {
     MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar,
     FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show, TimeFormat,
     Advanced, ShowPosition, AllRegions, Dim, HintCopyPosition, RegionFilter, LevelAreas, TownPortals, HintHideFilter, HintUndoFilter, HintRedoFilter, SearchList, NoListMatches, WoodChest, WoodSarcophagus,
-    VanillaWorldMap, VanillaMinimap, DungeonMap, OverworldMap,
+    VanillaWorldMap, VanillaMinimap, DungeonMap, OverworldMap, CatGround, RegionNames, DungeonSpoils, RangerChest, MageChest, WarriorChest,
     Count
 };
 

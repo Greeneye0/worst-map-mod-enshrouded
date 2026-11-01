@@ -252,6 +252,34 @@ bool SetMarkerUnlockPatches(bool on) {
 }
 } // namespace unlock_map_markers
 
+// The World Map's tiles (a 1 km detail height + fog zone pair each, 100 pairs, about 150 MiB) live in the game's UI
+// texture heap, a fixed 128 MiB set once at startup (FUN_140848130: "mov qword [rbp+0xa8], 0x08000000", the heap's
+// config). Full, the last rows never load: the map's north drawn dark, with no sea. 256 MiB holds them all. The mod
+// starts before the game's own start (the loader runs the mods first), so this lands before the heap is made; in a
+// hot reload it only takes effect at the next start. [General] PotatoPC=true in minimap_config.ini keeps the game's.
+static void RaiseMapTextureBudget(bool firstStart) {
+    if (unlock_map_markers::PotatoPcInConfig()) {
+        LogMessage("Map textures: PotatoPC=true, the game's texture memory left as it is (128 MiB)");
+        return;
+    }
+    uint8_t* p = unlock_map_markers::FindUnique(
+        "48 C7 85 A8 00 00 00 ?? ?? ?? ?? 48 C7 85 B0 00 00 00 00 00 40 00 48 C7 85 B8 00 00 00 00 00 B0 04");
+    if (!p) {
+        LogMessage("Map textures: the heap size was not found (game update?); left at the game's");
+        return;
+    }
+    uint32_t bytes = 0;
+    std::memcpy(&bytes, p + 7, sizeof(bytes));
+    constexpr uint32_t kWanted = 256u << 20;
+    if (bytes >= kWanted) return; // already raised (an earlier generation)
+    if (bytes != (128u << 20)) {
+        LogMessage("Map textures: the heap is %u MiB, not the 128 expected; left as it is", bytes >> 20);
+        return;
+    }
+    if (!WriteProcessBytes(p + 7, reinterpret_cast<const uint8_t*>(&kWanted), sizeof(kWanted))) return;
+    LogMessage("Map textures: UI texture heap raised from 128 to 256 MiB%s", firstStart ? "" : " (from the next start)");
+}
+
 // Greeneye Loader (greeneye\unlock-map-markers\unlock-map-markers.dll). With the loader's API 2
 // every hook goes through the loader, so the mod can be hot reloaded while the game runs.
 GREENEYE_MOD_START
@@ -271,6 +299,7 @@ GREENEYE_MOD_START
     LogMessage("The Worst Map Mod " UMM_VERSION " loaded (Greeneye Loader%s, generation %u).",
                greeneye::Host() ? "" : " without hooks API",
                greeneye::Host() ? host->generation : 1u);
+    RaiseMapTextureBudget(!greeneye::Host() || host->generation <= 1u);
     return ApplyAllPatches();
 }
 

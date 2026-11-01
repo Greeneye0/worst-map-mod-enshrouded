@@ -492,6 +492,27 @@ const Row kTable[] = {
     {"Overworld Map", "Oberweltkarte", "Carte du monde", "Mappa del mondo", "Mapa del mundo", "Mapa do mundo",
      "Mapa świata", "Карта мира", "Карта світу", "Dünya Haritası", "ワールドマップ", "월드 맵", "世界地图", "世界地圖",
      "แผนที่โลก"},
+    // CatGround: the Map Key section of the regional rock and sand (Granite, Basalt, Shell Limestone...) shown as areas
+    {"GROUND", "BODEN", "SOL", "TERRENO", "TERRENO", "TERRENO", "GRUNT", "ГРУНТ", "ҐРУНТ", "ZEMİN", "地面", "지면",
+     "地面", "地面", "พื้นดิน"},
+    // RegionNames: Settings > Advanced, the regions' names (Springlands, Revelwood...) written on the World Map
+    {"Region Names", "Regionsnamen", "Noms des régions", "Nomi delle regioni", "Nombres de regiones", "Nomes das regiões",
+     "Nazwy regionów", "Названия регионов", "Назви регіонів", "Bölge adları", "地域名", "지역 이름", "区域名称", "區域名稱",
+     "ชื่อภูมิภาค"},
+    // DungeonSpoils: the chests in a Hollow Hall's end room (Ranger Armor Chest and the like), on the map
+    {"Dungeon Spoils", "Verliesbeute", "Butin du donjon", "Bottino del dungeon", "Botín de la mazmorra",
+     "Espólios da masmorra", "Łupy z lochu", "Трофеи подземелья", "Трофеї підземелля", "Zindan ganimeti", "ダンジョンの戦利品",
+     "던전 전리품", "地下城战利品", "地下城戰利品", "ของรางวัลดันเจี้ยน"},
+    // RangerChest / MageChest / WarriorChest: a Hollow Hall's end-room class sarcophagus (the game: Ranger Armor Chest,
+    // Ranger Weapon Chest...), on the map's hover
+    {"Ranger Chest", "Waldläufer-Truhe", "Coffre de rôdeur", "Forziere del ranger", "Cofre de explorador", "Baú de patrulheiro",
+     "Skrzynia tropiciela", "Сундук следопыта", "Скриня слідопита", "Korucu sandığı", "レンジャーの宝箱", "레인저 상자",
+     "游侠宝箱", "遊俠寶箱", "หีบเรนเจอร์"},
+    {"Mage Chest", "Magier-Truhe", "Coffre de mage", "Forziere del mago", "Cofre de mago", "Baú de mago", "Skrzynia maga",
+     "Сундук мага", "Скриня мага", "Büyücü sandığı", "メイジの宝箱", "마법사 상자", "法师宝箱", "法師寶箱", "หีบนักเวท"},
+    {"Warrior Chest", "Krieger-Truhe", "Coffre de guerrier", "Forziere del guerriero", "Cofre de guerrero", "Baú de guerreiro",
+     "Skrzynia wojownika", "Сундук воина", "Скриня воїна", "Savaşçı sandığı", "戦士の宝箱", "전사 상자", "战士宝箱", "戰士寶箱",
+     "หีบนักรบ"},
 };
 // clang-format on
 

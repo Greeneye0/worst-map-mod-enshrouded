@@ -31,6 +31,7 @@ bool SetMarkerUnlockPatches(bool on); // false: a thread stood in the code every
 // Settings > Advanced > Vanilla World Map, read before the patches are written (on: they aren't), and whether
 // they are on once main.cpp is done with them.
 bool VanillaWorldMapInConfig();
+bool PotatoPcInConfig();
 void SetWorldMapPatchedAtLoad(bool patched);
 
 } // namespace unlock_map_markers

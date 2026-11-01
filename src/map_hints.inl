@@ -98,10 +98,17 @@ void DrawCombinedMapHints(MapHintSpan* span, void* options) {
     __finally { g_mapHintEntries = previous; }
 }
 
+// The screen stays 5 on the menu's other tabs (Skills, Backpack...): the map's hints only while the World Map itself
+// draws (its filter menu, DrawMapFilterMenuHook, within the last few frames)
+bool WorldMapTabShowing() {
+    return GetTickCount64() - g_mapMenuDrawnTick < 200;
+}
+
 void MapHintsHook(MapHintSpan* span, void* options) {
     greeneye::Lease lease;
     auto* client = lease && g_worldMapModded ? GetUiClient() : nullptr;
-    if (client && client[0x1cd8] == 5 && !g_findDialogOpen && span && span->data && span->count && span->count <= 16 && g_originalMapHint)
+    if (client && client[0x1cd8] == 5 && WorldMapTabShowing() && !g_findDialogOpen && span && span->data && span->count &&
+        span->count <= 16 && g_originalMapHint)
         DrawCombinedMapHints(span, options);
     else g_originalMapHints(span, options);
 }

@@ -18,5 +18,6 @@ if errorlevel 1 exit /b 1
 copy /y mod.json bin-dev\loader\mod.json >nul
 if errorlevel 1 exit /b 1
 copy /y data\veins.bin bin-dev\loader\veins.bin >nul
+copy /y data\ground.bin bin-dev\loader\ground.bin >nul
 if errorlevel 1 exit /b 1
 echo Built bin-dev\loader\unlock-map-markers.dll (DEV - bridge exports included)

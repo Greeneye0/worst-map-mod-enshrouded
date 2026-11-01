@@ -31,6 +31,8 @@
 
 #include "map_key_panel.h"
 #include "map_control.h"
+#include "hd_pool_policy.h"
+#include "ui_mesh.h" // smooth chest silhouettes (shared with Find and Quick Deposit)
 #include "player_markers.h"
 #include "chest_spawns.h"
 #include "chest_loot_ids.h"
@@ -96,6 +98,7 @@ struct PerfScope {
 constexpr uint32_t kGoldChestTypeHash = 0x601dcbe5u;
 constexpr uint32_t kSilverChestTypeHash = 0x511fcbe5u;
 constexpr uint32_t kWoodChestTypeHash = 0x711fcbe5u; // the mod's own row and marker type, like the two above
+constexpr uint32_t kSpoilsTypeHash = 0x711fcbe6u;    // Dungeon Spoils: the Hollow Halls' end-room chests (the mod's own row)
 constexpr uint32_t kOtherPlayerTypeHash = 0x26d18a06u;
 constexpr uint32_t kTownPortalTypeHash = 0x7b0e7a11u; // the mod's own row (no game marker type): Town Portal's portals
 constexpr uint32_t kCompletedQuestTypeHash = 0x9c4e7b12u;
@@ -112,7 +115,8 @@ constexpr uint8_t kPlantsCategory = 7;    // harvestable plants
 constexpr uint8_t kBaitCategory = 8;      // fishing bait critters
 constexpr uint8_t kTreesCategory = 9;     // tree areas (coloured, no icons)
 constexpr uint8_t kCreaturesCategory = 10; // every creature's spawn points
-bool IsResourceCategory(uint8_t c) { return c >= kMiningCategory && c <= kCreaturesCategory; }
+constexpr uint8_t kGroundCategory = 11;    // regional rock and sand (coloured areas, ground_areas.inl)
+bool IsResourceCategory(uint8_t c) { return c >= kMiningCategory && c <= kGroundCategory; }
 static_assert(sizeof(kOreCategory) / sizeof(kOreCategory[0]) == static_cast<size_t>(Ore::Count), "one category per row");
 static_assert(sizeof(kOreAreaColors) / sizeof(kOreAreaColors[0]) == static_cast<size_t>(Ore::Count), "one colour per row");
 static_assert(sizeof(kOreLabels) / sizeof(kOreLabels[0]) == kOreCount, "one label per ore");
@@ -223,6 +227,7 @@ constexpr int kMarkerScaleCount = static_cast<int>(sizeof(kMarkerScaleLevels) / 
 bool g_goldChestEnabled = true;
 bool g_silverChestEnabled = true;
 bool g_woodChestEnabled = false; // off at first: 1562 more icons on a map that had none
+bool g_spoilsEnabled = true;      // the Hollow Halls' end-room chests (Dungeon Spoils)
 
 // A kChestSpawns index: gold chests, then silver, then wooden (kWoodChestFirst on), then the Hollow Halls' end-room
 // sarcophagi (kEndChestFirst on), which count as gold
@@ -233,13 +238,15 @@ bool IsWoodChest(size_t c) {
     return c >= kWoodChestFirst && c < kEndChestFirst;
 }
 bool ChestRowEnabled(size_t c) {
+    if (c >= kEndChestFirst) return g_spoilsEnabled;
     return IsGoldChest(c) ? g_goldChestEnabled : !IsWoodChest(c) ? g_silverChestEnabled : g_woodChestEnabled;
 }
 uint32_t ChestTypeHash(size_t c) {
+    if (c >= kEndChestFirst) return kSpoilsTypeHash;
     return IsGoldChest(c) ? kGoldChestTypeHash : !IsWoodChest(c) ? kSilverChestTypeHash : kWoodChestTypeHash;
 }
 bool AnyChestRowEnabled() {
-    return g_goldChestEnabled || g_silverChestEnabled || g_woodChestEnabled;
+    return g_goldChestEnabled || g_silverChestEnabled || g_woodChestEnabled || g_spoilsEnabled;
 }
 bool g_otherPlayersEnabled = true;
 bool g_townPortalsEnabled = true; // Fast Travel & Altars > Town Portals (town_portals.inl)
@@ -249,6 +256,8 @@ bool g_minimapThinBorder = false; // a thin line instead of the ornate frame
 bool g_minimapShowPosition = false; // Settings > Advanced: your X, Y (height), Z under the minimap
 bool g_regionFilterEnabled = false; // Settings > Advanced: the Map Key's Region row (regions.inl)
 bool g_levelAreas = false;          // Settings > Advanced: the World Map in level areas (levels.inl)
+bool g_regionNames = true;          // Settings > Advanced: the regions' names on the World Map (regions.inl)
+float g_overlayRootRect[4]{}; // the Map Key overlay's screen rect, last frame
 bool g_minimapInfoBar = true;     // the tray under the minimap (time, weather, zoom); off puts the cog on the map
 bool g_minimapVisible = true;
 bool g_minimapClockWeatherMode = false; // false = Sun/Moon, true = Weather Status
@@ -602,6 +611,7 @@ bool g_vanillaWorldMap = false;
 bool g_vanillaMinimap = false;
 bool VanillaMinimapData() { return g_vanillaWorldMap && g_vanillaMinimap; }
 bool g_worldMapModded = true;
+uint64_t g_mapMenuDrawnTick = 0; // GetTickCount64 when the World Map last drew its filter menu (map_hints.inl)
 uint8_t* g_lastMapState = nullptr; // the World Map's state, last seen by DrawMapKeyOverlay
 GetMarkerTypeFn g_origGetMarkerType = nullptr;
 uint8_t* g_worldMapInputHookTarget = nullptr;
@@ -783,6 +793,7 @@ constexpr MarkerRowSpec kCategory3Rows[] = {
     {kGoldChestTypeHash, 0u, 3, "Gold Chest", umm_lang::Str::GoldChest},
     {kSilverChestTypeHash, 0u, 3, "Silver Chest", umm_lang::Str::SilverChest},
     {kWoodChestTypeHash, 0u, 3, "Wooden Chest", umm_lang::Str::WoodChest},
+    {kSpoilsTypeHash, 0u, 3, "Dungeon Spoils", umm_lang::Str::DungeonSpoils},
     // Bosses: a resource row (ore_deposits.h), defeated ones hidden or greyed like looted chests
     {kOreTypeHashBase + static_cast<uint32_t>(kBossesFirst), 0u, 3, kOreLabels[kBossesFirst], umm_lang::Str::CatWorld},
     // Unique Weapons and Unique Equipment: resource rows (ore_deposits.h), each item at the chest or place it is in,
@@ -851,6 +862,8 @@ constexpr auto kTreesRows = MakeResourceRows<kTreesFirst, kTreesCategory, umm_la
     std::make_index_sequence<kTreesCount>{});
 constexpr auto kCreaturesRows = MakeResourceRows<kCreaturesFirst, kCreaturesCategory, umm_lang::Str::CatCreatures>(
     std::make_index_sequence<kCreaturesCount>{});
+constexpr auto kGroundRows = MakeResourceRows<kGroundFirst, kGroundCategory, umm_lang::Str::CatGround>(
+    std::make_index_sequence<kGroundCount>{});
 static_assert(kWaterCount == 2, "Water Well and Water Barrel rows");
 static_assert(kLoreCount == 1 && kBossesCount == 1, "one Lore Note row, one Boss row");
 static_assert(kUniqueCount == 3, "Unique Weapons, Unique Equipment and Collectibles rows");
@@ -858,7 +871,7 @@ static_assert(kSummonsCount == 1, "one Fell Summoning Stone row");
 static_assert(kCosmeticCount == 1, "one Cosmetics row");
 static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount +
                   kLoreCount + kBossesCount + kUniqueCount + kSummonsCount + kNightPlantsCount + kCreaturesCount +
-                  kCosmeticCount == kOreCount,
+                  kCosmeticCount + kGroundCount == kOreCount,
               "every row in one category");
 
 struct CategoryGroupSpec {
@@ -881,6 +894,7 @@ constexpr CategoryGroupSpec kCategoryGroups[] = {
     {4, umm_lang::Str::CatCustomPins, nullptr,        0},
     // last, so the saved category order and the hash list keep their places
     {kCreaturesCategory, umm_lang::Str::CatCreatures, kCreaturesRows.data(), kCreaturesRows.size()},
+    {kGroundCategory, umm_lang::Str::CatGround, kGroundRows.data(), kGroundRows.size()},
 };
 
 bool g_panelCollapsed = false;
@@ -901,6 +915,7 @@ volatile LONG g_mapKeyWheelDelta = 0;
 volatile bool g_mapKeyWheelCapture = false;
 volatile uint64_t g_mapKeyLastFrameTick = 0;
 
+bool g_dungeonMapUp = false; // a Hollow Hall's dungeon map is what the World Map shows (set each map frame)
 LRESULT CALLBACK MapKeyWheelMsgProc(int code, WPARAM wParam, LPARAM lParam) {
     if (code == HC_ACTION && wParam == PM_REMOVE && lParam) {
         auto* msg = reinterpret_cast<MSG*>(lParam);
@@ -917,6 +932,17 @@ LRESULT CALLBACK MapKeyWheelMsgProc(int code, WPARAM wParam, LPARAM lParam) {
             if (GetRawInputData(reinterpret_cast<HRAWINPUT>(msg->lParam), RID_INPUT, &ri, &size, sizeof(RAWINPUTHEADER)) !=
                     static_cast<UINT>(-1) &&
                 ri.header.dwType == RIM_TYPEKEYBOARD && !(ri.data.keyboard.Flags & RI_KEY_BREAK)) {
+                msg->message = WM_NULL;
+            }
+        }
+        // On a dungeon map the game's 1 (People & Places, the overworld's filters) is taken: it filters the world map
+        if (msg->message == WM_INPUT && g_dungeonMapUp && GetTickCount64() - g_mapKeyLastFrameTick < 250) {
+            RAWINPUT ri{};
+            UINT size = sizeof(ri);
+            if (GetRawInputData(reinterpret_cast<HRAWINPUT>(msg->lParam), RID_INPUT, &ri, &size, sizeof(RAWINPUTHEADER)) !=
+                    static_cast<UINT>(-1) &&
+                ri.header.dwType == RIM_TYPEKEYBOARD && !(ri.data.keyboard.Flags & RI_KEY_BREAK) &&
+                (ri.data.keyboard.VKey == '1' || ri.data.keyboard.VKey == VK_NUMPAD1)) {
                 msg->message = WM_NULL;
             }
         }
@@ -1716,6 +1742,7 @@ bool IsFilterEnabled(FilterEntry* entries, size_t count, uint32_t typeHash) {
     if (typeHash == kGoldChestTypeHash) return g_goldChestEnabled;
     if (typeHash == kSilverChestTypeHash) return g_silverChestEnabled;
     if (typeHash == kWoodChestTypeHash) return g_woodChestEnabled;
+    if (typeHash == kSpoilsTypeHash) return g_spoilsEnabled;
     if (typeHash == kOtherPlayerTypeHash) return g_otherPlayersEnabled;
     if (typeHash == kTownPortalTypeHash) return g_townPortalsEnabled;
     if (typeHash == kCompletedQuestTypeHash) return false; // finished quests are never shown
@@ -1730,8 +1757,8 @@ bool IsFilterEnabled(FilterEntry* entries, size_t count, uint32_t typeHash) {
 
 void ApplyFilterChange(uint8_t* client, uint32_t typeHash, bool enable) {
     if (typeHash == kGoldChestTypeHash || typeHash == kSilverChestTypeHash || typeHash == kWoodChestTypeHash ||
-        typeHash == kOtherPlayerTypeHash || typeHash == kTownPortalTypeHash || typeHash == kCompletedQuestTypeHash ||
-        IsOreHash(typeHash)) {
+        typeHash == kSpoilsTypeHash || typeHash == kOtherPlayerTypeHash || typeHash == kTownPortalTypeHash ||
+        typeHash == kCompletedQuestTypeHash || IsOreHash(typeHash)) {
         return;
     }
     uint8_t disableFlag = enable ? 0 : 1;
@@ -1753,6 +1780,8 @@ void SetSingleFilterState(uint8_t* client, uint8_t* mapState, uint32_t typeHash,
         g_silverChestEnabled = enable;
     } else if (typeHash == kWoodChestTypeHash) {
         g_woodChestEnabled = enable;
+    } else if (typeHash == kSpoilsTypeHash) {
+        g_spoilsEnabled = enable;
     } else if (typeHash == kOtherPlayerTypeHash) {
         g_otherPlayersEnabled = enable;
         SaveMinimapConfig();
@@ -1772,7 +1801,9 @@ void SetSingleFilterState(uint8_t* client, uint8_t* mapState, uint32_t typeHash,
         }
         ApplyFilterChange(client, typeHash, enable);
     }
-    if (typeHash == kGoldChestTypeHash || typeHash == kSilverChestTypeHash || typeHash == kWoodChestTypeHash) SaveMinimapConfig();
+    if (typeHash == kGoldChestTypeHash || typeHash == kSilverChestTypeHash || typeHash == kWoodChestTypeHash ||
+        typeHash == kSpoilsTypeHash)
+        SaveMinimapConfig();
     if (mapState) {
         *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
         *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
@@ -1788,6 +1819,7 @@ void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category
         g_goldChestEnabled = enable;
         g_silverChestEnabled = enable;
         g_woodChestEnabled = enable;
+        g_spoilsEnabled = enable;
     } else if (category == 0) {
         g_otherPlayersEnabled = enable;
         SaveMinimapConfig();
@@ -1827,6 +1859,7 @@ void SetAllFiltersState(uint8_t* client, uint8_t* mapState, bool enable, bool pa
     if (open(kGoldChestTypeHash, 3)) g_goldChestEnabled = enable;
     if (open(kSilverChestTypeHash, 3)) g_silverChestEnabled = enable;
     if (open(kWoodChestTypeHash, 3)) g_woodChestEnabled = enable;
+    if (open(kSpoilsTypeHash, 3)) g_spoilsEnabled = enable;
     if (open(kOtherPlayerTypeHash, 0)) g_otherPlayersEnabled = enable;
     if (open(kTownPortalTypeHash, 1)) g_townPortalsEnabled = enable;
     for (size_t o = 0; o < kOreCount; ++o) {
@@ -1882,6 +1915,7 @@ FilterSnapshot TakeFilterSnapshot(uint8_t* client) {
     s.states.emplace_back(kWoodChestTypeHash, g_woodChestEnabled);
     s.states.emplace_back(kOtherPlayerTypeHash, g_otherPlayersEnabled);
     s.states.emplace_back(kTownPortalTypeHash, g_townPortalsEnabled);
+    s.states.emplace_back(kSpoilsTypeHash, g_spoilsEnabled);
     for (size_t o = 0; o < kOreCount; ++o) s.states.emplace_back(OreHash(o), g_oreEnabled[o]);
     auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
     const size_t count = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
@@ -1902,7 +1936,7 @@ void RestoreFilterSnapshot(uint8_t* client, uint8_t* mapState, const FilterSnaps
     const FilterSnapshot now = TakeFilterSnapshot(client);
     if (!SameFilterRows(now, s)) return;
     auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
-    const size_t fixed = 5 + kOreCount;
+    const size_t fixed = 6 + kOreCount;
     for (size_t i = 0; i < s.states.size(); ++i) {
         const auto [hash, on] = s.states[i];
         if (now.states[i].second == on) continue;
@@ -1911,7 +1945,8 @@ void RestoreFilterSnapshot(uint8_t* client, uint8_t* mapState, const FilterSnaps
         else if (i == 2) g_woodChestEnabled = on;
         else if (i == 3) g_otherPlayersEnabled = on;
         else if (i == 4) g_townPortalsEnabled = on;
-        else if (i < fixed) g_oreEnabled[i - 5] = on;
+        else if (i == 5) g_spoilsEnabled = on;
+        else if (i < fixed) g_oreEnabled[i - 6] = on;
         else {
             entries[i - fixed].enabled = on ? 1 : 0;
             ApplyFilterChange(client, hash, on);
@@ -1928,19 +1963,99 @@ void RestoreFilterSnapshot(uint8_t* client, uint8_t* mapState, const FilterSnaps
 std::vector<FilterSnapshot> g_filterUndo, g_filterRedo;
 FilterSnapshot g_filterLastSeen;
 
+// The history is kept in filter_history.txt, so Ctrl+Z still reaches back after a hot reload or a restart: the rows'
+// hashes once, then each snapshot as one 0/1 per row (the last one seen, the undo steps oldest first, the redo steps).
+// A file for other rows (another world, a build with new rows) starts the history over like a world change.
+std::string FilterHistoryPath() { return greeneye::DataPath("filter_history.txt"); }
+
+void SaveFilterHistory() {
+    if (g_filterLastSeen.states.empty()) return;
+    std::string out = "UMMFH1\n";
+    char hex[12];
+    for (const auto& [hash, on] : g_filterLastSeen.states) {
+        std::snprintf(hex, sizeof(hex), "%08x,", hash);
+        out += hex;
+    }
+    out += '\n';
+    auto bits = [&](char tag, const FilterSnapshot& f) {
+        out += tag;
+        out += ' ';
+        for (const auto& [hash, on] : f.states) out += on ? '1' : '0';
+        out += '\n';
+    };
+    bits('L', g_filterLastSeen);
+    for (const auto& f : g_filterUndo) bits('U', f);
+    for (const auto& f : g_filterRedo) bits('R', f);
+    FILE* f = nullptr;
+    if (fopen_s(&f, FilterHistoryPath().c_str(), "wb") == 0 && f) {
+        std::fwrite(out.data(), 1, out.size(), f);
+        std::fclose(f);
+    }
+}
+
+void LoadFilterHistory() {
+    FILE* f = nullptr;
+    if (fopen_s(&f, FilterHistoryPath().c_str(), "rb") != 0 || !f) return;
+    std::string text;
+    char buf[4096];
+    for (size_t n; (n = std::fread(buf, 1, sizeof(buf), f)) > 0;) text.append(buf, n);
+    std::fclose(f);
+    std::vector<std::string> lines;
+    for (size_t at = 0; at < text.size();) {
+        const size_t end = text.find('\n', at);
+        lines.push_back(text.substr(at, end == std::string::npos ? std::string::npos : end - at));
+        at = end == std::string::npos ? text.size() : end + 1;
+    }
+    if (lines.size() < 3 || lines[0] != "UMMFH1") return;
+    std::vector<uint32_t> hashes;
+    for (size_t at = 0; at < lines[1].size();) {
+        const size_t comma = lines[1].find(',', at);
+        if (comma == std::string::npos) break;
+        hashes.push_back(static_cast<uint32_t>(std::strtoul(lines[1].substr(at, comma - at).c_str(), nullptr, 16)));
+        at = comma + 1;
+    }
+    FilterSnapshot last;
+    std::vector<FilterSnapshot> undo, redo;
+    for (size_t i = 2; i < lines.size(); ++i) {
+        const std::string& l = lines[i];
+        if (l.size() != hashes.size() + 2 || l[1] != ' ') continue;
+        FilterSnapshot snap;
+        snap.states.reserve(hashes.size());
+        for (size_t r = 0; r < hashes.size(); ++r) snap.states.emplace_back(hashes[r], l[2 + r] == '1');
+        if (l[0] == 'L') last = std::move(snap);
+        else if (l[0] == 'U') undo.push_back(std::move(snap));
+        else if (l[0] == 'R') redo.push_back(std::move(snap));
+    }
+    if (last.states.empty()) return;
+    g_filterLastSeen = std::move(last);
+    g_filterUndo = std::move(undo);
+    g_filterRedo = std::move(redo);
+    if (g_log) g_log("Map Key: filter history loaded (%zu to undo, %zu to redo)", g_filterUndo.size(), g_filterRedo.size());
+}
+
 // Once a frame with the map up: notes a change, and runs Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) when keysFree
 void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
     constexpr size_t kMaxSteps = 50;
+    static bool loaded = false;
+    if (!loaded) {
+        loaded = true;
+        LoadFilterHistory();
+    }
     FilterSnapshot now = TakeFilterSnapshot(client);
+    bool changed = false;
     if (!SameFilterRows(now, g_filterLastSeen)) {
+        changed = !g_filterUndo.empty() || !g_filterRedo.empty() || !g_filterLastSeen.states.empty();
         g_filterUndo.clear();
         g_filterRedo.clear();
     } else if (!(now == g_filterLastSeen)) {
         g_filterUndo.push_back(std::move(g_filterLastSeen));
         if (g_filterUndo.size() > kMaxSteps) g_filterUndo.erase(g_filterUndo.begin());
         g_filterRedo.clear();
+        changed = true;
     }
+    const bool first = g_filterLastSeen.states.empty();
     g_filterLastSeen = now;
+    if (changed || first) SaveFilterHistory();
 
     static bool zWasDown = false, yWasDown = false;
     const bool ctrl = keysFree && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -1958,6 +2073,7 @@ void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
     RestoreFilterSnapshot(client, mapState, from.back());
     from.pop_back();
     g_filterLastSeen = TakeFilterSnapshot(client);
+    SaveFilterHistory();
     if (g_log) g_log("Map Key: %s a filter change (%zu more to undo, %zu to redo)", undo ? "undid" : "redid",
                      g_filterUndo.size(), g_filterRedo.size());
 }
@@ -2027,6 +2143,7 @@ const void* GetIconRefForType(uint8_t* client, uint32_t typeHash) {
     if (typeHash == kGoldChestTypeHash) return g_goldChestMarkerType.icon;
     if (typeHash == kSilverChestTypeHash) return g_silverChestMarkerType.icon;
     if (typeHash == kWoodChestTypeHash) return g_woodChestMarkerType.icon;
+    if (typeHash == kSpoilsTypeHash) return g_goldChestMarkerType.icon; // gold sarcophagi
     if (IsOreHash(typeHash)) return kOreIcons[OreIndexOf(typeHash)];
     if (typeHash == 0x26d18a06u) {
         if (uint8_t* assets = GetUiAssets()) {
@@ -2068,8 +2185,8 @@ const char* WoodChestName() {
 // texts, so they live in fixed buffers that are rewritten in place when the language is decided.
 const UiText& GetChestSubtypeTitle(uint16_t subtype) {
     using umm_lang::Str;
-    static char buffers[9][128]{};
-    static UiText titles[9]{};
+    static char buffers[10][128]{};
+    static UiText titles[10]{};
     static int builtFor = -1;
     const int lang = static_cast<int>(umm_lang::Current());
     if (builtFor != lang) {
@@ -2086,10 +2203,11 @@ const UiText& GetChestSubtypeTitle(uint16_t subtype) {
         std::snprintf(buffers[6], sizeof(buffers[6]), "%s", wood);
         std::snprintf(buffers[7], sizeof(buffers[7]), "%s", umm_lang::T(Str::WoodSarcophagus));
         std::snprintf(buffers[8], sizeof(buffers[8]), "%s%s", wood, locked);
-        for (int i = 0; i < 9; ++i) titles[i] = MakeUiText(buffers[i]);
+        std::snprintf(buffers[9], sizeof(buffers[9]), "%s", umm_lang::T(Str::DungeonSpoils));
+        for (int i = 0; i < 10; ++i) titles[i] = MakeUiText(buffers[i]);
         builtFor = lang;
     }
-    return titles[subtype < 9 ? subtype : 0];
+    return titles[subtype < 10 ? subtype : 0];
 }
 
 bool IsChestCurrentlyCleared(size_t chestIdx);
@@ -5031,6 +5149,7 @@ const char* OreName(size_t ore) {
 // Returns how many shapes it drew, so the deposit icons can share one budget with it.
 bool OutsideFocusedRegion(float x, float z); // regions.inl
 extern bool g_regionOutsideHide;
+bool g_treesAsImages = false; // this frame's forests are painted into the area images (ground_areas.inl): labels only
 
 int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
     bool any = false;
@@ -5065,7 +5184,9 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
                                     (t.z0 + t.z1 + 1) * 0.5f * kTreeShapeCellMeters);
     };
     int drawn = 0;
-    if (cellPx < kTreeGridPx) {
+    if (g_treesAsImages) {
+        // painted with the Ground areas, a few image draws (ground_areas.inl)
+    } else if (cellPx < kTreeGridPx) {
         const int gw = static_cast<int>((right - left) / kTreeGridPx) + 1;
         const int gh = static_cast<int>((bottom - top) / kTreeGridPx) + 1;
         static std::vector<uint8_t> grid; // ore index + 1 (+ 0x80 outside the focused region), 0 = no forest
@@ -5127,6 +5248,7 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
         if (!g_oreEnabled[t.ore]) continue;
         const bool labelOut = OutsideFocusedRegion(static_cast<float>(t.x), static_cast<float>(t.z));
         if (labelOut && g_regionOutsideHide) continue;
+        if (t.x < 2700 && t.z > 7900) continue; // the Hollow Halls' corner (halls::InCorner): nothing of the overworld
         const float cx = originX + t.x * zoom;
         float cy = originY + (mapWorldH - t.z) * zoom;
         if (cx < left || cx > right || cy < top || cy > bottom) continue;
@@ -5160,7 +5282,10 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
 #include "knowledge.inl"
 #include "regions.inl"
 #include "levels.inl"
+#include "hd_pool.inl"
 #include "halls.inl"
+#include "ground_areas.inl"
+#include "hall_pan_clamp.inl"
 #include "cursor_position.inl"
 #include "chest_silhouette.inl"
 #include "vein_sight.inl"
@@ -5233,7 +5358,9 @@ void DrawRefilledChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* cl
         const float sx = originX + x * zoom, sy = originY + (mapWorldH - z) * zoom;
         if (sx < left || sx > right || sy < top + 114.0f || sy > bottom) continue;
         if (exploredOnly && !IsPositionExploredByCharacter(client, sp.px1, sp.pz1)) continue;
-        if (RegionHidesAt(x, z)) continue;
+        // Its icon's rules: Region > Hide, and the Hollow Halls' corner (or another hall on a dungeon map)
+        const float y = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f;
+        if (RegionHidesAt(x, z) || halls::MapHidesChest(x, y, z)) continue;
         const float cx = sx + kIconHalf - kCheck * 0.7f, cy = sy + kIconHalf - kCheck * 0.7f;
         DrawAssetRectAbs(widgetRaw, kCirclePrimitive, cx - 1.0f, cy - 1.0f, kCheck + 2.0f, kCheck + 2.0f, 0xFF0A0E10u, 0.85f);
         DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, cx, cy, kCheck, kCheck, 0xFFFFFFFFu, 0.98f, 1.12f);
@@ -5347,6 +5474,43 @@ void DrawMapHoverTitle(float x, float y, const char* name) {
     DrawLabelAbs(x + 1.0f, by + 1.0f, w, h, name, 0xff000000u, 0.5f, TextAlignH::Left, TextAlignV::Center, titleStyle,
                  kTitleScale);
     DrawLabelAbs(x, by, w, h, name, 0xffffffffu, 1.0f, TextAlignH::Left, TextAlignV::Center, titleStyle, kTitleScale);
+}
+
+namespace halls {
+bool NearDungeon(float x, float z, int d); // halls.inl
+}
+// A Dungeon Spoils chest under the cursor: its sarcophagus' name (Ranger / Mage / Warrior Chest, or the plain one) and,
+// under it, the ectoplasm it takes to open: the hall's grade (the game's item name), 7 for a plain one, 45 or 60 for a
+// class one (silver or gold, which the hall rolls). Halls in kHalls order: Springlands and Revelwood fragments, Nomad
+// Highlands shards, Veilwater Basin aggregate, Albaneve Summits clusters, Kindlewastes crystals.
+void DrawSpoilsHover(size_t c, float x, float y) {
+    using umm_lang::Str;
+    const size_t e = c - kEndChestFirst;
+    if (e >= sizeof(kEndChestKind)) return;
+    static const Str kName[4] = {Str::WoodSarcophagus, Str::RangerChest, Str::MageChest, Str::WarriorChest};
+    DrawMapHoverTitle(x, y, umm_lang::T(kName[kEndChestKind[e]]));
+    const ChestSpawn& sp = kChestSpawns[c];
+    const float wx = sp.px1 + sp.px0 / 65536.0f, wz = sp.pz1 + sp.pz0 / 65536.0f;
+    static const uint32_t kEctoplasmName[6] = {2943239867u, 2943239867u, 1035568991u, 583593149u, 1647084269u, 2309456180u};
+    int hall = -1;
+    for (int d = 0; d < 6 && hall < 0; ++d)
+        if (halls::NearDungeon(wx, wz, d)) hall = d;
+    if (hall < 0) return;
+    static char names[6][96]{};
+    static int namesLang = -1;
+    if (namesLang != static_cast<int>(umm_lang::Current())) {
+        for (auto& n : names) n[0] = 0;
+        namesLang = static_cast<int>(umm_lang::Current());
+    }
+    if (!names[hall][0] && !ReadLocaText(kEctoplasmName[hall], names[hall], sizeof(names[hall])))
+        std::snprintf(names[hall], sizeof(names[hall]), "Ectoplasm");
+    char line[160];
+    if (kEndChestKind[e] == 0) std::snprintf(line, sizeof(line), "7 \xc3\x97 %s", names[hall]);
+    else std::snprintf(line, sizeof(line), "45 / 60 \xc3\x97 %s", names[hall]);
+    DrawLabelAbs(x + 1.0f, y + 23.0f, umm_lang::TextWidth(line) * 1.6f + 20.0f, 26.0f, line, 0xff000000u, 0.5f,
+                 TextAlignH::Left, TextAlignV::Center, nullptr, 1.25f);
+    DrawLabelAbs(x, y + 22.0f, umm_lang::TextWidth(line) * 1.6f + 20.0f, 26.0f, line, 0xffd6e6eeu, 1.0f, TextAlignH::Left,
+                 TextAlignV::Center, nullptr, 1.25f);
 }
 
 uint32_t g_hoveredDepositRow = 0u; // the row of the mod's icon under the cursor (a lore note, an ore, ...), or 0
@@ -5563,8 +5727,12 @@ void DrawWoodChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client
     }
     if (hovered < kTotalChestCount) {
         if (!g_hoveredDepositRow) g_hoveredDepositRow = ChestTypeHash(hovered); // Alt + click hides the row
-        const UiText& title = GetChestSubtypeTitle(kChestSpawns[hovered].subtype);
-        DrawMapHoverTitle(hoveredSx + half + 10.0f, hoveredSy, title.utf8);
+        if (hovered >= kEndChestFirst) {
+            DrawSpoilsHover(hovered, hoveredSx + half + 10.0f, hoveredSy);
+        } else {
+            const UiText& title = GetChestSubtypeTitle(kChestSpawns[hovered].subtype);
+            DrawMapHoverTitle(hoveredSx + half + 10.0f, hoveredSy, title.utf8);
+        }
     }
 }
 
@@ -5650,7 +5818,7 @@ void DrawGearIconAbs(void* widgetRaw, float cx, float cy, float r, uint32_t col,
 
 const PanelLayout& CurrentPanelLayout();
 
-constexpr float kSettingsCardH = 604.0f;
+constexpr float kSettingsCardH = 634.0f;
 
 float SettingsSegWidth() {
     using umm_lang::Str;
@@ -5682,6 +5850,7 @@ float SettingsCardWidth() {
         TextWidth(T(Str::ShowPosition)),
         TextWidth(T(Str::RegionFilter)),
         TextWidth(T(Str::LevelAreas)),
+        TextWidth(T(Str::RegionNames)),
         TextWidth(T(Str::VanillaWorldMap)),
         TextWidth(T(Str::VanillaMinimap)) + 14.0f, // indented under Vanilla World Map
         TextWidth(T(Str::FilterLocks)) + 40.0f // " (12)"
@@ -6114,7 +6283,24 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         }
     }
 
-    // Row A3: Level Areas (the World Map in the areas of the enemies' levels) [ON / OFF]
+    // Row A3: Region Names (the regions' names on the World Map) [ON / OFF]
+    {
+        ry += kRowH;
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::RegionNames), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_regionNames);
+        if (clicked && hovRow) {
+            g_regionNames = !g_regionNames;
+            SaveMinimapConfig();
+            changed = true;
+        }
+    }
+
+    // Row A3b: Level Areas (the World Map in the areas of the enemies' levels) [ON / OFF]
     {
         ry += kRowH;
         bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
@@ -6325,8 +6511,93 @@ void ApplyMapZoomSteps(uint8_t* mapState) {
 
 void DrawDungeonMapPlayers(void* widget, const float* rootRect, uint8_t* client, uint8_t* mapState); // below
 
+// The dungeon map is put on its hall's box when it opens, at each zoom step and once when a drag ends (never during a
+// drag or the zoom's animation: holding the view fought them): when the whole box fits on the screen, in the middle;
+// zoomed in closer, within the box's edges. The map area is the screen between the menu banner and the key hints.
+// Moved through the same re-centring as the zoom steps above.
+void KeepDungeonInView(uint8_t* mapState, const float* rootRect) {
+    float minX, minZ, maxX, maxZ;
+    uint8_t* mapView = mapState ? *reinterpret_cast<uint8_t**>(mapState + 8) : nullptr;
+    if (!mapView || !rootRect || !g_centerMapOnPos || !halls::MapBounds(minX, minZ, maxX, maxZ)) return;
+    const float dragX = *reinterpret_cast<float*>(mapView + 0x17c), dragY = *reinterpret_cast<float*>(mapView + 0x180);
+    const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
+    // Only when the map has just opened on this hall, the zoom step has changed or the map was moved and has come to
+    // rest with the mouse button up (the game moves the view itself while you drag; +0x17c keeps an offset a zoom left)
+    uint64_t* stepIdx = *reinterpret_cast<uint64_t**>(mapView + 0x248);
+    const int step = g_mapZoomWindowStart + (stepIdx ? static_cast<int>(*stepIdx) : 0);
+    static int s_dungeon = -1, s_step = -1;
+    static bool s_dragging = false, s_pending = false, s_moved = false;
+    static uint64_t s_lastFrame = 0, s_movedTick = 0;
+    static float s_cx = 0.0f, s_cy = 0.0f;
+    const uint64_t now = GetTickCount64();
+    const float cx = *reinterpret_cast<float*>(mapView + 0x1e8), cy = *reinterpret_cast<float*>(mapView + 0x1ec);
+    if (std::fabs(cx - s_cx) > 0.5f || std::fabs(cy - s_cy) > 0.5f) {
+        s_moved = true;
+        s_movedTick = now;
+    }
+    s_cx = cx, s_cy = cy;
+    const bool buttonDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0, dragging = buttonDown;
+    if (s_dungeon != halls::g_mapDungeon || now - s_lastFrame > 500 || step != s_step || (s_dragging && !dragging))
+        s_pending = true;
+    if (s_moved && !buttonDown && now - s_movedTick > 150) {
+        s_moved = false;
+        s_pending = true;
+    }
+    s_lastFrame = now;
+    s_dungeon = halls::g_mapDungeon;
+    s_step = step;
+    s_dragging = dragging;
+    // ... and the view has settled: no drag, the zoom at its step (the game animates it there over some frames)
+    const float base = *reinterpret_cast<float*>(mapView + 0x58);
+    const float stepZoom = stepIdx && *stepIdx < 5 ? *reinterpret_cast<float*>(mapView + 0x40 + *stepIdx * 4) * base : zoom;
+    if (!s_pending || dragging || std::fabs(zoom - stepZoom) > stepZoom * 0.01f) return;
+    s_pending = false;
+    float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
+    if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
+    if (!(zoom > 0.0001f)) return;
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + dragX - *reinterpret_cast<float*>(mapView + 0x1e8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + dragY - *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float left = rootRect[0], right = rootRect[0] + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
+    const float top = rootRect[1] + 88.0f, bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f) - 64.0f;
+    // What the screen shows, on the map's canvas (x east, y south from the world's north edge), and the hall there
+    const float v0x = (left - originX) / zoom, v1x = (right - originX) / zoom;
+    const float v0y = (top - originY) / zoom, v1y = (bottom - originY) / zoom;
+    const float h0y = mapWorldH - maxZ, h1y = mapWorldH - minZ;
+    auto shift = [](float v0, float v1, float h0, float h1) {
+        if (h1 - h0 <= v1 - v0) return (h0 + h1) * 0.5f - (v0 + v1) * 0.5f; // fits: in the middle
+        if (v0 < h0) return h0 - v0;                                       // past the hall's start
+        if (v1 > h1) return h1 - v1;                                       // past its end
+        return 0.0f;
+    };
+    const float dx = shift(v0x, v1x, minX, maxX), dy = shift(v0y, v1y, h0y, h1y);
+    if (std::fabs(dx) < 0.5f && std::fabs(dy) < 0.5f) return;
+    // What is in the middle now (as the zoom steps work it out), moved by the difference; the offset cleared first
+    float center[2] = {(*reinterpret_cast<float*>(mapView + 0x1e8) - dragX) / zoom + dx,
+                       (*reinterpret_cast<float*>(mapView + 0x1ec) - dragY) / zoom + dy};
+    *reinterpret_cast<uint64_t*>(mapView + 0x17c) = 0;
+    // The game's re-centring also sets the zoom: kept as it is (+0x10 now, +0x228 the target), as the zoom steps do
+    const float zoomTarget = *reinterpret_cast<float*>(mapView + 0x228);
+    g_centerMapOnPos(mapView, center, 1);
+    *reinterpret_cast<float*>(mapView + 0x10) = zoom;
+    *reinterpret_cast<float*>(mapView + 0x228) = zoomTarget;
+    *reinterpret_cast<float*>(mapView + 0x20) = center[0];
+    *reinterpret_cast<float*>(mapView + 0x24) = center[1];
+    *reinterpret_cast<float*>(mapView + 0x30) = center[0];
+    *reinterpret_cast<float*>(mapView + 0x34) = center[1];
+    *reinterpret_cast<float*>(mapView + 0x198) = center[0];
+    *reinterpret_cast<float*>(mapView + 0x19c) = center[1];
+}
+
 void DrawMapKeyOverlay(void* mapStateVoid) {
     g_lastMapState = static_cast<uint8_t*>(mapStateVoid);
+    // A generation's first map frame: the game's text input flag an earlier generation left on (its search box typed
+    // in at the reload) goes off, or Escape stays dead everywhere
+    static bool s_inputChecked = false;
+    if (!s_inputChecked) {
+        s_inputChecked = true;
+        if (!g_keySearchFocused && ClearTextInputFlag() && g_log)
+            g_log("Map Key: the game's text input was left on by the previous load; turned it off (Escape works again)");
+    }
     auto* client = GetUiClient();
     auto* mapState = static_cast<uint8_t*>(mapStateVoid);
     if (!client || !mapState) return;
@@ -6352,8 +6623,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         halls::OnMapOpen(client); // in a Hollow Hall: the map shows the dungeon
         // Center on the player only when opened from play (screen 1, the M key). From any menu (the backpack
         // or journal 9, Show on Map for a quest 7, ...) the game has already centered the map on what was asked
-        // for, so leave it there.
-        g_worldMapOpenCenterFrames = (g_screenBeforeMap == 1) ? 2 : 0;
+        // for, so leave it there. A dungeon map always shows its whole hall (back from another tab with Q / E it was
+        // left wherever the game had it)
+        g_worldMapOpenCenterFrames = (g_screenBeforeMap == 1 || halls::MapActive()) ? 2 : 0;
         // At most once a second: a screen flipping with the map every frame wrote ~11000 lines a minute
         static uint64_t s_lastOpenLog = 0;
         const bool logOpen = nowMapTick - s_lastOpenLog >= 1000ULL;
@@ -6364,7 +6636,13 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         if (g_log && logOpen) g_log("World Map state at %p (dev)", mapState);
 #endif
     }
+    // Back on the World tab after another one (Q / E: the screen stays the map's, but the map isn't drawn there): a
+    // dungeon map shows its whole hall again
+    if (halls::MapActive() && g_lastWorldMapFrameTick && nowMapTick - g_lastWorldMapFrameTick > 300 &&
+        g_worldMapOpenCenterFrames == 0)
+        g_worldMapOpenCenterFrames = 2;
     g_lastWorldMapFrameTick = nowMapTick;
+    g_dungeonMapUp = halls::MapActive();
     if (g_worldMapOpenCenterFrames > 0) {
         --g_worldMapOpenCenterFrames;
         float focusX = 0.0f, focusZ = 0.0f, extentW = 0.0f, extentH = 0.0f;
@@ -6538,6 +6816,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         if (root.Handle()) {
             std::memcpy(rootRect, root.Handle() + 0x114, sizeof(rootRect));
         }
+        std::memcpy(g_overlayRootRect, rootRect, sizeof(rootRect));
 
         const float rootW = (rootRect[2] > 100.0f) ? rootRect[2] : 1920.0f;
         const float rootH = (rootRect[3] > 100.0f) ? rootRect[3] : 1080.0f;
@@ -6559,6 +6838,12 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
         // Forests and deposits share one budget of extra draws a frame (see DrawTreeAreasOnMap)
         UpdateFocusedRegion(client);
+#ifdef UMM_DEV_BRIDGE
+        hdpool::DrawTest(root.raw, rootRect);
+        halls::DrawPoolTest(root.raw, rootRect);
+#endif
+        // (KeepDungeonInView: moving the view from here fought the game's own drag and zoom; not used)
+        hall_pan::Update(mapState, rootRect); // the game's pan clamp: the hall's box on a dungeon map
         halls::DrawMapPlan(root.raw, rootRect, mapState); // in a Hollow Hall: its floor plan over the empty corner
         if (!halls::MapActive()) DrawLevelAreasOnMap(root.raw, rootRect, mapState);
         // A marker's menu (Fast Travel / Send Ping / Set as Waypoint) is open: the mod's icons are drawn after the
@@ -6588,7 +6873,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         const bool overworldLayers = !halls::MapActive();
         if (overworldLayers) DrawRegionBorderOnMap(root.raw, rootRect, mapState);
         if (overworldLayers) DrawLevelBordersOnMap(root.raw, rootRect, mapState);
+        if (overworldLayers) ground::DrawOnMap(root.raw, rootRect, mapState); // under the forests
         const int treeDraws = overworldLayers ? DrawTreeAreasOnMap(root.raw, rootRect, mapState) : 0;
+        if (overworldLayers && g_regionNames) DrawRegionNamesOnMap(root.raw, rootRect, mapState);
         DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my,
                              std::max(500, std::min(1500, 2000 - treeDraws)));
         DrawVisitedSanctumsOnMap(root.raw, rootRect, client, mapState);
@@ -7327,7 +7614,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                                     kOreAreaColors[OreIndexOf(rowSpec.typeHash)], rowOn ? 0.95f : 0.35f);
                             } else if (const void* iconRef = GetIconRefForType(client, rowSpec.typeHash)) {
                                 uint32_t iconTint = rowOn ? 0xffffffffu : 0xff707070u;
-                                if (rowSpec.typeHash == kGoldChestTypeHash) {
+                                if (rowSpec.typeHash == kGoldChestTypeHash || rowSpec.typeHash == kSpoilsTypeHash) {
                                     iconTint = rowOn ? 0xff38c8ffu : 0xff406880u;
                                 } else if (rowSpec.typeHash == kSilverChestTypeHash) {
                                     iconTint = rowOn ? 0xffe8e4dcu : 0xff707070u;
@@ -7818,6 +8105,17 @@ bool BlockWorldMapInput(uint8_t* mapState) {
     return blockMapInput && mapState;
 }
 
+
+// A dungeon map: the menu's grey over the whole screen in the map's own root widget, under the menu bars (the game's
+// overworld terrain is off there, see hall_pan::InstallTerrainSkip, so the bars show grey through)
+void DrawUnderBars(void* mapRootWidget) {
+    __try {
+        if (g_overlayRootRect[2] > 100.0f)
+            DrawSolidRectAbs(mapRootWidget, g_overlayRootRect[0], g_overlayRootRect[1], g_overlayRootRect[2],
+                             g_overlayRootRect[3], 0xff2b2b2bu, 1.0f);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
 void WorldMapInputHook(void* mapRootWidget, uint8_t* mapState) {
     {
         greeneye::Lease lease; // released before the game's code runs on
@@ -7826,12 +8124,30 @@ void WorldMapInputHook(void* mapRootWidget, uint8_t* mapState) {
     if (g_origWorldMapInput) {
         g_origWorldMapInput(mapRootWidget, mapState);
     }
+    greeneye::Lease lease;
+    if (lease && halls::MapActive()) DrawUnderBars(mapRootWidget);
 }
 
+// A fault skips the rest of the overlay that frame: logged once with its address, so the cause can be found
+void LogOverlayFault(unsigned code, const void* at) {
+    static bool logged = false;
+    if (logged || !g_log) return;
+    logged = true;
+    const auto base = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    HMODULE mod = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       static_cast<LPCWSTR>(at), &mod);
+    g_log("Map Key: the overlay faulted (%08x at %p, %s+0x%llx); the rest of it skipped", code, at,
+          mod == reinterpret_cast<HMODULE>(base) ? "enshrouded.exe" : "a module",
+          static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(at) - reinterpret_cast<uintptr_t>(mod)));
+}
 void SafeDrawMapKeyOverlayInner(void* mapState) {
+    EXCEPTION_POINTERS* info = nullptr;
     __try {
         DrawMapKeyOverlay(mapState);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    } __except (info = GetExceptionInformation(), EXCEPTION_EXECUTE_HANDLER) {
+        if (info && info->ExceptionRecord)
+            LogOverlayFault(info->ExceptionRecord->ExceptionCode, info->ExceptionRecord->ExceptionAddress);
     }
 }
 void SafeDrawMapKeyOverlay(void* mapState) {
@@ -7846,6 +8162,7 @@ void DrawMapFilterMenuHook(void* mapState) {
     // calls on instead.
     {
         greeneye::Lease lease;
+        if (lease) g_mapMenuDrawnTick = GetTickCount64();
         if (lease && g_worldMapModded) {
             SafeDrawMapKeyOverlay(mapState);
             return;
@@ -8036,6 +8353,7 @@ void LoadMinimapConfig() {
     // Level Areas took the place of Region Colors (1.3.26): whoever had the regions tinted gets the level areas
     g_levelAreas = GetPrivateProfileIntA("MinimapV2", "LevelAreas",
                                          GetPrivateProfileIntA("MinimapV2", "RegionColors", 0, cfg.c_str()), cfg.c_str()) != 0;
+    g_regionNames = GetPrivateProfileIntA("MinimapV2", "RegionNames", 1, cfg.c_str()) != 0;
     g_vanillaWorldMap = GetPrivateProfileIntA("MinimapV2", "VanillaWorldMap", 0, cfg.c_str()) != 0;
     g_vanillaMinimap = GetPrivateProfileIntA("MinimapV2", "VanillaMinimap", 0, cfg.c_str()) != 0;
     // The regions shown, a bit each; before 1.3.19 one region (RegionFocus, -1 all)
@@ -8113,6 +8431,7 @@ void LoadMinimapConfig() {
     g_goldChestEnabled = GetPrivateProfileIntA("MinimapV2", "GoldChests", 1, cfg.c_str()) != 0;
     g_silverChestEnabled = GetPrivateProfileIntA("MinimapV2", "SilverChests", 1, cfg.c_str()) != 0;
     g_woodChestEnabled = GetPrivateProfileIntA("MinimapV2", "WoodChests", 0, cfg.c_str()) != 0;
+    g_spoilsEnabled = GetPrivateProfileIntA("MinimapV2", "DungeonSpoils", 1, cfg.c_str()) != 0;
     g_minimapShowTerrain = (showTerrain != 0);
     g_minimapThinBorder = (thinBorder != 0);
     g_minimapInfoBar = (infoBar != 0);
@@ -8289,6 +8608,7 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "ShowPosition", g_minimapShowPosition ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "RegionFilter", g_regionFilterEnabled ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "LevelAreas", g_levelAreas ? "1" : "0", cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "RegionNames", g_regionNames ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "VanillaWorldMap", g_vanillaWorldMap ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "VanillaMinimap", g_vanillaMinimap ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%u", g_regionMask & kAllRegionsMask);
@@ -8318,11 +8638,13 @@ void SaveMinimapConfig() {
     WritePrivateProfileStringA("MinimapV2", "GoldChests", g_goldChestEnabled ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "SilverChests", g_silverChestEnabled ? "1" : "0", cfg.c_str());
     WritePrivateProfileStringA("MinimapV2", "WoodChests", g_woodChestEnabled ? "1" : "0", cfg.c_str());
+    WritePrivateProfileStringA("MinimapV2", "DungeonSpoils", g_spoilsEnabled ? "1" : "0", cfg.c_str());
     char ores[kOreCount + 1]{};
     for (size_t o = 0; o < kOreCount; ++o) ores[o] = g_oreEnabled[o] ? '1' : '0';
     WritePrivateProfileStringA("Mining", "Ores", ores, cfg.c_str());
 }
 
+// A position anywhere on the world (a Hollow Hall reaches the west edge, x under 100 m: no minimap there before)
 bool GetHudPlayerWorldPos(uint8_t* client, float& outX, float& outZ) {
     if (!client) return false;
     // 1. Primary live player world position from clientWorld (GetUiG() + 0x47d4e0)
@@ -8332,7 +8654,7 @@ bool GetHudPlayerWorldPos(uint8_t* client, float& outX, float& outZ) {
         if (rawX != 0 || rawZ != 0) {
             float wx = static_cast<float>(static_cast<double>(rawX) * 2.3283064365386963e-10);
             float wz = static_cast<float>(static_cast<double>(rawZ) * 2.3283064365386963e-10);
-            if (wx > 100.0f && wx < 12000.0f && wz > 100.0f && wz < 12000.0f) {
+            if (wx > 0.0f && wx < 12000.0f && wz > 0.0f && wz < 12000.0f) {
                 outX = wx;
                 outZ = wz;
                 return true;
@@ -8348,7 +8670,7 @@ bool GetHudPlayerWorldPos(uint8_t* client, float& outX, float& outZ) {
                 if (rawPx != 0 || rawPz != 0) {
                     float px = static_cast<float>(rawPx) / 65536.0f;
                     float pz = static_cast<float>(rawPz) / 65536.0f;
-                    if (px > 100.0f && px < 12000.0f && pz > 100.0f && pz < 12000.0f) {
+                    if (px > 0.0f && px < 12000.0f && pz > 0.0f && pz < 12000.0f) {
                         outX = px;
                         outZ = pz;
                         return true;
@@ -8361,7 +8683,7 @@ bool GetHudPlayerWorldPos(uint8_t* client, float& outX, float& outZ) {
     float cpx = *reinterpret_cast<float*>(client + 0x38);
     float cpz = *reinterpret_cast<float*>(client + 0x40);
     if (std::isfinite(cpx) && std::isfinite(cpz) &&
-        cpx > 100.0f && cpx < 12000.0f && cpz > 100.0f && cpz < 12000.0f) {
+        cpx > 0.0f && cpx < 12000.0f && cpz > 0.0f && cpz < 12000.0f) {
         outX = cpx;
         outZ = cpz;
         return true;
@@ -10683,6 +11005,7 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
 bool InstallMapKeyPanelHook(LogFn logger) {
     g_log = logger;
     if (g_hookInstalled) return true;
+    if (!hdpool::Init() && g_log) g_log("Hollow Halls: reusable GPU images unavailable; plain maps");
 
     uint8_t* fnBeginWidget = FindUnique("40 53 48 83 EC 20 48 8B 05 ?? ?? ?? ?? 48 8B D9 45 33 C0");
     uint8_t* fnEndWidgetTail = FindUnique("80 79 20 00 48 8B D9 74 6A 48");
@@ -10888,6 +11211,7 @@ bool InstallMapKeyPanelHook(LogFn logger) {
     }
 
     InstallNativeMapHints();
+    hall_pan::Install();
     vein_sight::InstallZoneHook();
     // The hovered marker's name (Map Key > Region > Hide drops it for hidden markers); 14 bytes: mov [rsp+10h], rbx;
     // mov [rsp+18h], rdi; push rbp; mov rbp, rsp
@@ -10910,6 +11234,19 @@ bool InstallMapKeyPanelHook(LogFn logger) {
 bool VanillaWorldMapInConfig() {
     return GetPrivateProfileIntA("MinimapV2", "VanillaWorldMap", 0, GetMinimapConfigPath().c_str()) != 0;
 }
+
+// [General] PotatoPC=true: the game's texture memory stays as the game sets it (main.cpp RaiseMapTextureBudget), for
+// graphics cards short of memory. Written as false the first time, so it can be found in the file.
+bool PotatoPcInConfig() {
+    const std::string cfg = GetMinimapConfigPath();
+    char value[16]{};
+    GetPrivateProfileStringA("General", "PotatoPC", "", value, sizeof(value), cfg.c_str());
+    if (!value[0]) {
+        WritePrivateProfileStringA("General", "PotatoPC", "false", cfg.c_str());
+        return false;
+    }
+    return _stricmp(value, "true") == 0 || std::strcmp(value, "1") == 0 || _stricmp(value, "yes") == 0;
+}
 void SetWorldMapPatchedAtLoad(bool patched) {
     g_worldMapModded = patched;
 }
@@ -10920,6 +11257,13 @@ void UseKeptState(KeptState* kept) {
 
 void PrepareMapKeyPanelForReload() {
     RemoveMapKeyWheelHook();
+    hall_pan::Off(); // the stubs stay in the game; the next generation turns them on again
+    // The search box typed in when the reload comes: the game's text input flag goes off with it (left on, the game
+    // ignored Escape everywhere until a restart)
+    if (g_keySearchFocused) {
+        g_keySearchFocused = false;
+        ClearTextInputFlag();
+    }
     SetMinimapMouseControl(false, nullptr);
     ReleaseTownPortalSource();
     if (g_findDialogOpen) {

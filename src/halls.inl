@@ -540,6 +540,16 @@ bool MapFocus(float& x, float& z) {
 bool MapActive() { return g_mapDungeon >= 0 && !g_mapOverworld; }
 int g_mapFitStep = -1; // the zoom step (kMapZoomSteps index) that shows the whole dungeon: the map zooms out no further
 
+// The dungeon map's box (world m) while it shows: the dungeon's floors and a margin round them, framed like the
+// overworld map's edge
+bool MapBounds(float& minX, float& minZ, float& maxX, float& maxZ) {
+    if (!MapActive()) return false;
+    const Dungeon& d = g_dungeons[g_mapDungeon];
+    const float pad = std::max(24.0f, 0.06f * std::max(d.maxX - d.minX, d.maxZ - d.minZ));
+    minX = d.minX - pad, minZ = d.minZ - pad, maxX = d.maxX + pad, maxZ = d.maxZ + pad;
+    return true;
+}
+
 // The dungeon's size (m) while its map shows
 bool MapExtent(float& w, float& h) {
     if (!MapActive()) return false;
@@ -551,16 +561,13 @@ bool MapExtent(float& w, float& h) {
 
 // While the dungeon map shows it is that dungeon's own map: anything elsewhere (another dungeon, the corner's empty
 // rock, the overworld) is hidden
-// On the overworld map (and its view from inside a hall) the Hollow Halls' own places are hidden: they lie in the
-// world's empty north-west corner, where they'd only clutter the map; the dungeon map shows them
+// On the overworld map (and its view from inside a hall) the world's north-west corner shows nothing: the Hollow
+// Halls are carved in its rock and there is no island there (no level area), so all it holds is the halls' places
+// and the rock around them; the dungeon map shows them
+bool InCorner(float x, float z) { return x < kCornerMaxX && z > kCornerMinZ; }
 bool MapHides(float x, float z) {
-    const bool corner = x < kCornerMaxX && z > kCornerMinZ;
-    if (!MapActive()) {
-        if (!corner || !Load()) return false;
-        for (int d = 0; d < static_cast<int>(g_dungeonCount); ++d)
-            if (NearDungeon(x, z, d)) return true;
-        return false;
-    }
+    const bool corner = InCorner(x, z);
+    if (!MapActive()) return corner;
     return !corner || !NearDungeon(x, z, g_mapDungeon);
 }
 
@@ -579,94 +586,8 @@ bool MapHidesAt(float x, float y, float z) {
     return run >= 0 && g_runDungeon[run] != g_mapDungeon;
 }
 
-// ---- images of our own on the UI: the game's game-UI texture loader makes a UI image from raw pixels at runtime (its
-// screenshot picker does, 0x140a41b30): desc {flag, pixels, byte size, a 24-byte key, width, height, format 0x25 =
-// RGBA8}. The image lives in the loader's texture heap under the key; asking again with the same key returns it (or
-// makes it again after the loader evicted it), so it's asked for every frame it's drawn. 0: not made (no room, a wrong
-// size, the function not found).
-struct UiImageDesc {
-    uint8_t flag, pad0[7];
-    const void* pixels;
-    uint64_t bytes;
-    uint64_t key[3];
-    uint32_t width, height;
-    uint8_t format, pad1[7];
-};
-static_assert(sizeof(UiImageDesc) == 0x40, "game UI image desc");
-using MakeUiImageFn = uint32_t (*)(void* loader, UiImageDesc* desc);
-
-void* UiTextureLoader() {
-    if (!g_uiCtx) return nullptr;
-    auto* ctx = static_cast<uint8_t*>(g_uiCtx());
-    uint8_t* a = ctx ? *reinterpret_cast<uint8_t**>(ctx + 0x10) : nullptr;
-    uint8_t* b = a ? *reinterpret_cast<uint8_t**>(a + 0x58) : nullptr;
-    return b ? *reinterpret_cast<void**>(b + 0xe98) : nullptr;
-}
-
-uint32_t MakeUiImageGuarded(MakeUiImageFn fn, void* loader, UiImageDesc* desc) {
-    __try {
-        return fn(loader, desc);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return 0;
-    }
-}
-
-// The loader charges each new image against a fixed budget (32 MiB, set once) and never gives it back, even when its
-// own least-recently-used eviction frees the image: 128 of our tiles and every later image fails, the game's own
-// screenshots too. So the bytes an upload of ours took are given back at once; the GPU memory the loader manages
-// itself. The budget's offset comes from the function's own "cmp rax, [rdi+X]" (+0x65) and "sub [rdi+X], rcx" (+0x25b).
-uint32_t g_imageBudgetOffset = 0;
-
-uint32_t ImageBudgetOffset(const uint8_t* fn) {
-    __try {
-        const uint8_t* cmp = fn + 0x65;
-        const uint8_t* sub = fn + 0x25b;
-        if (cmp[0] != 0x48 || cmp[1] != 0x3B || cmp[2] != 0x87 || sub[0] != 0x48 || sub[1] != 0x29 || sub[2] != 0x8F)
-            return 0;
-        const uint32_t a = *reinterpret_cast<const uint32_t*>(cmp + 3), b = *reinterpret_cast<const uint32_t*>(sub + 3);
-        return a == b && a < 0x10000 ? a : 0;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return 0;
-    }
-}
-
-uint32_t UiImage(const uint32_t* rgba, uint32_t w, uint32_t h, uint64_t key) {
-    static MakeUiImageFn fn = nullptr;
-    static bool tried = false;
-    if (!tried) {
-        tried = true;
-        if (uint8_t* hit = FindUnique("48 83 7A 18 00 48 8B F2 48 8B F9 75 12 48 83 7A 20 00 75 0B 48 83 7A 28 00 0F 84"))
-            fn = reinterpret_cast<MakeUiImageFn>(hit - 15);
-        if (fn) g_imageBudgetOffset = ImageBudgetOffset(reinterpret_cast<const uint8_t*>(fn));
-        // Without the budget fix the HD maps would use up the game's image budget: plain maps then
-        if (fn && !g_imageBudgetOffset) fn = nullptr;
-        if (g_log)
-            g_log("Hollow Halls: runtime UI images %s", fn ? "available" : "not found or changed (no HD maps)");
-    }
-    void* loader = UiTextureLoader();
-    if (!fn || !loader || !rgba) return 0;
-    UiImageDesc desc{};
-    desc.pixels = rgba;
-    desc.bytes = static_cast<uint64_t>(w) * h * 4;
-    desc.key[0] = 0x4d48444c4c4148ull; // "HALLHDM"
-    // A cached image keeps its pixels: the key stands for them (a tile's spot and content), never a counter a hot
-    // reload restarts. key[2]: a version, past keys an earlier build may have left failed for the session
-    desc.key[1] = key;
-    desc.key[2] = 2;
-    desc.width = w;
-    desc.height = h;
-    desc.format = 0x25;
-    auto* budget = reinterpret_cast<volatile uint64_t*>(static_cast<uint8_t*>(loader) + g_imageBudgetOffset);
-    const uint64_t before = *budget;
-    const uint32_t id = MakeUiImageGuarded(fn, loader, &desc);
-    const uint64_t after = *budget;
-    if (id && after < before && before - after <= desc.bytes) *budget = after + (before - after);
-    static uint32_t s_failed = 0;
-    if (!id && s_failed++ % 200 == 0 && g_log)
-        g_log("Hollow Halls: the game made no image for a %ux%u map tile (%u so far; %llu bytes of image budget left)", w,
-              h, s_failed, static_cast<unsigned long long>(after));
-    return id;
-}
+// HD images use hdpool: fixed native allocations, updated in place before BeginFrame.
+// No calls to the screenshot loader, no refunds, and no per-content native allocation.
 
 // ---- HD maps, rendered by the mod: each dungeon seen from above with the game's own textures, at whatever detail the
 // zoom needs. The textures ship as hd/mat_<id>.png with hd/materials.txt (tools/resources/make_halls_hd.py textures:
@@ -674,7 +595,7 @@ uint32_t UiImage(const uint32_t* rgba, uint32_t w, uint32_t h, uint64_t key) {
 // the dungeon gets the floor nearest the height you stand at (as the plan) and a light from the north-west by those
 // heights; tiles of 256 px are rendered from that on a thread of their own, only the ones on screen, at 1 to 16 px a
 // metre (the zoom's power of two at or below it), floors not on your level dimmed. Coarser tiles stand in while finer
-// ones render. Each tile is handed to the game's UI as an image of our own (UiImage).
+// ones render. Native GPU slots are reused as tile contents change.
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "ole32.lib")
 
@@ -918,13 +839,13 @@ struct TileJob {
     std::shared_ptr<const LevelGrid> grid;
 };
 std::mutex g_tileLock;
-std::unordered_map<uint64_t, Tile> g_tiles;
+std::unordered_map<uint64_t, std::shared_ptr<Tile>> g_tiles;
 std::unordered_map<uint64_t, uint64_t> g_latestAtSpot; // Spot() -> the newest ready tile there
 std::shared_ptr<const LevelGrid> g_liveGrid[2];        // the grids drawn now: [0] the dungeon map's, [1] the minimap's
 std::vector<TileJob> g_tileQueue;                       // newest last
 std::unordered_set<uint64_t> g_tileQueued;
 bool g_tileWorker = false;
-constexpr size_t kMaxTiles = 200; // ~50 MB
+constexpr size_t kMaxTiles = 200; // ~50 MiB CPU cache; GPU residency is bounded separately by hdpool
 
 void RenderTile(const LevelGrid& g, const TileKey& k, std::vector<uint32_t>& out) {
     const float ppm = static_cast<float>(1 << k.level), span = kTilePx / ppm;
@@ -1004,23 +925,23 @@ void TileWorker() {
         if (g_tiles.size() >= kMaxTiles) {
             auto oldest = g_tiles.begin();
             for (auto it = g_tiles.begin(); it != g_tiles.end(); ++it)
-                if (it->second.lastUse < oldest->second.lastUse) oldest = it;
-            if (g_latestAtSpot[oldest->second.key.Spot()] == oldest->first) g_latestAtSpot.erase(oldest->second.key.Spot());
+                if (it->second->lastUse < oldest->second->lastUse) oldest = it;
+            if (g_latestAtSpot[oldest->second->key.Spot()] == oldest->first) g_latestAtSpot.erase(oldest->second->key.Spot());
             g_tiles.erase(oldest);
         }
         g_latestAtSpot[job.key.Spot()] = job.packed;
-        g_tiles[job.packed] = std::move(t);
+        g_tiles[job.packed] = std::make_shared<Tile>(std::move(t));
     }
 }
 
 // The tile to draw for a spot: this grid's when ready (else asked for), or the newest one of an earlier grid there
-const Tile* TileFor(const TileKey& k, const std::shared_ptr<const LevelGrid>& grid) {
+std::shared_ptr<const Tile> TileFor(const TileKey& k, const std::shared_ptr<const LevelGrid>& grid) {
     const uint64_t key = k.Pack();
     std::lock_guard<std::mutex> lock(g_tileLock);
     auto it = g_tiles.find(key);
     if (it != g_tiles.end()) {
-        it->second.lastUse = GetTickCount64();
-        return &it->second;
+        it->second->lastUse = GetTickCount64();
+        return it->second;
     }
     if (g_tileQueued.insert(key).second) g_tileQueue.push_back({key, k, grid});
     if (!g_tileWorker) {
@@ -1030,7 +951,7 @@ const Tile* TileFor(const TileKey& k, const std::shared_ptr<const LevelGrid>& gr
     auto latest = g_latestAtSpot.find(k.Spot());
     if (latest != g_latestAtSpot.end()) {
         auto old = g_tiles.find(latest->second);
-        if (old != g_tiles.end()) return &old->second;
+        if (old != g_tiles.end()) return old->second;
     }
     return nullptr;
 }
@@ -1063,28 +984,36 @@ void DrawHdTiles(void* widgetRaw, const std::shared_ptr<const LevelGrid>& grid, 
     const float wzB = std::max(static_cast<float>(g.z1 - g.h), (ay - bottom) / kz);
     if (wxR <= wxL || wzT <= wzB) return;
     const uint64_t colour = MakePackedColor(0xffffffffu, 1.0f, 1.0f);
-    auto drawTile = [&](const Tile& t, float u0, float v0, float u1, float v1, float sx0, float sy0, float sx1, float sy1) {
-        if (t.rgba.empty()) return;
-        const uint32_t id = UiImage(t.rgba.data(), kTilePx, kTilePx, t.imageKey);
-        if (!id) return;
+    // The pool uploads a few tiles a frame: until a spot's new image is up, the one it showed last stays (it would
+    // flash to the plain plan otherwise). Per spot, the image last drawn there.
+    static std::unordered_map<uint64_t, uint64_t> s_shown;
+    if (s_shown.size() > 4096) s_shown.clear();
+    // False: nothing drawn (the image not up yet, and none before it)
+    auto drawTile = [&](const Tile& t, uint64_t spot, float u0, float v0, float u1, float v1, float sx0, float sy0,
+                        float sx1, float sy1) {
+        if (t.rgba.empty()) return false;
         const float cx0 = std::max(sx0, left), cx1 = std::min(sx1, right), cy0 = std::max(sy0, top), cy1 = std::min(sy1, bottom);
-        if (cx1 <= cx0 || cy1 <= cy0) return;
+        if (cx1 <= cx0 || cy1 <= cy0) return true;
+        uint32_t id = hdpool::Request(widgetRaw, t.rgba.data(), t.imageKey);
+        auto& shown = s_shown[spot];
+        if (id) shown = t.imageKey;
+        else if (shown && shown != t.imageKey) id = hdpool::Request(widgetRaw, nullptr, shown);
+        if (!id) return false;
         const float fu0 = u0 + (u1 - u0) * (cx0 - sx0) / (sx1 - sx0), fu1 = u0 + (u1 - u0) * (cx1 - sx0) / (sx1 - sx0);
         const float fv0 = v0 + (v1 - v0) * (cy0 - sy0) / (sy1 - sy0), fv1 = v0 + (v1 - v0) * (cy1 - sy0) / (sy1 - sy0);
         float rect[4] = {cx0, cy0, cx1 - cx0, cy1 - cy0};
         if (fu0 == 0.0f && fv0 == 0.0f && fu1 == 1.0f && fv1 == 1.0f) g_drawImage(widgetRaw, rect, &id, &colour);
         else if (g_drawImageSubUv) g_drawImageSubUv(widgetRaw, rect, id, PackXY(fu0, fv0), PackXY(fu1, fv1), colour);
+        return true;
     };
     for (int tz = static_cast<int>(std::floor(wzT / span)); tz >= static_cast<int>(std::floor(wzB / span)); --tz)
         for (int tx = static_cast<int>(std::floor(wxL / span)); tx <= static_cast<int>(std::floor(wxR / span)); ++tx) {
             const TileKey k{g.gen, g.kind, level, tx, tz};
             const float sx0 = ax + tx * span * kx, sx1 = sx0 + span * kx;
             const float sy0 = ay - (tz + 1) * span * kz, sy1 = sy0 + span * kz;
-            if (const Tile* t = TileFor(k, grid)) {
-                drawTile(*t, 0.0f, 0.0f, 1.0f, 1.0f, sx0, sy0, sx1, sy1);
-                continue;
-            }
-            // Nothing yet: the part of a coarser tile over it, if there is one
+            if (auto t = TileFor(k, grid))
+                if (drawTile(*t, k.Spot(), 0.0f, 0.0f, 1.0f, 1.0f, sx0, sy0, sx1, sy1)) continue;
+            // Nothing yet (or its image not up yet): the part of a coarser tile over it, if there is one
             for (int up = 1; up <= level; ++up) {
                 const TileKey ck{g.gen, g.kind, level - up, tx >> up, tz >> up};
                 std::lock_guard<std::mutex> lock(g_tileLock);
@@ -1095,8 +1024,7 @@ void DrawHdTiles(void* widgetRaw, const std::shared_ptr<const LevelGrid>& grid, 
                 const int mask = (1 << up) - 1;
                 const float part = 1.0f / (1 << up);
                 const float u0 = (tx & mask) * part, v0 = (mask - (tz & mask)) * part;
-                drawTile(it->second, u0, v0, u0 + part, v0 + part, sx0, sy0, sx1, sy1);
-                break;
+                if (drawTile(*it->second, ck.Spot(), u0, v0, u0 + part, v0 + part, sx0, sy0, sx1, sy1)) break;
             }
         }
 }
@@ -1104,6 +1032,7 @@ void DrawHdTiles(void* widgetRaw, const std::shared_ptr<const LevelGrid>& grid, 
 // The dungeon map's HD view. False: no textures (the plan's plain look instead).
 bool DrawHdMap(void* widgetRaw, int d, float zoom, float originX, float originY, float mapWorldH, float left, float top,
                float right, float bottom) {
+    if (!hdpool::Available()) return false;
     if (!HdTexturesReady() || d < 0) return g_texState == 1; // loading: the dark ground only
     static int s_d = -1;
     static float s_py = 0.0f, s_px = 0.0f, s_pz = 0.0f;
@@ -1124,7 +1053,7 @@ bool DrawHdMap(void* widgetRaw, int d, float zoom, float originX, float originY,
 uint32_t g_miniFloodSeen = 0;
 bool DrawHdMinimap(void* widgetRaw, float vx, float vy, float vw, float vh, float vcx, float vcy, float px, float pz,
                    float pxPerMeterX, float pxPerMeterY, float py) {
-    if (!HdTexturesReady() || g_gSize == 0) return false;
+    if (!hdpool::Available() || !HdTexturesReady() || g_gSize == 0) return false;
     if (!g_liveGrid[1] || g_miniFloodSeen != g_floodCount) {
         auto grid = BuildMiniGrid(py);
         g_miniFloodSeen = g_floodCount;
@@ -1144,7 +1073,22 @@ void DrawMapPlan(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
     const float left = rootRect[0], top = rootRect[1] + 114.0f; // below the menu banner
     const float right = rootRect[0] + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
     const float bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f) - 64.0f; // above the key hints
-    DrawSolidRectAbs(widgetRaw, left, top, right - left, bottom - top, 0xff0a0c0bu, 0.98f);
+    // Like the overworld map: the screen around it in the menu's grey (from the banner's gold line, 88 down, to the key
+    // hints), the hall's box dark, framed in the world map's edge line (126, 117, 101) with its soft shadow outside
+    const float areaTop = rootRect[1] + 88.0f;
+    DrawSolidRectAbs(widgetRaw, left, areaTop, right - left, bottom - areaTop, 0xff2b2b2bu, 1.0f);
+    float bx0, bz0, bx1, bz1;
+    if (MapBounds(bx0, bz0, bx1, bz1)) {
+        const float sx0 = originX + bx0 * zoom, sx1 = originX + bx1 * zoom;
+        const float sy0 = originY + (mapWorldH - bz1) * zoom, sy1 = originY + (mapWorldH - bz0) * zoom;
+        auto box = [&](float x0, float y0, float x1, float y1, uint32_t colour, float alpha) {
+            x0 = std::max(x0, left), x1 = std::min(x1, right), y0 = std::max(y0, areaTop), y1 = std::min(y1, bottom);
+            if (x1 > x0 && y1 > y0) DrawSolidRectAbs(widgetRaw, x0, y0, x1 - x0, y1 - y0, colour, alpha);
+        };
+        for (int i = 3; i >= 1; --i) box(sx0 - i, sy0 - i, sx1 + i, sy1 + i, 0xff393c3fu, 0.25f); // shadow
+        box(sx0 - 1.0f, sy0 - 1.0f, sx1 + 1.0f, sy1 + 1.0f, 0xff65757eu, 1.0f);                // the frame line
+        box(sx0, sy0, sx1, sy1, 0xff0a0c0bu, 1.0f);                                              // the map
+    }
     // The HD map (each column's top floor, the game's textures); over it only what differs: a floor under it you're on,
     // drawn plain, and the top floors not on your level, dimmed
     const bool hd = DrawHdMap(widgetRaw, g_mapDungeon, zoom, originX, originY, mapWorldH, left, top, right, bottom);
@@ -1261,6 +1205,30 @@ void DrawMapPlan(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
         ++shown;
     }
 }
+
+#ifdef UMM_DEV_BRIDGE
+// Real dungeon data, worker and draw path, without moving the player. The probe
+// cycles beacon floors and zoom levels and is bounded by hdpool's 60-second timer.
+void DrawPoolTest(void* widget,const float* rect) {
+    if(!hdpool::g_testHalls || GetTickCount64()>=hdpool::g_testUntil || !Load() || !HdTexturesReady() || !g_dungeonCount)return;
+    static uint64_t phaseSeen=UINT64_MAX;
+    static Beacon centre{};
+    const uint64_t phase=GetTickCount64()/5000;
+    if(phaseSeen!=phase){
+        phaseSeen=phase;
+        const unsigned d=unsigned(phase%g_dungeonCount);const auto& dungeon=g_dungeons[d];
+        if(!dungeon.beaconCount)return;
+        centre=g_beacons[dungeon.firstBeacon+(phase/g_dungeonCount)%dungeon.beaconCount];
+        const float oldX=g_mapPx,oldZ=g_mapPz;g_mapPx=centre.x;g_mapPz=centre.z;
+        auto grid=BuildMapGrid(d,centre.y);g_mapPx=oldX;g_mapPz=oldZ;
+        std::lock_guard lock(g_tileLock);g_liveGrid[0]=grid;
+    }
+    if(!g_liveGrid[0])return;
+    const float left=rect[0]+180,top=rect[1]+180,w=900,h=600,zoom=(phase%2)?4.0f:8.0f;
+    DrawSolidRectAbs(widget,left,top,w,h,0xff0a0c0bu,1.0f);
+    DrawHdTiles(widget,g_liveGrid[0],left+w/2-centre.x*zoom,zoom,top+h/2+centre.z*zoom,zoom,left,top,left+w,top+h);
+}
+#endif
 
 // Hollow Halls Progression (another mod in the same game process, optional): it publishes the beacons its host has on
 // record for you in a small shared block, Local\\HollowHallsProgression.<pid>, and takes a journey request there. Its

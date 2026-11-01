@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.27
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.28
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -106,8 +106,8 @@ shows where the ore ends); farther out (50 m) each vein is outlined on screen in
 colour, with the deposit's icon in its middle.
 
 
-MINING, MATERIALS, PLANTS, BAIT AND TREES
------------------------------------------
+MINING, MATERIALS, PLANTS, BAIT, TREES AND GROUND
+-------------------------------------------------
 Read from the game's own world files, so every spot is where the game put it.
 - MINING: every ore deposit, 21 kinds (copper, iron, silver, gold, sulfur, salt...), 7,452 in
   all.
@@ -117,8 +117,11 @@ Read from the game's own world files, so every spot is where the game put it.
   Gloomberry, Calla Luna, Shadowbloom, Glimmer Gentian, Stapelia Starflower, Passionflower,
   Gleam Root) where they grow at night.
 - BAIT: fireflies, grasshoppers, pillbugs, frogs and more.
-- TREES: each forest drawn as one shape in its tree type's colour, 18 types; the big ones
-  carry their name.
+- TREES: each forest as a heat map in its tree type's colour, as thick as its trees grow,
+  18 types; the big ones carry their name.
+- GROUND: the rock and sand recipes ask for (Granite, Basalt, Cinder Rock, Shell Limestone,
+  Sandstone, Revelwood Stone, Blackmire Stone, Fine Sand, Sand, Veilwater Basin Sand, Cinder's
+  Cradle Sand, Moss) as heat maps where they make up the ground.
 Each kind has its own row, all off at first. Hover an icon on the world map for its name.
 Deposits, materials, plants and bait also show on the minimap and in Find.
 
@@ -184,6 +187,8 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
   height) and, on the world map, the X and Z under the cursor. Click the copy button (or
   middle click the world map) to copy them, like "X 3215, Z 2051".
 - ADVANCED > Region Filter, off at first: the Map Key's REGIONS row (see above).
+- ADVANCED > Region Names, on at first: each region's name as a faint watermark on the world
+  map, in the game's language.
 - ADVANCED > Level Areas, off at first: the world map in the areas of the enemies' levels, each
   tinted from green (low) through orange and red to purple and blue (high), with the borders
   between them and each area's level in a badge. Read from the levels the game gives its
@@ -247,8 +252,9 @@ HOLLOW HALLS
 ------------
 Inside a Hollow Hall the World Map shows that hall alone, seen from above in the game's own
 textures: the floor you're on bright, the hall's other levels dimmed. It opens with the whole
-hall in view. Its Return Beacons are numbered in the order you reach them; the end room's
-sarcophagi count as gold chests. Overworld Map at the top switches to the world, centred on
+hall in view, in a frame of its own. Its Return Beacons are numbered in the order you reach
+them; the end room's chests are Dungeon Spoils (hover one for its name and the Ectoplasm it
+takes to open). Overworld Map at the top switches to the world, centred on
 the hall's entrance, and back; C centres the hall on you.
 On the minimap, footprints show where you've walked in the last 10 minutes or 100 m. Outside, the world
 map shows nothing of the Hollow Halls in the corner of the world they're carved in.
@@ -265,6 +271,16 @@ To use another language, set it in greeneye\unlock-map-markers\minimap_config.in
                            spanish, brazilian, polish, russian, ukrainian, turkish, japanese,
                            koreana, schinese, tchinese, thai
 Restart the game after changing it. Translations are the author's own: corrections welcome.
+
+
+GRAPHICS MEMORY
+---------------
+The game keeps the world map's textures in 128 MB of graphics memory, too little for the
+whole map: its north was drawn dark, without sea. The mod gives them 256 MB. On a graphics
+card short of memory, keep the game's 128 MB in greeneye\unlock-map-markers\minimap_config.ini:
+    [General]
+    PotatoPC=true
+Restart the game after changing it.
 
 
 UNINSTALL
@@ -296,6 +312,38 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.28
+- GROUND (a new Map Key section): the rock and sand recipes ask for, Granite, Basalt, Cinder
+  Rock, Shell Limestone, Sandstone, Revelwood Stone, Blackmire Stone, Fine Sand, Sand, Veilwater
+  Basin Sand, Cinder's Cradle Sand and Moss, shown as heat maps where they make up the ground,
+  read from the game's own world.
+- Trees are heat maps now: each forest as thick as its trees grow, small groves too.
+- Forests and Ground are painted into a few images, so they no longer use up the map's drawing
+  budget: more room for everything else.
+- Settings > Advanced > Region Names (on at first): each region's name as a faint watermark on
+  the World Map, in the game's language.
+- The overworld map shows nothing in the Hollow Halls' corner of the world (the halls have their
+  own map).
+- Chests lit through walls show as smooth outlines.
+- Ctrl+Z / Ctrl+Y keep their history when you restart the game.
+- Fixed: the game could freeze opening a chest after using the Hollow Halls maps (they filled
+  the game's texture memory). They now use images of their own.
+- Fixed: grey patches and white flashes on the Hollow Halls minimap.
+- Fixed: the World Map's hints (Mark Chest Looted...) showed on the Skills, Backpack and other
+  tabs.
+- Dungeon Spoils (a new row under the chests): the Hollow Halls' end-room chests, Ranger, Mage
+  and Warrior, filtered together. Hover one for its name and the Ectoplasm it takes to open.
+- Hollow Halls maps sit in a frame like the overworld map, with nothing of the world around or
+  under them, and panning and zoom stay on the hall.
+- Fixed: the world map's north was drawn dark, without its sea: the game keeps the map's
+  textures in 128 MB of graphics memory, too little for the whole map. The mod gives them
+  256 MB; PotatoPC=true in minimap_config.ini keeps the game's 128 MB (see GRAPHICS MEMORY).
+- Fixed: pressing 1 inside a Hollow Hall changed the overworld map's filters.
+- Fixed: back on the World tab with Q / E, a Hollow Hall's map was off in empty space until you
+  pressed C.
+- Fixed: the minimap went blank near the edge of the world.
+- Fixed: a refilled chest's check mark showed in the Hollow Halls' corner of the overworld map.
+
 1.3.27
 - Hollow Halls: inside a hall the World Map shows that hall alone, seen from above in the game's
   own textures, the floor you're on bright and the hall's other levels dimmed. Its Return

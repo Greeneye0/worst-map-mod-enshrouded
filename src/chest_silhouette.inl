@@ -422,9 +422,45 @@ void DrawOne(void* widget, const Snapshot& s, const Mesh& mesh, const Camera& ca
     Submit(widget, s, prepared, budget, alpha);
 }
 
+// The smooth look (common/smooth_highlight.h, as Find and Quick Deposit draw theirs): each chest a convex outline of
+// its mesh's support points, projected exactly every frame and filled with native UI triangles, with a soft edge. No
+// raster grid or rectangles. At most one new mesh is decoded a frame. False when the native mesh path isn't there
+// (the rectangles below instead).
+std::map<std::string, std::vector<smooth_highlight::Point3>> g_supports;
+bool DrawSmooth(void* widget, const Camera& camera, const Snapshot* snapshots, unsigned count, float alpha, bool* drawn) {
+    if (!ui_mesh::Ready()) return false;
+    static smooth_highlight::Batch batch;
+    batch.vertices.clear();
+    batch.indices.clear();
+    unsigned loads = 0;
+    for (unsigned i = 0; i < count; ++i) {
+        const auto& s = snapshots[i];
+        std::string key(reinterpret_cast<const char*>(s.asset + 0x110), 16);
+        key.append(reinterpret_cast<const char*>(s.mesh), 56);
+        auto found = g_supports.find(key);
+        if (found == g_supports.end()) {
+            if (g_supports.size() >= 64 || loads++) continue;
+            auto it = g_meshes.find(key);
+            if (it == g_meshes.end()) {
+                Mesh mesh;
+                std::vector<uint8_t> content;
+                const bool ok = Content(s.asset + 0x110, content) && Decode(content, s.asset, s.mesh, mesh);
+                if (g_log) g_log("Chest glow: silhouette mesh %s (%zu vertices)", ok ? "decoded" : "not decoded", mesh.vertices.size());
+                it = g_meshes.emplace(key, std::move(mesh)).first;
+            }
+            found = g_supports.emplace(key, smooth_highlight::Support(it->second.vertices)).first;
+        }
+        if (drawn) drawn[i] = !found->second.empty();
+        smooth_highlight::Project(found->second, s.transform, camera, s.colour | 0xff000000u, alpha, batch);
+    }
+    ui_mesh::Draw(widget, batch);
+    return true;
+}
+
 // Draws these chests' silhouettes; false for each that has no decodable mesh (the caller marks those another way).
 void Draw(void* widget, const Camera& camera, const Snapshot* snapshots, unsigned count, float alpha, bool* drawn) {
     count = std::min(count, kMaxShown);
+    if (DrawSmooth(widget, camera, snapshots, count, alpha, drawn)) return;
     size_t budget = kFrameRects;
     const size_t cap = count ? std::clamp(kFrameRects / count, kMinChestRects, kChestRects) : kChestRects;
     for (unsigned i = 0; i < count; ++i) {

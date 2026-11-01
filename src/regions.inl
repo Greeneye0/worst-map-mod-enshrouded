@@ -72,6 +72,107 @@ const char* RegionName(int region) {
     return state[region] == 1 ? names[region] : kRegionNameEnglish[region];
 }
 
+// The UI renderer's current opacity (the top of its opacity stack; ui_mesh.h reads it the same way): the map's
+// place-name style ignores a label's colour and alpha, so a faint one is drawn with this lowered
+float* UiOpacityTop(void* widget) {
+    auto handle = ui_mesh::Read<void*>(widget, 8);
+    auto state = handle ? ui_mesh::Read<void*>(handle, 0x50) : nullptr;
+    state = state ? ui_mesh::Read<void*>(state, 0x18) : nullptr;
+    if (!state || ui_mesh::Read<uint32_t>(state, 8) != 4) return nullptr;
+    auto renderer = ui_mesh::Read<uint8_t*>(state, 0x6ce0);
+    if (!renderer) return nullptr;
+    const auto count = ui_mesh::Read<uint64_t>(renderer, 0xc0);
+    auto stack = ui_mesh::Read<float*>(renderer, 0xb8);
+    return count && count < 64 && stack ? stack + count - 1 : nullptr;
+}
+
+// A place-name label at `faint` of the current opacity, put back even if drawing it faults (a lowered opacity left
+// behind would fade the whole UI)
+void DrawFaintPlaceName(void* widget, float x, float y, float w, float h, const char* name, float scale, float faint) {
+    float* opacity = UiOpacityTop(widget);
+    const float was = opacity ? *opacity : 1.0f;
+    if (opacity) *opacity = was * faint;
+    __try {
+        DrawLabelAbs(x, y, w, h, name, 0xffffffffu, 1.0f, TextAlignH::Center, TextAlignV::Center,
+                     GetUiAssets() ? GetUiAssets() + kMapLocationNameStyleOffset : nullptr, scale);
+    } __finally {
+        if (opacity) *opacity = was;
+    }
+}
+
+// Settings > Advanced > Region Names: each region's name on the World Map as a faint watermark (the map's own spaced,
+// outlined place-name capitals, mostly see-through, under the markers), at the middle of the region's land (its
+// grid also covers the sea around it, which would pull the Springlands' name out over the water): its cells' centre, or the region's cell nearest it when that
+// falls outside (a curved region)
+int LevelAreaAt(float x, float z); // levels.inl: -1 off the land
+void DrawRegionNamesOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
+    static float centre[kRegionCount][2]{};
+    static bool built = false;
+    if (!built) {
+        built = true;
+        double sx[kRegionCount]{}, sz[kRegionCount]{}, n[kRegionCount]{};
+        for (int cz = 0; cz < kRegionGridSize; ++cz) {
+            int at = 0;
+            for (uint32_t r = kRegionRowStart[cz]; r < kRegionRowStart[cz + 1]; ++r) {
+                const int reg = kRegionRuns[r].region, cells = kRegionRuns[r].cells;
+                if (reg >= 0 && reg < static_cast<int>(kRegionCount))
+                    for (int cx = at; cx < at + cells; ++cx) {
+                        if (LevelAreaAt((cx + 0.5f) * kRegionCellMeters, (cz + 0.5f) * kRegionCellMeters) < 0) continue;
+                        sx[reg] += cx + 0.5;
+                        sz[reg] += cz + 0.5;
+                        n[reg] += 1;
+                    }
+                at += cells;
+            }
+        }
+        for (size_t reg = 0; reg < kRegionCount; ++reg) {
+            if (!n[reg]) continue;
+            float x = static_cast<float>(sx[reg] / n[reg] * kRegionCellMeters), z = static_cast<float>(sz[reg] / n[reg] * kRegionCellMeters);
+            if (RegionAt(x, z) != static_cast<int>(reg)) {
+                float best = 1e30f;
+                for (int cz = 0; cz < kRegionGridSize; ++cz)
+                    for (int cx = 0; cx < kRegionGridSize; ++cx) {
+                        const float wx = (cx + 0.5f) * kRegionCellMeters, wz = (cz + 0.5f) * kRegionCellMeters;
+                        const float d = (wx - x) * (wx - x) + (wz - z) * (wz - z);
+                        if (d < best && RegionAt(wx, wz) == static_cast<int>(reg) && LevelAreaAt(wx, wz) >= 0)
+                            best = d, centre[reg][0] = wx, centre[reg][1] = wz;
+                    }
+            } else {
+                centre[reg][0] = x;
+                centre[reg][1] = z;
+            }
+        }
+    }
+    uint8_t* mapView = mapState ? *reinterpret_cast<uint8_t**>(mapState + 8) : nullptr;
+    if (!widgetRaw || !mapView) return;
+    const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
+    float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
+    if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
+    if (!(zoom > 0.0f)) return;
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
+                          *reinterpret_cast<float*>(mapView + 0x1e8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
+                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float left = rootRect[0], top = rootRect[1] + 114.0f;
+    const float right = rootRect[0] + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
+    const float bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
+    // Painted on the map: about 300 m of world tall, so they grow and shrink with the terrain as you zoom
+    // Zoomed in further than that (a name over 20x the text size) you are well inside one region: none, and the
+    // game's text faults on far bigger sizes (that froze the whole map's overlay)
+    const float kScale = 300.0f * zoom / 28.0f;
+    if (!(kScale > 0.2f && kScale <= 20.0f)) return;
+    for (size_t reg = 0; reg < kRegionCount; ++reg) {
+        if (centre[reg][0] == 0.0f && centre[reg][1] == 0.0f) continue;
+        const bool shown = RegionShown(static_cast<int>(reg));
+        if (!shown && g_regionOutsideHide) continue;
+        const float cx = originX + centre[reg][0] * zoom, cy = originY + (mapWorldH - centre[reg][1]) * zoom;
+        if (cx < left || cx > right || cy < top || cy > bottom) continue;
+        const char* name = RegionName(static_cast<int>(reg));
+        const float w = umm_lang::TextWidth(name) * 1.6f * kScale + 32.0f, h = 28.0f * kScale;
+        DrawFaintPlaceName(widgetRaw, cx - w * 0.5f, cy - h * 0.5f, w, h, name, kScale, shown ? 0.28f : 0.1f);
+    }
+}
+
 namespace halls {
 bool MapHides(float x, float z); // halls.inl: another dungeon's marker while the map shows a Hollow Hall
 bool MapHidesChest(float x, float y, float z);
