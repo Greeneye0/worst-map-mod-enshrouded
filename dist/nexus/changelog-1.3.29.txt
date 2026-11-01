@@ -1,0 +1,1 @@
+Lore notes: Ctrl + left click one on the World Map or the minimap to mark it read (click again for not read), saved per character, like bosses and unique items. Requested by reminder86.

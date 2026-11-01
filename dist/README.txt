@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.28
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.29
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -313,6 +313,11 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.29
+- Lore notes: Ctrl + left click one on the World Map or the minimap to mark it read (click
+  again for not read), saved per character, like bosses and unique items. Requested by
+  reminder86.
+
 1.3.28
 - GROUND (a new Map Key section): the rock and sand recipes ask for, Granite, Basalt, Cinder
   Rock, Shell Limestone, Sandstone, Revelwood Stone, Blackmire Stone, Fine Sand, Sand, Veilwater
