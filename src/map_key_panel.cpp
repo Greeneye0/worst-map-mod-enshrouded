@@ -9434,16 +9434,40 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     // Frame units (the art's 300-unit grid) to px. Up to the 370 px design size the whole frame
     // scales; past it the ornaments keep their size and only the rails get longer.
     const float artUnit = std::min(frameSize, kMinimapArtDesign) / 300.0f;
-    const float U = kMinimapArtUnit; // the tray, medallion and icons always draw at the design size
+    const float U = kMinimapArtUnit; // the medallion always draws at the design size
+    char timeBuf[96]{};
+    bool isDay = true;
+    int phase = 1;
+    int weatherType = 0;
+    FormatInGameTimeOfDay(client, playerX, playerZ, timeBuf, sizeof(timeBuf), isDay, phase, weatherType);
+    char timeText[48]{};
+    const char* statusText = "";
+    if (const char* bar = std::strstr(timeBuf, "  |  ")) {
+        std::snprintf(timeText, sizeof(timeText), "%.*s", static_cast<int>(bar - timeBuf), timeBuf);
+        statusText = bar + 5;
+    } else {
+        std::snprintf(timeText, sizeof(timeText), "%s", timeBuf);
+    }
+    // The info bar: at the design size down to the default minimap (236 px), smaller with a smaller one (requested by
+    // yassifecade): art, text, icons and buttons together, and never wider than the minimap (its own edge with the thin
+    // border, a little inside the corner rings with the ornate one)
+    const float fullTimeW = umm_lang::TextWidth(timeText) * 1.12f + 2.0f;
+    const float fullStatusW = umm_lang::TextWidth(statusText) * 1.12f + 2.0f;
+    const float fullTrayW = std::max(2.0f * std::max(28.2f * U + 6.0f + 22.0f + fullTimeW + 10.0f,
+                                                      46.2f * U + 6.0f + fullStatusW + 10.0f),
+                                     129.0f * U);
+    const float fitW = frameSize * (g_minimapThinBorder ? 1.0f : 0.84f); // the corner rings span about 85% of the frame
+    const float TS = std::max(0.35f, std::min({1.0f, frameSize / 236.0f, fitW / fullTrayW}));
+    const float UT = U * TS;
     // The tray hangs from the bottom rail: its art (31 units tall) starts just under the rail top
     // (263 units), so its top edge stays hidden behind the rail.
     const bool thinBorder = g_minimapThinBorder;
     const bool infoBar = g_minimapInfoBar;
     // With the thin border there is no rail to tuck it behind: it hangs from the map's bottom edge instead.
     constexpr float kThinTrayTuck = 2.4f; // the art units the rail would hide
-    const float trayTopRel = thinBorder ? frameSize - kThinTrayTuck * U : frameSize - 37.0f * artUnit + 0.6f * U;
+    const float trayTopRel = thinBorder ? frameSize - kThinTrayTuck * UT : frameSize - 37.0f * artUnit + 0.6f * UT;
     constexpr float kPositionLineH = 26.0f;
-    const float trayBottomRel = (infoBar ? trayTopRel + 31.0f * U : frameSize) +
+    const float trayBottomRel = (infoBar ? trayTopRel + 31.0f * UT : frameSize) +
                                 (g_minimapShowPosition ? kPositionLineH + 4.0f : 0.0f);
 
     if (!g_minimapCustomPos) {
@@ -9481,35 +9505,22 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
 
     // Control tray, centred under the frame and tucked behind its bottom rail, one size at any
     // frame size:  [gear | icon time  <frame pendant>  weather | - | +]
-    char timeBuf[96]{};
-    bool isDay = true;
-    int phase = 1;
-    int weatherType = 0;
-    FormatInGameTimeOfDay(client, playerX, playerZ, timeBuf, sizeof(timeBuf), isDay, phase, weatherType);
-    char timeText[48]{};
-    const char* statusText = "";
-    if (const char* bar = std::strstr(timeBuf, "  |  ")) {
-        std::snprintf(timeText, sizeof(timeText), "%.*s", static_cast<int>(bar - timeBuf), timeBuf);
-        statusText = bar + 5;
-    } else {
-        std::snprintf(timeText, sizeof(timeText), "%s", timeBuf);
-    }
     const float frameCx = frameX + frameSize * 0.5f;
     const float compassCy = frameY + 30.5f * artUnit;
     const float trayY = frameY + trayTopRel;
-    const float trayH = 31.0f * U;
-    const float trayContentCy = trayY + 17.5f * U;     // middle of the part below the rail
-    const float gearCapW = 28.2f * U;                   // tray point to the end of the left flourish
-    const float zoomCapW = 46.2f * U;                   // right flourish to the tray point
-    const float trayIconW = 22.0f;
-    const float trayCentreGap = 10.0f;                  // each side of the tray's centre divider
+    const float trayH = 31.0f * UT;
+    const float trayContentCy = trayY + 17.5f * UT;    // middle of the part below the rail
+    const float gearCapW = 28.2f * UT;                  // tray point to the end of the left flourish
+    const float zoomCapW = 46.2f * UT;                  // right flourish to the tray point
+    const float trayIconW = 22.0f * TS;
+    const float trayCentreGap = 10.0f * TS;             // each side of the tray's centre divider
     // TextWidth is a per-glyph estimate; the tray font runs about a tenth wider, so leave room.
-    const float timeTextW = umm_lang::TextWidth(timeText) * 1.12f + 2.0f;
-    const float statusTextW = umm_lang::TextWidth(statusText) * 1.12f + 2.0f;
-    const float trayHalfW = std::max(gearCapW + 6.0f + trayIconW + timeTextW + trayCentreGap,
-                                     zoomCapW + 6.0f + statusTextW + trayCentreGap);
-    const float trayBaseW = 219.0f * U;                 // the art's own width, point to point
-    const float trayW = std::max(trayHalfW * 2.0f, trayBaseW - 90.0f * U);
+    const float timeTextW = fullTimeW * TS;
+    const float statusTextW = fullStatusW * TS;
+    const float trayHalfW = std::max(gearCapW + 6.0f * TS + trayIconW + timeTextW + trayCentreGap,
+                                     zoomCapW + 6.0f * TS + statusTextW + trayCentreGap);
+    const float trayBaseW = 219.0f * UT;                // the art's own width, point to point
+    const float trayW = std::max(trayHalfW * 2.0f, trayBaseW - 90.0f * UT);
     const float trayX = frameCx - trayW * 0.5f;
     const float trayRight = trayX + trayW;
     const float trayButtonsY = thinBorder ? frameY + frameSize : frameY + frameSize - 34.0f * artUnit; // below the rail
@@ -9520,13 +9531,13 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     const float gearBtnW = infoBar ? gearCapW - 2.0f : kCornerGearSz;
     const float gearBtnY = infoBar ? trayButtonsY : vy + vh - 4.0f - kCornerGearSz;
     const float gearBtnH = infoBar ? trayButtonsH : kCornerGearSz;
-    const float minusBtnX = trayRight - 42.0f * U;
-    const float plusBtnX = trayRight - 23.0f * U;
-    const float zoomBtnW = 19.0f * U;
+    const float minusBtnX = trayRight - 42.0f * UT;
+    const float plusBtnX = trayRight - 23.0f * UT;
+    const float zoomBtnW = 19.0f * UT;
 
     // Settings > Advanced > Position: a plate under the tray and a little narrower, three equal cells and a copy button
     constexpr float kCopyBtnW = 26.0f;
-    const float posPlateW = trayW - 8.0f * U;
+    const float posPlateW = trayW / TS - 8.0f * U; // the bar's full size: its numbers stay readable
     const float posCellW = (posPlateW - 8.0f - kCopyBtnW) / 3.0f;
     const float posLetterW = 13.0f;
     const float posDigitsW = posCellW - 6.0f - posLetterW - 6.0f;
@@ -9766,7 +9777,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         g_namedWidget(mmCanvas.raw, &kMmCanvasName);
         g_setSize(mmCanvas.Handle(), 0);
         g_endWidget(mmCanvas.raw);
-        DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * U, trayY - 262.0f * U, 1.0f, trayW - trayBaseW);
+        DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * UT, trayY - 262.0f * UT, TS, (trayW - trayBaseW) / TS);
     } else {
         // ------------------------------------------------------------------------
         // 1. Draw Inner Map Viewport Background & Optional Terrain + Shroud + Fog
@@ -10336,7 +10347,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         if (thinBorder) {
             // Thin border: a dark outline and a fine gold line round the map, and a small N at the top. The bar
             // hangs below it, drawn first so the border's bottom line covers its top edge.
-            if (infoBar) DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * U, trayY - 262.0f * U, 1.0f, trayW - trayBaseW);
+            if (infoBar) DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * UT, trayY - 262.0f * UT, TS, (trayW - trayBaseW) / TS);
             const float x0 = frameX, y0 = frameY, sz = frameSize;
             DrawSolidRectAbs(anchor.raw, x0, y0, sz, 3.0f, 0xFF0A0E10u, 0.9f);
             DrawSolidRectAbs(anchor.raw, x0, y0 + sz - 3.0f, sz, 3.0f, 0xFF0A0E10u, 0.9f);
@@ -10356,7 +10367,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             // 3. Frame art: the tray first (it tucks behind the bottom rail), then the frame and the N
             //    medallion set into the compass rose
             // ------------------------------------------------------------------------
-            if (infoBar) DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * U, trayY - 262.0f * U, 1.0f, trayW - trayBaseW);
+            if (infoBar) DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * UT, trayY - 262.0f * UT, TS, (trayW - trayBaseW) / TS);
             if (frameSize >= kMinimapArtDesign) {
                 const float grow = (frameSize - kMinimapArtDesign) * 0.5f;
                 DrawArtSprite(anchor.raw, kArtFrame370, frameX, frameY, 1.0f, grow, grow);
@@ -10418,32 +10429,34 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         auto trayGlow = [&](float cx, float r, float alpha) {
             DrawAssetRectAbs(anchor.raw, kSoftGlowPrimitive, cx - r, trayContentCy - r, r * 2.0f, r * 2.0f, kTrayText, alpha);
         };
-        if (hoverGear || g_minimapSettingsOpen) trayGlow(trayX + 14.4f * U, 15.0f, hoverGear ? 0.45f : 0.3f);
-        if (hoverMinus && g_minimapZoomIdx > 0) trayGlow(trayRight - 31.5f * U, 13.0f, 0.4f);
-        if (hoverPlus && g_minimapZoomIdx + 1 < kMinimapZoomCount) trayGlow(trayRight - 14.5f * U, 13.0f, 0.4f);
+        if (hoverGear || g_minimapSettingsOpen) trayGlow(trayX + 14.4f * UT, 15.0f * TS, hoverGear ? 0.45f : 0.3f);
+        if (hoverMinus && g_minimapZoomIdx > 0) trayGlow(trayRight - 31.5f * UT, 13.0f * TS, 0.4f);
+        if (hoverPlus && g_minimapZoomIdx + 1 < kMinimapZoomCount) trayGlow(trayRight - 14.5f * UT, 13.0f * TS, 0.4f);
 
         // Centre divider, under the frame's bottom diamond
-        DrawSolidRectAbs(anchor.raw, frameCx - 0.5f, trayContentCy - 8.0f, 1.0f, 16.0f, 0xFF62A8C4u, 0.75f);
+        DrawSolidRectAbs(anchor.raw, frameCx - 0.5f, trayContentCy - 8.0f * TS, 1.0f, 16.0f * TS, 0xFF62A8C4u, 0.75f);
 
         // Left half: icon + time, centred between the gear cap and the divider
-        const float leftX0 = trayX + gearCapW + 6.0f;
+        const float leftX0 = trayX + gearCapW + 6.0f * TS;
         const float leftX1 = frameCx - trayCentreGap;
         const float leftStart = (leftX0 + leftX1 - (trayIconW + timeTextW)) * 0.5f;
         int iconIdx = isDay ? 0 : 1;
         if (g_minimapClockWeatherMode && weatherType >= 1 && weatherType <= 4) iconIdx = 1 + weatherType;
-        DrawArtSprite(anchor.raw, *kArtIcons[iconIdx], leftStart + trayIconW * 0.5f - 2.0f - 150.0f * U,
-                      trayContentCy - 150.0f * U, 1.0f);
-        DrawLabelAbs(leftStart + trayIconW, trayContentCy - 12.0f, timeTextW + 6.0f, 24.0f, timeText,
-                     kTrayText, 0.97f, TextAlignH::Left, TextAlignV::Center);
+        DrawArtSprite(anchor.raw, *kArtIcons[iconIdx], leftStart + trayIconW * 0.5f - 2.0f * TS - 150.0f * UT,
+                      trayContentCy - 150.0f * UT, TS);
+        DrawLabelAbs(leftStart + trayIconW, trayContentCy - 12.0f * TS, timeTextW + 6.0f * TS, 24.0f * TS, timeText,
+                     kTrayText, 0.97f, TextAlignH::Left, TextAlignV::Center, nullptr, TS);
         // Right half: the weather (or day phase) word
         const float rightX0 = frameCx + trayCentreGap;
-        const float rightX1 = trayRight - zoomCapW - 6.0f;
-        DrawLabelAbs(rightX0, trayContentCy - 12.0f, rightX1 - rightX0, 24.0f, statusText,
-                     kTrayText, 0.97f, TextAlignH::Center, TextAlignV::Center);
-        DrawLabelAbs(minusBtnX, trayContentCy - 12.0f, zoomBtnW, 24.0f, "-",
-                     (g_minimapZoomIdx > 0) ? kTrayText : kTrayMuted, 0.98f, TextAlignH::Center, TextAlignV::Center);
-        DrawLabelAbs(plusBtnX, trayContentCy - 12.0f, zoomBtnW, 24.0f, "+",
-                     (g_minimapZoomIdx + 1 < kMinimapZoomCount) ? kTrayText : kTrayMuted, 0.98f, TextAlignH::Center, TextAlignV::Center);
+        const float rightX1 = trayRight - zoomCapW - 6.0f * TS;
+        DrawLabelAbs(rightX0, trayContentCy - 12.0f * TS, rightX1 - rightX0, 24.0f * TS, statusText,
+                     kTrayText, 0.97f, TextAlignH::Center, TextAlignV::Center, nullptr, TS);
+        DrawLabelAbs(minusBtnX, trayContentCy - 12.0f * TS, zoomBtnW, 24.0f * TS, "-",
+                     (g_minimapZoomIdx > 0) ? kTrayText : kTrayMuted, 0.98f, TextAlignH::Center, TextAlignV::Center,
+                     nullptr, TS);
+        DrawLabelAbs(plusBtnX, trayContentCy - 12.0f * TS, zoomBtnW, 24.0f * TS, "+",
+                     (g_minimapZoomIdx + 1 < kMinimapZoomCount) ? kTrayText : kTrayMuted, 0.98f, TextAlignH::Center,
+                     TextAlignV::Center, nullptr, TS);
     }
 
     // Settings > Advanced > Position: X, Y (height), Z on a framed plate under the tray (or the map), in the Map
