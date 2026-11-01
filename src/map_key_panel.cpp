@@ -3922,7 +3922,16 @@ bool EnsureFindDialogResolved() {
         uint8_t* fnGetQuery = ScanPattern(fbase, fsize, "48 8B 81 08 06 00 00 41 B8 3F 00 00 00 48 83 F8 40");
         if (!fnCreate || !fnReset || !fnGetQuery) return false;
 
-        uint8_t* fnRunFrame = fnGetQuery + 0x30;
+        // Find's DrawDialog by its own code: up to Find 1.2.2 it sat right after DialogText (+0x30), in 1.2.3 the
+        // linker put another function there, and calling that froze the map's Find (reported by ecktos1)
+        uint8_t* fnRunFrame = ScanPattern(fbase, fsize,
+            "40 53 48 83 EC 20 48 8B 05 ?? ?? ?? ?? 48 8B D9 48 89 0D ?? ?? ?? ?? C6 05 ?? ?? ?? ?? 00 FF D0 "
+            "48 C7 05 ?? ?? ?? ?? 00 00 00 00 85 C0");
+        if (!fnRunFrame) {
+            if (g_log) g_log("MapKeyPanel: Find's dialog draw not found in %ls; the map uses its own search box",
+                             modPath ? modPath : L"<module>");
+            return false;
+        }
         if (fnRunFrame[6] == 0x48 && fnRunFrame[7] == 0x8B && fnRunFrame[8] == 0x05) {
             int32_t tdDisp = 0;
             std::memcpy(&tdDisp, fnRunFrame + 9, 4);
