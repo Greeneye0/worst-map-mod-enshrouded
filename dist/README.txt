@@ -62,7 +62,8 @@ On the right of the world map.
   filters too. Settings > Filter Locks > Remove All unlocks everything.
 - LORE NOTES (QUESTS & RUMORS): every note and diary in the world, 574. Notes you've read
   are hidden or grayed out (Settings > Looted / Read / Beaten); unread ones are drawn
-  bigger on an amber ring so they stand out. Hover one for its title.
+  bigger on an amber ring so they stand out. Hover one for its title. Ctrl + left click one
+  to mark it read (or not read) by hand, saved per character.
 - BOSSES (WORLD & RESOURCES): the world's bosses, named like their health bar. A boss you've
   beaten gets a check mark for good; it's hidden or grayed out only while it's dead, until it
   comes back by the same rule as a looted chest (its 256 m square reset 30 minutes after everyone

@@ -184,6 +184,10 @@ std::unordered_set<uint16_t> g_manualBosses;
 std::unordered_set<uint16_t> g_notBeatenBosses;
 // Unique items not in a chest the mod tracks (barrels, crates, lying in the world): marked found by hand (UniqueFoundAt)
 std::unordered_set<uint16_t> g_uniqueFound;
+// Lore notes marked read by hand (LoreReadAt), or not read where the game has them read (LoreUnreadAt): Ctrl + left
+// click clears a note off the map once you're done with it (requested by reminder86)
+std::unordered_set<uint16_t> g_loreRead;
+std::unordered_set<uint16_t> g_loreUnread;
 std::string g_bossCharacter; // empty: not known yet (marks not loaded)
 // Places the character has been at (within 50 m of the pin) that the game still has as undiscovered: some camps never
 // turn discovered (a Scavenger Camp west of Pikemead, reported by GARONNN), so they stayed grayed. Saved with the marks
@@ -198,6 +202,10 @@ bool PlaceVisited(int32_t x, int32_t z) {
 
 bool IsBossSpot(size_t d) {
     return IsKnowledgeDeposit(d) && kOreDeposits[d].ore == kBossesFirst;
+}
+
+bool IsLoreSpot(size_t d) {
+    return IsKnowledgeDeposit(d) && kOreDeposits[d].ore == kLoreFirst;
 }
 
 bool IsUniqueSpot(size_t d) {
@@ -234,6 +242,8 @@ void SaveManualBosses() {
     save("BossesAt", "Bosses", g_manualBosses);
     save("NotBeatenAt", "NotBeaten", g_notBeatenBosses);
     save("UniqueFoundAt", "UniqueFound", g_uniqueFound);
+    save("LoreReadAt", "LoreRead", g_loreRead);
+    save("LoreUnreadAt", "LoreUnread", g_loreUnread);
     std::vector<uint64_t> places(g_visitedPlaces.begin(), g_visitedPlaces.end());
     std::sort(places.begin(), places.end());
     std::string text;
@@ -244,12 +254,13 @@ void SaveManualBosses() {
     WritePrivateProfileStringA(section.c_str(), "VisitedAt", text.c_str(), path.c_str());
 }
 
-// The boss spot (or unique item spot) at (x, z, top y), or -1. A boss can share its place with the item it drops.
-int KnowledgeSpotAt(bool boss, int x, int z, int y) {
+// The spot of a kind (boss, unique item, lore note) at (x, z, top y), or -1. A boss can share its place with the item
+// it drops.
+int KnowledgeSpotAt(bool (*isKind)(size_t), int x, int z, int y) {
     for (size_t s = 0; s < kKnowledgeSpotCount; ++s) {
         const size_t i = kKnowledgeFirstDeposit + s;
         const OreDeposit& d = kOreDeposits[i];
-        if (d.x == x && d.z == z && d.topY == y && (boss ? IsBossSpot(i) : IsUniqueSpot(i))) return static_cast<int>(s);
+        if (d.x == x && d.z == z && d.topY == y && isKind(i)) return static_cast<int>(s);
     }
     return -1;
 }
@@ -278,7 +289,7 @@ void UpdateManualBosses(uint8_t* client) {
     const std::string path = greeneye::DataPath("defeated_bosses.ini");
     const std::string section = "Character_" + name;
     bool legacy = false;
-    auto load = [&](const char* key, const char* legacyKey, bool boss, std::unordered_set<uint16_t>& set) {
+    auto load = [&](const char* key, const char* legacyKey, bool (*isKind)(size_t), std::unordered_set<uint16_t>& set) {
         set.clear();
         std::vector<char> text(32768);
         GetPrivateProfileStringA(section.c_str(), key, "\x01", text.data(), static_cast<DWORD>(text.size()), path.c_str());
@@ -293,20 +304,22 @@ void UpdateManualBosses(uint8_t* client) {
                 const int i = std::atoi(t);
                 if (i >= 0 && static_cast<size_t>(i) < kLegacyKnowledgeSpotCount) {
                     const int16_t* p = kLegacyKnowledgeSpots[i];
-                    s = KnowledgeSpotAt(boss, p[0], p[1], p[2]);
+                    s = KnowledgeSpotAt(isKind, p[0], p[1], p[2]);
                 }
             } else {
                 int x = 0, z = 0, y = 0;
-                if (sscanf_s(t, "%d,%d,%d", &x, &z, &y) == 3) s = KnowledgeSpotAt(boss, x, z, y);
+                if (sscanf_s(t, "%d,%d,%d", &x, &z, &y) == 3) s = KnowledgeSpotAt(isKind, x, z, y);
             }
             if (s >= 0) set.insert(static_cast<uint16_t>(s));
             while (*t && *t != ';') ++t;
             if (*t == ';') ++t;
         }
     };
-    load("BossesAt", "Bosses", true, g_manualBosses);
-    load("NotBeatenAt", "NotBeaten", true, g_notBeatenBosses);
-    load("UniqueFoundAt", "UniqueFound", false, g_uniqueFound);
+    load("BossesAt", "Bosses", IsBossSpot, g_manualBosses);
+    load("NotBeatenAt", "NotBeaten", IsBossSpot, g_notBeatenBosses);
+    load("UniqueFoundAt", "UniqueFound", IsUniqueSpot, g_uniqueFound);
+    load("LoreReadAt", "LoreRead", IsLoreSpot, g_loreRead);
+    load("LoreUnreadAt", "LoreUnread", IsLoreSpot, g_loreUnread);
     g_visitedPlaces.clear();
     {
         std::vector<char> text(32768);
@@ -320,8 +333,10 @@ void UpdateManualBosses(uint8_t* client) {
     }
     if (legacy) SaveManualBosses();
     if (g_log)
-        g_log("Bosses: character %s, %zu marked defeated by hand, %zu not beaten by hand, %zu unique items found by hand",
-              name.c_str(), g_manualBosses.size(), g_notBeatenBosses.size(), g_uniqueFound.size());
+        g_log("Bosses: character %s, %zu marked defeated by hand, %zu not beaten by hand, %zu unique items found by hand, "
+              "%zu lore notes read and %zu unread by hand",
+              name.c_str(), g_manualBosses.size(), g_notBeatenBosses.size(), g_uniqueFound.size(), g_loreRead.size(),
+              g_loreUnread.size());
 }
 
 // What the game's own knowledge says: a lore note read / a boss defeated (false while untracked).
@@ -346,6 +361,11 @@ bool KnowledgeDone(size_t d) {
         const auto s = static_cast<uint16_t>(d - kKnowledgeFirstDeposit);
         if (g_manualBosses.count(s)) return true;
         if (g_notBeatenBosses.count(s)) return false;
+    }
+    if (IsLoreSpot(d)) {
+        const auto s = static_cast<uint16_t>(d - kKnowledgeFirstDeposit);
+        if (g_loreRead.count(s)) return true;
+        if (g_loreUnread.count(s)) return false;
     }
     return KnowledgeDoneInGame(d);
 }
@@ -802,6 +822,43 @@ bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shif
     if (found) g_uniqueFound.insert(s);
     SaveManualBosses();
     if (g_log) g_log("Unique items: spot %u marked %s by hand", s, found ? "found" : "not found");
+    return true;
+}
+
+// Ctrl + left click near (wx, wz): flips the nearest shown lore note between read and not read, unless a shown chest is
+// closer (notes often lie by one: the click is then the chest's). A mark by hand is kept only where it differs from the
+// game's own record, so a note read in game later needs none.
+bool ToggleLoreReadNear(float wx, float wz, float maxRadiusMeters, float shiftMeters, float chestRadiusMeters) {
+    if (g_bossCharacter.empty() || !g_oreEnabled[kLoreFirst]) return false;
+    float best = maxRadiusMeters * maxRadiusMeters;
+    size_t bestSpot = kKnowledgeSpotCount;
+    for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
+        const size_t d = kKnowledgeFirstDeposit + i;
+        if (!IsLoreSpot(d)) continue;
+        if (g_lootedChestMode == 0 && KnowledgeGrayed(d)) continue; // hidden
+        const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
+        if (dx * dx + dz * dz < best) {
+            best = dx * dx + dz * dz;
+            bestSpot = i;
+        }
+    }
+    if (bestSpot == kKnowledgeSpotCount) return false;
+    const float chestReach = std::min(best, chestRadiusMeters * chestRadiusMeters);
+    for (size_t c = 0; c < kTotalChestCount; ++c) {
+        if (!ChestRowEnabled(c) || (g_chestLootStates[c].looted && g_lootedChestMode == 0)) continue;
+        const ChestSpawn& sp = kChestSpawns[c];
+        const float dx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f - wx;
+        const float dz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f - wz;
+        if (dx * dx + dz * dz < chestReach) return false;
+    }
+    const auto s = static_cast<uint16_t>(bestSpot);
+    const size_t d = kKnowledgeFirstDeposit + bestSpot;
+    const bool read = !KnowledgeDone(d);
+    g_loreRead.erase(s);
+    g_loreUnread.erase(s);
+    if (read != KnowledgeDoneInGame(d)) (read ? g_loreRead : g_loreUnread).insert(s);
+    SaveManualBosses();
+    if (g_log) g_log("Lore notes: spot %u marked %s by hand", s, read ? "read" : "not read");
     return true;
 }
 

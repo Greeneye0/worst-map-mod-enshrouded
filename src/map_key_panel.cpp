@@ -144,6 +144,7 @@ struct BuildZoneBox;
 void AdvanceBossTimers(double dtSec, double respawnSec, const BuildZoneBox* zones, size_t numZones, bool allAway);
 bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters, float shiftMeters);
 bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shiftMeters);
+bool ToggleLoreReadNear(float wx, float wz, float maxRadiusMeters, float shiftMeters, float chestRadiusMeters);
 int StackSide(size_t d); // knowledge.inl: -1 / +1 for icons drawn aside, off the boss or chest they stand on
 // Where the World Map shows the game's lore "?" (a place with an unread rumor, or a rumor pin), from the last marker
 // pass: the mod's own icons there are drawn aside so they don't cover it (StackSide)
@@ -7026,6 +7027,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         const float shiftM = iconSize * 0.7f / zoom; // as DrawOreDepositsOnMap draws them aside
                         if (ToggleManualBossNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM) ||
                             ToggleUniqueFoundNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM) ||
+                            ToggleLoreReadNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM, hitRadiusMeters) ||
                             ToggleChestClearedNearWorldPos(clickWx, clickWz, hitRadiusMeters)) {
                             SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
                             ClearMapViewClickLatch(mapState);
@@ -9632,6 +9634,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 const float shiftM = 13.0f * btnScale * 0.6f / pxPerMeterX; // as the deposits are drawn aside
                 if (ToggleManualBossNear(clickWx, clickWz, std::max(10.0f, 10.0f / pxPerMeterX), shiftM) ||
                     ToggleUniqueFoundNear(clickWx, clickWz, std::max(10.0f, 10.0f / pxPerMeterX), shiftM) ||
+                    ToggleLoreReadNear(clickWx, clickWz, std::max(10.0f, 10.0f / pxPerMeterX), shiftM, maxRadiusM) ||
                     ToggleChestClearedNearWorldPos(clickWx, clickWz, maxRadiusM)) {
                     toggledChest = true;
                 }
