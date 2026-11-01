@@ -1151,6 +1151,10 @@ bool g_toggleKeyWasDown = false;
 // game's own key code for the map's hint bar (USB HID usage: A = 4, 1 = 0x1e, Tab = 0x2b, F1 = 0x3a)
 int g_panelToggleVk = VK_TAB;
 uint16_t g_panelToggleHid = 0x2b;
+// G G's key ([Keys] Glow, pressed twice; None: off) and the keys held together for the minimap's mouse ([Keys]
+// MinimapMouse: up to three of Shift, Ctrl, Alt and a key; None: off). Requested by izisot.
+int g_glowVk = 'G';
+int g_minimapMouseVks[3] = {VK_SHIFT, VK_MENU, 0};
 
 // A key's name ("Tab", "G", "5", "F3", "CapsLock", "None"...) to its virtual key and HID code; false if not known.
 bool ParseKeyName(const char* name, int& vk, uint16_t& hid) {
@@ -1178,6 +1182,42 @@ bool ParseKeyName(const char* name, int& vk, uint16_t& hid) {
         if (f >= 1 && f <= 12) { vk = VK_F1 + f - 1; hid = static_cast<uint16_t>(0x3a + f - 1); return true; }
     }
     return false;
+}
+
+// "Shift+Alt", "Ctrl+M", "F7" or "None" to up to three virtual keys (0: unused); false if a part isn't a key
+bool ParseKeyCombo(const char* text, int (&vks)[3]) {
+    int out[3]{};
+    int n = 0;
+    char part[16]{};
+    for (const char* t = text;;) {
+        const char* end = t;
+        while (*end && *end != '+') ++end;
+        const size_t len = static_cast<size_t>(end - t);
+        if (len == 0 || len >= sizeof(part) || n == 3) return false;
+        std::memcpy(part, t, len);
+        part[len] = 0;
+        int vk = 0;
+        uint16_t hid = 0;
+        if (_stricmp(part, "Shift") == 0) vk = VK_SHIFT;
+        else if (_stricmp(part, "Ctrl") == 0 || _stricmp(part, "Control") == 0) vk = VK_CONTROL;
+        else if (_stricmp(part, "Alt") == 0) vk = VK_MENU;
+        else if (!ParseKeyName(part, vk, hid)) return false;
+        if (vk == 0 && (n > 0 || *end)) return false; // None alone only
+        out[n++] = vk;
+        if (!*end) break;
+        t = end + 1;
+    }
+    std::memcpy(vks, out, sizeof(out));
+    return true;
+}
+
+// The minimap's mouse keys all held (none set: never)
+bool MinimapMouseKeysHeld() {
+    if (!g_minimapMouseVks[0]) return false;
+    for (int vk : g_minimapMouseVks) {
+        if (vk && (GetAsyncKeyState(vk) & 0x8000) == 0) return false;
+    }
+    return true;
 }
 
 uint8_t* ScanPattern(uint8_t* base, size_t size, const char* pattern) {
@@ -8427,6 +8467,27 @@ void LoadMinimapConfig() {
         g_panelToggleVk = VK_TAB;
         g_panelToggleHid = 0x2b;
     }
+    char glowKey[16]{};
+    if (GetPrivateProfileStringA("Keys", "Glow", "", glowKey, sizeof(glowKey), cfg.c_str()) == 0) {
+        strcpy_s(glowKey, "G");
+        WritePrivateProfileStringA("Keys", "Glow", glowKey, cfg.c_str());
+    }
+    uint16_t glowHid = 0;
+    if (!ParseKeyName(glowKey, g_glowVk, glowHid)) {
+        if (g_log) g_log("Settings: [Keys] Glow=%s is not a key this mod knows; using G", glowKey);
+        g_glowVk = 'G';
+    }
+    char mouseKeys[48]{};
+    if (GetPrivateProfileStringA("Keys", "MinimapMouse", "", mouseKeys, sizeof(mouseKeys), cfg.c_str()) == 0) {
+        strcpy_s(mouseKeys, "Shift+Alt");
+        WritePrivateProfileStringA("Keys", "MinimapMouse", mouseKeys, cfg.c_str());
+    }
+    if (!ParseKeyCombo(mouseKeys, g_minimapMouseVks)) {
+        if (g_log) g_log("Settings: [Keys] MinimapMouse=%s is not keys this mod knows; using Shift+Alt", mouseKeys);
+        g_minimapMouseVks[0] = VK_SHIFT;
+        g_minimapMouseVks[1] = VK_MENU;
+        g_minimapMouseVks[2] = 0;
+    }
 
     // Any place it was moved to, the screen's edges too (it was dropped within 10 px of the left or top edge: a minimap
     // in the lower-left corner went back to its default place on every start; reported by Grezexx)
@@ -9502,10 +9563,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         g_minimapZoomInKeyWasDown = false;
     }
 
-    // Holding Shift + Alt (or having the Minimap Settings card open) unlocks the mouse cursor
-    const bool shiftAltHeld = appFocused &&
-                              ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) &&
-                              ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0);
+    // Holding Shift + Alt ([Keys] MinimapMouse; or having the Minimap Settings card open) unlocks the mouse cursor
+    const bool shiftAltHeld = appFocused && MinimapMouseKeysHeld();
     const bool lockCameraForMouse = appFocused &&
                                     (shiftAltHeld || g_minimapSettingsOpen || g_minimapDraggingMove || g_minimapDraggingResize);
     SetMinimapMouseControl(lockCameraForMouse, foreground);

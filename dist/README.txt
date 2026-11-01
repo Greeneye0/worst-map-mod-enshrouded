@@ -51,7 +51,9 @@ On the right of the world map.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
   To use another key than Tab, set PanelToggle= under [Keys] in
   greeneye\unlock-map-markers\minimap_config.ini: a letter, a digit, F1 to F12, CapsLock,
-  Backquote, Insert, Delete, Home, End, or None for no key.
+  Backquote, Insert, Delete, Home, End, or None for no key. Under [Keys] too: Glow= (G G's
+  key, G at first) and MinimapMouse= (the keys held for the minimap's mouse, Shift+Alt at
+  first: up to three of Shift, Ctrl, Alt and a key, joined with +).
 - Every gold and silver chest in the world is included: all 448 gold and 1032 silver
   chests have their own filter rows. WOODEN CHEST (World & Resources, off at first): the
   world's 1562 wooden chests, wooden sarcophagi and locked wooden chests. The Hollow Halls' 66

@@ -435,12 +435,12 @@ void LightNearbyChests(uint8_t* client) {
     if (g_log) g_log("Chest glow: %u lit", g_count);
 }
 
-// G twice within half a second while playing (not in a menu, where G sorts the inventory).
+// G ([Keys] Glow) twice within half a second while playing (not in a menu, where G sorts the inventory).
 void UpdateKey(uint8_t* client, bool appFocused) {
     static bool wasDown = false;
     static uint64_t firstTick = 0;
 
-    const bool down = appFocused && (GetAsyncKeyState('G') & 0x8000) != 0;
+    const bool down = appFocused && g_glowVk && (GetAsyncKeyState(g_glowVk) & 0x8000) != 0;
     const bool edge = down && !wasDown;
     wasDown = down;
     if (!edge || !client || client[0x1cd8] != 1) return;
