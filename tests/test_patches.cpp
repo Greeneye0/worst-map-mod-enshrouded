@@ -66,13 +66,10 @@ bool TestExecutable(const char* exePath) {
 
 } // namespace
 
-int main() {
-    if (!TestExecutable("C:\\temp\\enshrouded-re\\bin\\enshrouded.exe")) {
-        return 1;
-    }
-    if (!TestExecutable("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Enshrouded\\enshrouded.exe")) {
-        return 1;
-    }
-    std::printf("ALL %zu PATCH TESTS PASSED ON BOTH EXECUTABLES.\n", unlock_map_markers::kNumPatchSites);
+int main(int argc,char** argv) {
+    const char* path=argc>1?argv[1]:std::getenv("ENSHROUDED_EXE");
+    if(!path)path="C:\\Program Files (x86)\\Steam\\steamapps\\common\\Enshrouded\\enshrouded.exe";
+    if(!TestExecutable(path))return 1;
+    std::printf("ALL %zu PATCH TESTS PASSED.\n",unlock_map_markers::kNumPatchSites);
     return 0;
 }

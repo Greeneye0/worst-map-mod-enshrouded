@@ -154,10 +154,10 @@ void DrawTownPortalsOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapSt
     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
     if (!(zoom > 0.0f)) return;
-    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
-                          *reinterpret_cast<float*>(mapView + 0x1e8);
-    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
-                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1f0) + *reinterpret_cast<float*>(mapView + 0x18c) -
+                          *reinterpret_cast<float*>(mapView + 0x1f8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1f4) + *reinterpret_cast<float*>(mapView + 0x190) -
+                          *reinterpret_cast<float*>(mapView + 0x1fc);
     const float left = rootRect[0], top = rootRect[1];
     const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
     const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);

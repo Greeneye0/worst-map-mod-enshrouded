@@ -64,3 +64,8 @@ bin\test_hd_pool.exe
 if errorlevel 1 exit /b 1
 
 echo Built bin\loader\unlock-map-markers.dll for Greeneye Loader API 2
+
+cl /nologo /std:c++20 /O2 /EHa /MT /W4 tests\test_map_state_layout.cpp /Fo:build\test_map_state_layout.obj /Fe:bin\test_map_state_layout.exe /link user32.lib kernel32.lib
+if errorlevel 1 exit /b 1
+bin\test_map_state_layout.exe
+if errorlevel 1 exit /b 1
