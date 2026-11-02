@@ -513,6 +513,18 @@ const Row kTable[] = {
     {"Warrior Chest", "Krieger-Truhe", "Coffre de guerrier", "Forziere del guerriero", "Cofre de guerrero", "Baú de guerreiro",
      "Skrzynia wojownika", "Сундук воина", "Скриня воїна", "Savaşçı sandığı", "戦士の宝箱", "전사 상자", "战士宝箱", "戰士寶箱",
      "หีบนักรบ"},
+    // PadOpenKey: under the Map Key while a controller is in use; the View button moves the controller into the panel
+    {"View: Map Key", "Ansicht: Legende", "Affichage : légende", "Visualizza: legenda", "Vista: leyenda",
+     "Exibir: legenda", "Widok: legenda", "Просмотр: легенда", "Перегляд: легенда", "Görünüm: Lejant",
+     "ビュー：凡例", "보기: 범례", "视图：图例", "檢視：圖例", "มุมมอง: คำอธิบาย"},
+    // PadKeyNav: the same place while the controller steers the panel
+    {"D-pad: Move   A: Select   B: Back", "Steuerkreuz: Bewegen   A: Wählen   B: Zurück",
+     "Croix : déplacer   A : choisir   B : retour", "Croce: sposta   A: scegli   B: indietro",
+     "Cruceta: mover   A: elegir   B: volver", "Direcional: mover   A: escolher   B: voltar",
+     "Krzyżak: ruch   A: wybierz   B: wróć", "Крестовина: выбор   A: нажать   B: назад",
+     "Хрестовина: вибір   A: натиснути   B: назад", "Yön tuşları: gez   A: seç   B: geri",
+     "十字キー：移動   A：決定   B：戻る", "방향 패드: 이동   A: 선택   B: 뒤로", "方向键：移动   A：选择   B：返回",
+     "方向鍵：移動   A：選擇   B：返回", "ปุ่มทิศทาง: เลื่อน   A: เลือก   B: กลับ"},
 };
 // clang-format on
 

@@ -9,6 +9,9 @@ bool LocalPlayerY(uint8_t* client, float& y); // map_key_panel.cpp, below
 
 namespace vein_sight {
 
+// Allow the cutaway renderer to replace mining outlines without disabling GG chest glow.
+bool g_enabled = true;
+
 constexpr float kRangeMeters = 50.0f;
 constexpr uint32_t kShowMs = 30000;  // long enough to dig toward it
 constexpr int kTileMeters = 128;
@@ -206,6 +209,7 @@ bool NearShownDeposit(uint8_t row, float x, float z) {
 void LightNearby(uint8_t* client) {
     g_veins.clear();
     g_deposits.clear();
+    if (!g_enabled) return;
     bool any = false;
     for (size_t r = 0; r < kMiningCount + kMaterialsCount && !any; ++r) any = RowOn(r);
     float px = 0.0f, pz = 0.0f;
@@ -380,6 +384,12 @@ void ZoneFillHook(uint32_t* header, uint8_t* storage, uint8_t* frame, uint8_t* m
 }
 
 void InstallZoneHook() {
+    g_enabled = GetPrivateProfileIntA("General", "GGVeinOutlines", 1,
+                                     greeneye::DataPath("minimap_config.ini")) != 0;
+    if (!g_enabled) {
+        if (g_log) g_log("Vein sight: mining outlines disabled; GG chest glow unchanged");
+        return;
+    }
     uint8_t* fn = FindUnique("48 89 5C 24 18 55 56 57 41 54 41 55 48 8D AC 24 A0 FC FF FF 48 81 EC 60 04 00 00 0F 57 C0 "
                              "49 8B F0 66 0F 7F 01 48 8B FA 4C 8B E9 33 D2 48 8D 4C 24 60 41 B8 00 04 00 00 49 8B D9");
     if (fn) g_origZoneFill = reinterpret_cast<ZoneFillFn>(InstallHook(fn, reinterpret_cast<void*>(&ZoneFillHook), 12));
@@ -500,6 +510,7 @@ void GatherCells(uint8_t* client) {
 }
 
 void Draw(uint8_t* client, void* widgetRaw, const float* view, const float* proj, const float* viewport) {
+    if (!g_enabled) return;
     const uint64_t now = GetTickCount64();
     if (g_veins.empty() && g_deposits.empty()) return;
     if (now >= g_until) {
@@ -621,6 +632,6 @@ void Draw(uint8_t* client, void* widgetRaw, const float* view, const float* proj
     }
 }
 
-bool Active() { return !g_veins.empty() || !g_deposits.empty(); }
+bool Active() { return g_enabled && (!g_veins.empty() || !g_deposits.empty()); }
 
 } // namespace vein_sight

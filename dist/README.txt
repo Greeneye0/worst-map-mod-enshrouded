@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.30
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.31
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -289,6 +289,10 @@ Restart the game after changing it.
 
 CONTROLLERS
 -----------
+Map Key with a controller: press View on the World Map to move the controller into the Map Key &
+Filters panel; the D-pad steps between its rows and buttons, A clicks, B goes back to the map.
+Xbox-style pads (XInput, Steam Input's too).
+
 The map tells gamepad from mouse, also for pads that are not XInput (Windows joysticks). If
 opening the map plays the Windows device connect / disconnect sound, or the game has trouble
 with a controller, a wheel or a virtual pad, turn the Windows joystick check off in
@@ -327,6 +331,24 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.31
+- Updated for the 2 November 2026 game patch (game build 1283531): on the patched game 1.3.30
+  showed no Map Key & Filters panel, and the mod's map drawings, the Hollow Halls HD maps and
+  G G's chest glow were missing or broken. This version needs the patched game.
+- Map Key with a controller: View on the World Map moves the controller into the Map Key &
+  Filters panel (and Settings when it is open): the D-pad steps between its rows and buttons, A
+  clicks, B goes back to the map. A strip under the panel shows these buttons, in all 15
+  languages. With Vanilla World Map on, View on the game's map brings the mod's map back. For
+  Xbox-style pads (XInput, Steam Input's too).
+- Fixed: a controller switching off or being unplugged with the map open could crash the game.
+  Pads are no longer read while Windows' device list is changing, Xbox and Steam Input pads are
+  left to XInput, and a fault in the Windows joystick check turns it off for the session.
+  Reported by microsoftenator.
+- Fixed: with a controller, the mod's keyboard hints at the bottom of the map all showed the A
+  button; they're hidden while a controller is in use.
+- GGVeinOutlines=false under [General] in minimap_config.ini turns off G G's ore vein outlines;
+  the chest glow stays.
+
 1.3.30
 - Fixed: with the Find mod installed, Shift+F on the map froze the map until the mod was
   switched off and on. Reported by ecktos1.

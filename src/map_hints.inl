@@ -19,6 +19,9 @@ uint8_t* MapHintBinding(uint8_t action) {
 // unless it is set to None; middle click (copy X, Z) with Settings > Advanced > Position on
 int MapHintKinds(int out[8]) {
     int n = 0;
+    // With a pad the game draws each hint's pad button, and ours (keyboard and mouse only) all came out as the model
+    // hint's A: none while the pad is in use
+    if (UsingGamepad()) return 0;
     out[n++] = 0;
     out[n++] = 4;
     out[n++] = 1;

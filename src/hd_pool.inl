@@ -270,8 +270,8 @@ bool Init() {
 #else
     g_base=reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
     auto* nt=reinterpret_cast<IMAGE_NT_HEADERS64*>(g_base+reinterpret_cast<IMAGE_DOS_HEADER*>(g_base)->e_lfanew);
-    if(nt->FileHeader.TimeDateStamp!=0x6ad77f0c ||
-       (nt->OptionalHeader.SizeOfImage!=0x2a1e000 && nt->OptionalHeader.SizeOfImage!=0x29e4000))return false;
+    // The game build of 2026-11-02 (hd_pool_native.h)
+    if(nt->FileHeader.TimeDateStamp!=0x6ae4601e || nt->OptionalHeader.SizeOfImage!=0x2a40000)return false;
     const native::Entry* entries[]={&native::scope,&native::plan,&native::image,&native::commit,&native::end,
         &native::release,&native::upload,&native::registerImage,&native::unregisterImage,&native::bindImage,
         &native::sceneTick,&native::viewDestroy,&native::rootDestroy,&native::registryDestroy,&native::freeImage};

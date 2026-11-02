@@ -1,6 +1,6 @@
 // Included in map_key_panel.cpp's private namespace, after halls.inl.
 // The dungeon map pans only over its hall's box, through the game's own pan clamp (FUN_140d7ffd0, the World Map view's
-// update): it writes the view's bounds as the whole world ({0, 0, +0x38, +0x3c} into mapView +0x1b8..+0x1c4, x, y,
+// update): it writes the view's bounds as the whole world ({0, 0, +0x38, +0x3c} into mapView +0x1c8..+0x1d4, x, y,
 // width, height on the map's canvas), calls FUN_140a412f0 and then clamps the view to those bounds. The call is sent
 // through a small stub that, while a dungeon map shows, writes the hall's box over the bounds first and then goes on to
 // the game's function; the game's clamp does the rest, so nothing fights the drag. Moving the view from the mod each
@@ -85,8 +85,8 @@ void InstallTerrainSkip(uint8_t* page) {
 }
 
 bool Install() {
-    // movups [rsi+0x1b8], xmm2 / call FUN_140a412f0 / movss xmm0, [rsi+0x1b8]
-    uint8_t* hit = FindUnique("0F 11 96 B8 01 00 00 E8 ?? ?? ?? ?? F3 0F 10 86 B8 01 00 00");
+    // movups [rsi+0x1c8], xmm2 / call FUN_140a412f0 / movss xmm0, [rsi+0x1c8] (+0x1b8 before the game's 2026-11-02 patch)
+    uint8_t* hit = FindUnique("0F 11 96 C8 01 00 00 E8 ?? ?? ?? ?? F3 0F 10 86 C8 01 00 00");
     if (!hit) {
         if (g_log) g_log("Dungeon map panning: the game's pan clamp was not found; panning is free");
         return false;
@@ -119,8 +119,8 @@ bool Install() {
     // Code at +0x200 (the terrain stub is at +0x80, the game's targets at +0x100 / +0x108)
     uint8_t* code = page + 0x200;
     // mov rax, data / cmp dword [rax], 0 / je skip / cmp rsi, [rax+0x18] / jne skip /
-    // mov r11, [rax+4] / mov [rsi+0x1b8], r11 / mov r11, [rax+0xc] / mov [rsi+0x1c0], r11 /
-    // the view's position (+0x20 / +0x24) and the anchor it is drawn from (+0x1a0 / +0x1a4) clamped to the bounds:
+    // mov r11, [rax+4] / mov [rsi+0x1c8], r11 / mov r11, [rax+0xc] / mov [rsi+0x1d0], r11 /
+    // the view's position (+0x20 / +0x24) and the anchor it is drawn from (+0x1b0 / +0x1b4) clamped to the bounds:
     // in one input mode the game copies the position to the anchor before its own clamp, which then bounds the
     // position only (Codex's trace of FUN_140d7ffd0, 2026-11-01) /
     // skip: mov rax, FUN_140a412f0 / jmp rax        (rax, r11, xmm4: volatile, no arguments in them)
@@ -130,14 +130,14 @@ bool Install() {
                                  0x48, 0x3B, 0x70, 0x18,
                                  0x0F, 0x85, 0, 0, 0, 0,
                                  0x4C, 0x8B, 0x58, 0x04,
-                                 0x4C, 0x89, 0x9E, 0xB8, 0x01, 0x00, 0x00,
+                                 0x4C, 0x89, 0x9E, 0xC8, 0x01, 0x00, 0x00,
                                  0x4C, 0x8B, 0x58, 0x0C,
-                                 0x4C, 0x89, 0x9E, 0xC0, 0x01, 0x00, 0x00};
+                                 0x4C, 0x89, 0x9E, 0xD0, 0x01, 0x00, 0x00};
     auto sse = [&](uint8_t op, uint8_t modrm, uint32_t disp) { // F3 0F op xmm4, [base+disp32]
         stub.insert(stub.end(), {0xF3, 0x0F, op, modrm});
         for (int i = 0; i < 4; ++i) stub.push_back(static_cast<uint8_t>(disp >> (8 * i)));
     };
-    for (uint32_t field : {0x20u, 0x24u, 0x1a0u, 0x1a4u}) {
+    for (uint32_t field : {0x20u, 0x24u, 0x1b0u, 0x1b4u}) {
         const uint32_t axis = (field & 4) ? 4u : 0u;
         sse(0x10, 0xA6, field);                                      // movss xmm4, [rsi+field]
         sse(0x5F, 0xA0, static_cast<uint32_t>(offsetof(StubData, lo)) + axis); // maxss xmm4, [rax+lo]
@@ -174,7 +174,7 @@ bool Install() {
 }
 
 // Each World Map frame: the bounds for the hall's box while a dungeon map shows, else the switch off. A canvas point c
-// shows at screen (+0x1e0 + pivot +0x17c) + (c - anchor) * zoom (the anchor: +0x1a0, what the game clamps), so the
+// shows at screen (+0x1f0 + pivot +0x18c) + (c - anchor) * zoom (the anchor: +0x1b0, what the game clamps), so the
 // anchor that puts the box's west edge at the screen's left is minX + (P - left) / zoom, and so on (Codex's formula).
 // Zoomed in, the screen's edges stop at the box's; with the whole box on the screen, it moves only as far as it stays
 // on it (never a single point: the zoom reads the bounds too, and a point held it still)
@@ -189,7 +189,7 @@ void Update(uint8_t* mapState, const float* rootRect) {
     auto at = [&](int off) { return *reinterpret_cast<float*>(mapView + off); };
     float mapWorldH = at(0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
-    const float zoom = at(0x10), px = at(0x1e0) + at(0x17c), py = at(0x1e4) + at(0x180);
+    const float zoom = at(0x10), px = at(0x1f0) + at(0x18c), py = at(0x1f4) + at(0x190);
     if (!(zoom > 0.0001f) || !std::isfinite(px) || !std::isfinite(py)) {
         g_data->on = 0;
         return;
