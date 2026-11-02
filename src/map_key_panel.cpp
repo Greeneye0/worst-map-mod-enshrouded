@@ -5687,9 +5687,12 @@ void DrawVisitedSanctumsOnMap(void* widgetRaw, const float* rootRect, uint8_t* c
         if (!(i < 63 ? flameOn : nightOn)) continue;
         const float sx = originX + sp.x * zoom, sy = originY + (mapWorldH - sp.z) * zoom;
         if (sx < left || sx > right || sy < top + 114.0f || sy > bottom) continue;
+        // Its icon's rules: Region > Hide takes the mark too, Dim fades it like the icon (izisot)
+        if (RegionHidesAt(sp.x, sp.z) || halls::MapHides(sp.x, sp.z)) continue;
+        const float a = OutsideFocusedRegion(sp.x, sp.z) ? 0.3f : 1.0f;
         const float cx = sx + kIconHalf - kCheck * 0.7f, cy = sy + kIconHalf - kCheck * 0.7f;
-        DrawAssetRectAbs(widgetRaw, kCirclePrimitive, cx - 1.0f, cy - 1.0f, kCheck + 2.0f, kCheck + 2.0f, 0xFF0A0E10u, 0.85f);
-        DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, cx, cy, kCheck, kCheck, 0xFFFFFFFFu, 0.98f, 1.12f);
+        DrawAssetRectAbs(widgetRaw, kCirclePrimitive, cx - 1.0f, cy - 1.0f, kCheck + 2.0f, kCheck + 2.0f, 0xFF0A0E10u, 0.85f * a);
+        DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, cx, cy, kCheck, kCheck, 0xFFFFFFFFu, 0.98f * a, 1.12f);
     }
 }
 
@@ -5726,9 +5729,10 @@ void DrawRefilledChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* cl
         // Its icon's rules: Region > Hide, and the Hollow Halls' corner (or another hall on a dungeon map)
         const float y = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f;
         if (RegionHidesAt(x, z) || halls::MapHidesChest(x, y, z)) continue;
+        const float a = OutsideFocusedRegion(x, z) ? 0.3f : 1.0f; // Region > Dim, as the icon
         const float cx = sx + kIconHalf - kCheck * 0.7f, cy = sy + kIconHalf - kCheck * 0.7f;
-        DrawAssetRectAbs(widgetRaw, kCirclePrimitive, cx - 1.0f, cy - 1.0f, kCheck + 2.0f, kCheck + 2.0f, 0xFF0A0E10u, 0.85f);
-        DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, cx, cy, kCheck, kCheck, 0xFFFFFFFFu, 0.98f, 1.12f);
+        DrawAssetRectAbs(widgetRaw, kCirclePrimitive, cx - 1.0f, cy - 1.0f, kCheck + 2.0f, kCheck + 2.0f, 0xFF0A0E10u, 0.85f * a);
+        DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, cx, cy, kCheck, kCheck, 0xFFFFFFFFu, 0.98f * a, 1.12f);
     }
 }
 
@@ -5804,8 +5808,9 @@ void DrawGraveHeightsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clie
         if (wx <= 1.0f && wz <= 1.0f) continue;
         const float sx = originX + wx * zoom, sy = originY + (mapWorldH - wz) * zoom;
         if (sx < left || sx > right || sy < top + 114.0f || sy > bottom) continue;
-        DrawHeightCaretAbs(widgetRaw, sx + kGraveHalf * 0.75f, sy + (dir > 0 ? -0.75f : 0.75f) * kGraveHalf, dir > 0, 1.0f,
-                           1.6f);
+        if (MarkerHiddenOnMap(m)) continue; // the grave's own rules: Region > Hide, another Hollow Hall
+        DrawHeightCaretAbs(widgetRaw, sx + kGraveHalf * 0.75f, sy + (dir > 0 ? -0.75f : 0.75f) * kGraveHalf, dir > 0,
+                           MarkerOutsideFocusedRegion(m) ? 0.3f : 1.0f, 1.6f);
     }
 }
 
