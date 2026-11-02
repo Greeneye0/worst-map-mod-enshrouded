@@ -23,7 +23,9 @@ if not exist bin\loader mkdir bin\loader
 if not exist build mkdir build
 
 echo Compiling unlock-map-markers.dll...
-cl /nologo /std:c++20 /O2 /EHsc /MT /LD /W4 /utf-8 /I "%GREENEYE_COMMON%" ^
+rem The version in the log: mod.json's
+for /f "tokens=2 delims=:, " %%v in ('findstr /c:"\"version\"" mod.json') do set "UMM_VER=%%~v"
+cl /nologo /std:c++20 /O2 /EHsc /MT /LD /W4 /utf-8 /DUMM_VERSION=\"%UMM_VER%\" /I "%GREENEYE_COMMON%" ^
     src\main.cpp src\map_key_panel.cpp src\scan.cpp src\lang.cpp ^
     /Fo:build\ ^
     /Fe:bin\loader\unlock-map-markers.dll ^

@@ -19,7 +19,9 @@
 #include "scan.h"
 #include "greeneye.h"
 
-#define UMM_VERSION "1.3.26"
+#ifndef UMM_VERSION // build.bat / build-dev.bat pass mod.json's version
+#define UMM_VERSION "dev"
+#endif
 
 namespace {
 

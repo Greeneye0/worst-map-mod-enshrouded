@@ -3816,6 +3816,20 @@ bool g_panelCurrentlyHovered = false;
 // to the map through the game menu it can sit over the panel, and the block then froze the gamepad's map cursor.
 // So the panel only blocks while the mouse is the device in use: the one that moved or clicked last (XInput pads).
 using XInputGetStateFn = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
+std::string GetMinimapConfigPath();
+// [General] WindowsJoysticks=false: pads that are not XInput are not looked for at all (written as true the first time,
+// so it can be found in the file)
+bool WindowsJoysticksInConfig() {
+    const std::string cfg = GetMinimapConfigPath();
+    char v[16]{};
+    GetPrivateProfileStringA("General", "WindowsJoysticks", "", v, sizeof(v), cfg.c_str());
+    if (!v[0]) {
+        WritePrivateProfileStringA("General", "WindowsJoysticks", "true", cfg.c_str());
+        return true;
+    }
+    return !(_strnicmp(v, "false", 5) == 0 || v[0] == '0' || _strnicmp(v, "no", 2) == 0);
+}
+
 bool UsingGamepad() {
     static XInputGetStateFn getState = [] {
         HMODULE x = LoadLibraryW(L"xinput1_4.dll");
@@ -3844,9 +3858,12 @@ bool UsingGamepad() {
         }
     }
     // Pads that are not XInput (a DualShock / DualSense without Steam's XInput, most others) only show as Windows
-    // joysticks: a button down or an axis off where it rested when first seen. The empty slots are looked at one at a
-    // time, one every 200 ms (asking an empty slot can take milliseconds).
-    {
+    // joysticks: a button down or an axis off where it rested when first seen. The empty slots are asked once, then
+    // again only when Windows' list of input devices changes: asking one makes Windows look over its devices, which
+    // played the device connect / disconnect sound on every map open for TillYouCry (and their game crashed after an
+    // Alt+Tab with the map, not without the mod), while it asked an empty slot every 200 ms (1.3.19 to 1.3.29).
+    static const bool windowsJoysticks = WindowsJoysticksInConfig();
+    if (windowsJoysticks) {
         using JoyGetPosExFn = MMRESULT(WINAPI*)(UINT, JOYINFOEX*);
         static JoyGetPosExFn joyGetPos = [] {
             HMODULE w = LoadLibraryW(L"winmm.dll");
@@ -3856,20 +3873,21 @@ bool UsingGamepad() {
         static bool present[kJoys]{};
         static bool restKnown[kJoys]{};
         static DWORD rest[kJoys][6]{};
-        static uint64_t lastScan = 0;
-        static UINT scanSlot = 0;
+        static UINT deviceCount = UINT_MAX; // Windows' input devices when the slots were last asked
+        static uint64_t lastCount = 0;
         if (joyGetPos) {
-            UINT probe = kJoys; // the empty slot looked at this time, if any
-            if (now - lastScan >= 200) {
-                lastScan = now;
-                for (UINT k = 0; k < kJoys && probe == kJoys; ++k) {
-                    const UINT j = (scanSlot + k) % kJoys;
-                    if (!present[j]) probe = j;
+            bool scan = false; // ask the empty slots this time
+            if (deviceCount == UINT_MAX || now - lastCount >= 2000) {
+                lastCount = now;
+                UINT n = 0;
+                if (GetRawInputDeviceList(nullptr, &n, sizeof(RAWINPUTDEVICELIST)) != static_cast<UINT>(-1) &&
+                    n != deviceCount) {
+                    deviceCount = n;
+                    scan = true;
                 }
-                scanSlot = (probe + 1) % kJoys;
             }
             for (UINT j = 0; j < kJoys; ++j) {
-                if (!present[j] && j != probe) continue;
+                if (!present[j] && !scan) continue;
                 JOYINFOEX ji{};
                 ji.dwSize = sizeof(ji);
                 ji.dwFlags = JOY_RETURNALL;
@@ -11323,13 +11341,26 @@ bool VanillaWorldMapInConfig() {
 // graphics cards short of memory. Written as false the first time, so it can be found in the file.
 bool PotatoPcInConfig() {
     const std::string cfg = GetMinimapConfigPath();
-    char value[16]{};
-    GetPrivateProfileStringA("General", "PotatoPC", "", value, sizeof(value), cfg.c_str());
-    if (!value[0]) {
+    // The last PotatoPC= line in [General] counts: the mod writes PotatoPC=false there itself, and Windows reads the
+    // first one, so a PotatoPC=true added under it was ignored (TillYouCry, 2026-11-01)
+    std::vector<char> section(32768);
+    const DWORD n = GetPrivateProfileSectionA("General", section.data(), static_cast<DWORD>(section.size()), cfg.c_str());
+    const char* value = nullptr;
+    for (const char* line = section.data(); line < section.data() + n && *line; line += std::strlen(line) + 1) {
+        while (*line == ' ' || *line == '	') ++line;
+        if (_strnicmp(line, "PotatoPC", 8) != 0) continue;
+        const char* v = line + 8;
+        while (*v == ' ' || *v == '	') ++v;
+        if (*v != '=') continue;
+        ++v;
+        while (*v == ' ' || *v == '	') ++v;
+        value = v;
+    }
+    if (!value) {
         WritePrivateProfileStringA("General", "PotatoPC", "false", cfg.c_str());
         return false;
     }
-    return _stricmp(value, "true") == 0 || std::strcmp(value, "1") == 0 || _stricmp(value, "yes") == 0;
+    return _strnicmp(value, "true", 4) == 0 || value[0] == '1' || _strnicmp(value, "yes", 3) == 0;
 }
 void SetWorldMapPatchedAtLoad(bool patched) {
     g_worldMapModded = patched;

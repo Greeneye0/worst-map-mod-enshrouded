@@ -252,6 +252,16 @@ If something doesn't work, please post these files with your report. Both are in
 
 [size=4][b]Changelog[/b][/size]
 
+[b]1.3.30[/b]
+[list]
+[*][b]Fixed[/b]: with the Find mod installed, Shift+F on the map froze the map until the mod was switched off and on. Reported by ecktos1.
+[*][b]Settable keys[/b]: [Keys] in minimap_config.ini now has Glow= (G G's key, G at first) and MinimapMouse= (the keys held for the minimap's mouse, Shift+Alt at first). Requested by izisot.
+[*][b]Info bar[/b]: with a minimap smaller than the default, the time, weather and buttons shrink with it and stay inside its border, Ornate and Thin. Requested by yassifecade.
+[*][b]Controllers[/b]: pads that are not XInput are looked for once, then again only when a device is plugged in or out, no longer every 200 ms while the map is open (that could play the Windows device sound). WindowsJoysticks=false under [General] turns the check off. Reported by TillYouCry.
+[*][b]Fixed[/b]: PotatoPC=true added under the PotatoPC=false line the mod writes was ignored; the last PotatoPC line counts now. Reported by TillYouCry.
+[*][b]Fixed[/b]: the log's first line said version 1.3.26 since that version.
+[/list]
+
 [b]1.3.29[/b]
 [list]
 [*][b]Lore notes[/b]: Ctrl + left click one on the World Map or the minimap to mark it read (click again for not read), saved per character, like bosses and unique items. Requested by reminder86.

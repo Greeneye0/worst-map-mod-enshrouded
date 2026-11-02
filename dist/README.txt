@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.29
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.30
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -283,6 +283,18 @@ whole map: its north was drawn dark, without sea. The mod gives them 256 MB. On 
 card short of memory, keep the game's 128 MB in greeneye\unlock-map-markers\minimap_config.ini:
     [General]
     PotatoPC=true
+(change the PotatoPC=false line the mod wrote there; keep just one PotatoPC line).
+Restart the game after changing it.
+
+
+CONTROLLERS
+-----------
+The map tells gamepad from mouse, also for pads that are not XInput (Windows joysticks). If
+opening the map plays the Windows device connect / disconnect sound, or the game has trouble
+with a controller, a wheel or a virtual pad, turn the Windows joystick check off in
+greeneye\unlock-map-markers\minimap_config.ini:
+    [General]
+    WindowsJoysticks=false
 Restart the game after changing it.
 
 
@@ -315,6 +327,22 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.30
+- Fixed: with the Find mod installed, Shift+F on the map froze the map until the mod was
+  switched off and on. Reported by ecktos1.
+- Settable keys: [Keys] in minimap_config.ini now has Glow= (G G's key, G at first) and
+  MinimapMouse= (the keys held for the minimap's mouse, Shift+Alt at first). Requested by
+  izisot.
+- Info bar: with a minimap smaller than the default, the time, weather and buttons shrink with
+  it and stay inside its border, Ornate and Thin. Requested by yassifecade.
+- Controllers: pads that are not XInput are looked for once, then again only when a device is
+  plugged in or out, no longer every 200 ms while the map is open (that could play the Windows
+  device sound). WindowsJoysticks=false under [General] turns the check off. Reported by
+  TillYouCry.
+- Fixed: PotatoPC=true added under the PotatoPC=false line the mod writes was ignored; the
+  last PotatoPC line counts now. Reported by TillYouCry.
+- Fixed: the log's first line said version 1.3.26 since that version.
+
 1.3.29
 - Lore notes: Ctrl + left click one on the World Map or the minimap to mark it read (click
   again for not read), saved per character, like bosses and unique items. Requested by
