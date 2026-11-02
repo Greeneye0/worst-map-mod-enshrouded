@@ -258,6 +258,7 @@ bool g_minimapThinBorder = false; // a thin line instead of the ornate frame
 bool g_minimapShowPosition = false; // Settings > Advanced: your X, Y (height), Z under the minimap
 bool g_regionFilterEnabled = false; // Settings > Advanced: the Map Key's Region row (regions.inl)
 bool g_levelAreas = false;          // Settings > Advanced: the World Map in level areas (levels.inl)
+int g_levelTintPct = 50;            // its tint's strength, 10 to 80 % (requested by dremen); borders and badges stay
 bool g_regionNames = true;          // Settings > Advanced: the regions' names on the World Map (regions.inl)
 float g_overlayRootRect[4]{}; // the Map Key overlay's screen rect, last frame
 bool g_minimapInfoBar = true;     // the tray under the minimap (time, weather, zoom); off puts the cog on the map
@@ -6188,7 +6189,7 @@ void DrawGearIconAbs(void* widgetRaw, float cx, float cy, float r, uint32_t col,
 
 const PanelLayout& CurrentPanelLayout();
 
-constexpr float kSettingsCardH = 634.0f;
+constexpr float kSettingsCardH = 664.0f;
 
 float SettingsSegWidth() {
     using umm_lang::Str;
@@ -6220,6 +6221,7 @@ float SettingsCardWidth() {
         TextWidth(T(Str::ShowPosition)),
         TextWidth(T(Str::RegionFilter)),
         TextWidth(T(Str::LevelAreas)),
+        TextWidth(T(Str::LevelTint)) + 14.0f, // indented under Level Areas
         TextWidth(T(Str::RegionNames)),
         TextWidth(T(Str::VanillaWorldMap)),
         TextWidth(T(Str::VanillaMinimap)) + 14.0f, // indented under Vanilla World Map
@@ -6683,6 +6685,38 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_levelAreas);
         if (clicked && hovRow) {
             g_levelAreas = !g_levelAreas;
+            SaveMinimapConfig();
+            changed = true;
+        }
+    }
+
+    // Row A3c: Tint Strength, under Level Areas and only with it: [-] [50%] [+] in steps of 10 %
+    {
+        ry += kRowH;
+        const bool usable = g_levelAreas;
+        const float stepBtnW = 26.0f, stepBtnH = 22.0f, badgeW = 66.0f, gap = 4.0f;
+        const float plusX = ctrlRight - stepBtnW;
+        const float badgeX = plusX - gap - badgeW;
+        const float minusX = badgeX - gap - stepBtnW;
+        const float by = ry + (kRowH - stepBtnH) * 0.5f;
+        DrawLabelAbs(sx + 26.0f, ry, minusX - (sx + 26.0f) - 10.0f, kRowH, T(Str::LevelTint),
+                     usable ? 0xffd6e6eeu : kOffText, usable ? 0.96f : 0.6f, TextAlignH::Left, TextAlignV::Center);
+        const bool canLess = usable && g_levelTintPct > 10, canMore = usable && g_levelTintPct < 80;
+        const bool hovMinus = usable && isHov(minusX, by, stepBtnW, stepBtnH);
+        const bool hovPlus = usable && isHov(plusX, by, stepBtnW, stepBtnH);
+        DrawKeyButtonAbs(widgetRaw, minusX, by, stepBtnW, stepBtnH, hovMinus, false);
+        DrawLabelAbs(minusX, by, stepBtnW, stepBtnH, "-", canLess ? (hovMinus ? kActiveText : kText) : kOffText, 0.95f,
+                     TextAlignH::Center, TextAlignV::Center);
+        char pct[8];
+        std::snprintf(pct, sizeof(pct), "%d%%", g_levelTintPct);
+        DrawFramedBoxAbs(widgetRaw, badgeX, by, badgeW, stepBtnH, kCategoryFill, 0.95f, kButtonFrame, 0.9f, 3.0f);
+        DrawLabelAbs(badgeX, by, badgeW, stepBtnH, pct, usable ? kActiveText : kOffText, 0.98f, TextAlignH::Center,
+                     TextAlignV::Center);
+        DrawKeyButtonAbs(widgetRaw, plusX, by, stepBtnW, stepBtnH, hovPlus, false);
+        DrawLabelAbs(plusX, by, stepBtnW, stepBtnH, "+", canMore ? (hovPlus ? kActiveText : kText) : kOffText, 0.95f,
+                     TextAlignH::Center, TextAlignV::Center);
+        if (clicked && ((hovMinus && canLess) || (hovPlus && canMore))) {
+            g_levelTintPct += hovPlus ? 10 : -10;
             SaveMinimapConfig();
             changed = true;
         }
@@ -8754,6 +8788,8 @@ void LoadMinimapConfig() {
     // Level Areas took the place of Region Colors (1.3.26): whoever had the regions tinted gets the level areas
     g_levelAreas = GetPrivateProfileIntA("MinimapV2", "LevelAreas",
                                          GetPrivateProfileIntA("MinimapV2", "RegionColors", 0, cfg.c_str()), cfg.c_str()) != 0;
+    g_levelTintPct = static_cast<int>(GetPrivateProfileIntA("MinimapV2", "LevelTint", 50, cfg.c_str())) / 10 * 10;
+    g_levelTintPct = std::max(10, std::min(80, g_levelTintPct));
     g_regionNames = GetPrivateProfileIntA("MinimapV2", "RegionNames", 1, cfg.c_str()) != 0;
     g_vanillaWorldMap = GetPrivateProfileIntA("MinimapV2", "VanillaWorldMap", 0, cfg.c_str()) != 0;
     g_vanillaMinimap = GetPrivateProfileIntA("MinimapV2", "VanillaMinimap", 0, cfg.c_str()) != 0;
@@ -9030,6 +9066,11 @@ void SaveMinimapConfig() {
     async_io::IniWrite("MinimapV2", "ShowPosition", g_minimapShowPosition ? "1" : "0", cfg.c_str());
     async_io::IniWrite("MinimapV2", "RegionFilter", g_regionFilterEnabled ? "1" : "0", cfg.c_str());
     async_io::IniWrite("MinimapV2", "LevelAreas", g_levelAreas ? "1" : "0", cfg.c_str());
+    {
+        char tint[8];
+        std::snprintf(tint, sizeof(tint), "%d", g_levelTintPct);
+        async_io::IniWrite("MinimapV2", "LevelTint", tint, cfg.c_str());
+    }
     async_io::IniWrite("MinimapV2", "RegionNames", g_regionNames ? "1" : "0", cfg.c_str());
     async_io::IniWrite("MinimapV2", "VanillaWorldMap", g_vanillaWorldMap ? "1" : "0", cfg.c_str());
     async_io::IniWrite("MinimapV2", "VanillaMinimap", g_vanillaMinimap ? "1" : "0", cfg.c_str());

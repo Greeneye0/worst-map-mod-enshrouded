@@ -33,6 +33,7 @@ inline std::deque<Job> g_jobs;
 inline std::thread* g_thread = nullptr;
 inline bool g_stop = false;
 inline bool g_busy = false;
+inline bool g_flushing = false; // Flush() is writing the queue on its own thread: the writer waits
 inline bool g_closed = false; // Stop() ran (a hot reload is unloading this copy): writes are made on the spot
 
 // Past 10 MB: name.log -> name.old.log (the one before goes), and fp is null for a new name.log. Checked as the file
@@ -70,7 +71,7 @@ inline void Run() {
     std::unordered_map<std::string, FILE*> open; // appended files stay open
     std::unique_lock<std::mutex> lk(g_lock);
     for (;;) {
-        g_wake.wait(lk, [] { return g_stop || !g_jobs.empty(); });
+        g_wake.wait(lk, [] { return (g_stop || !g_jobs.empty()) && !g_flushing; });
         if (g_jobs.empty() && g_stop) break;
         std::deque<Job> batch;
         batch.swap(g_jobs);
@@ -84,7 +85,7 @@ inline void Run() {
         }
         lk.lock();
         g_busy = false;
-        if (g_jobs.empty()) g_idle.notify_all();
+        g_idle.notify_all(); // (Flush waits for the batch to end)
     }
     for (auto& [path, fp] : open)
         if (fp) std::fclose(fp);
@@ -113,11 +114,26 @@ inline void IniWrite(const char* section, const char* key, const char* value, co
     Queue({true, value == nullptr, path, section, key, value ? value : ""});
 }
 
-// Waits until everything queued is on disk (before reading a file this writes)
+// Puts everything queued on disk (before reading a file this writes). The caller writes the queue itself, waiting only
+// for a batch the writer is in the middle of: at the game's start the loader runs the mod while Windows still holds its
+// loader lock, the writer thread can't start until that ends, and waiting for it hung the game on its loading screen
+// (1.3.32, gango90 and GodWhat420).
 inline void Flush() {
-    std::unique_lock<std::mutex> lk(g_lock);
-    if (!g_thread || g_closed) return;
-    g_idle.wait(lk, [] { return g_jobs.empty() && !g_busy; });
+    std::deque<Job> jobs;
+    {
+        std::unique_lock<std::mutex> lk(g_lock);
+        if (!g_thread || g_closed) return;
+        g_idle.wait(lk, [] { return !g_busy; }); // busy only once the thread runs: it finishes its batch
+        if (g_jobs.empty()) return;
+        jobs.swap(g_jobs);
+        g_flushing = true;
+    }
+    for (const Job& j : jobs) Do(j, nullptr);
+    {
+        std::lock_guard<std::mutex> guard(g_lock);
+        g_flushing = false;
+    }
+    g_wake.notify_one();
 }
 
 // Writes what is queued and ends the thread, before a hot reload unloads this copy; later writes are made on the spot

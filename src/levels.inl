@@ -77,7 +77,8 @@ void DrawLevelAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapSta
             const float shown = a >= 0 ? LevelAreaShown(wx, wz) : 0.0f;
             if (shown <= 0.0f) a = -1;
             if (a == runArea && shown == runShown) continue;
-            if (runArea >= 0) DrawSolidRectAbs(widgetRaw, runX, y, x - runX, kCell, LevelAreaColor(runArea), 0.5f * runShown);
+            if (runArea >= 0) DrawSolidRectAbs(widgetRaw, runX, y, x - runX, kCell, LevelAreaColor(runArea),
+                                            g_levelTintPct * 0.01f * runShown);
             runArea = a;
             runShown = shown;
             runX = x;

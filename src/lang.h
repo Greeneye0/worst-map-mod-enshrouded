@@ -33,7 +33,7 @@ enum class Str : int {
     FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show, TimeFormat,
     Advanced, ShowPosition, AllRegions, Dim, HintCopyPosition, RegionFilter, LevelAreas, TownPortals, HintHideFilter, HintUndoFilter, HintRedoFilter, SearchList, NoListMatches, WoodChest, WoodSarcophagus,
     VanillaWorldMap, VanillaMinimap, DungeonMap, OverworldMap, CatGround, RegionNames, DungeonSpoils, RangerChest, MageChest, WarriorChest,
-    PadOpenKey, PadKeyNav,
+    PadOpenKey, PadKeyNav, LevelTint,
     Count
 };
 

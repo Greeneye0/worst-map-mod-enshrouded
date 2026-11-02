@@ -525,6 +525,11 @@ const Row kTable[] = {
      "Хрестовина: вибір   A: натиснути   B: назад", "Yön tuşları: gez   A: seç   B: geri",
      "十字キー：移動   A：決定   B：戻る", "방향 패드: 이동   A: 선택   B: 뒤로", "方向键：移动   A：选择   B：返回",
      "方向鍵：移動   A：選擇   B：返回", "ปุ่มทิศทาง: เลื่อน   A: เลือก   B: กลับ"},
+    // LevelTint: Settings > Advanced, under Level Areas: how strongly the areas' colours cover the map (borders and
+    // level badges stay as they are)
+    {"Tint Strength", "Farbstärke", "Intensité de la teinte", "Intensità della tinta", "Intensidad del tinte",
+     "Intensidade da cor", "Siła zabarwienia", "Сила заливки", "Сила заливки", "Renk yoğunluğu", "色の濃さ", "색 농도",
+     "着色强度", "著色強度", "ความเข้มของสี"},
 };
 // clang-format on
 

@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.32
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.33
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -195,7 +195,8 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
 - ADVANCED > Level Areas, off at first: the world map in the areas of the enemies' levels, each
   tinted from green (low) through orange and red to purple and blue (high), with the borders
   between them and each area's level in a badge. Read from the levels the game gives its
-  spawners, loot and props.
+  spawners, loot and props. Tint Strength, under it, sets how strongly the colours cover the map
+  (10% to 80%, 50% at first); the borders and badges stay.
 - ADVANCED > Vanilla World Map, off at first: the world map exactly as the game draws it, as your
   friends without the mod see it (the game's markers, fog, zoom and filter menu; no Map Key or
   added pins). The minimap stays, and its cog is then the way to Settings.
@@ -332,6 +333,20 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.33
+- Fixed: 1.3.32 could keep the game on its loading screen forever at start (its new disk
+  writer waited on a thread Windows doesn't let run until the game has loaded). Reported by
+  gango90 and GodWhat420.
+- Settings > Advanced > Tint Strength, under Level Areas: how strongly the level areas'
+  colours cover the map, 10% to 80% (50% as before). The borders and the level badges stay as
+  they are. Requested by dremen.
+- Fixed: with Region Filter on, the check marks on Flame and Night Sanctums you've been to
+  (and the height arrows on player graves) stayed outside the regions shown. They now hide and
+  dim with their icon. Reported by izisot.
+- Bosses: the Vukah Brawler camps that showed as just "Boss" now have their name.
+- Map data updated for the 2 November game patch: its new Vukah Brawler camp, and the few
+  plant and material spots it moved.
+
 1.3.32
 - Fixed: opening a chest could freeze the game for several seconds (the game window lost focus
   and the taskbar showed) when the disk was slow to answer. The mod wrote its log and its
