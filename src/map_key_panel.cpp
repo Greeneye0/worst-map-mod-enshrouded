@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "map_key_panel.h"
+#include "async_io.h" // the saves are written off the game's thread
 #include "map_control.h"
 #include "hd_pool_policy.h"
 #include "ui_mesh.h" // smooth chest silhouettes (shared with Find and Quick Deposit)
@@ -2455,21 +2456,22 @@ void SaveLootedChests() {
         std::snprintf(buf, sizeof(buf), "%s%zu", opened.empty() ? "" : ";", c);
         opened += buf;
     }
-    WritePrivateProfileStringA(g_lootSection.c_str(), "Altars", altars.c_str(), path.c_str());
-    WritePrivateProfileStringA(g_lootSection.c_str(), "Looted", looted.c_str(), path.c_str());
-    WritePrivateProfileStringA(g_lootSection.c_str(), "Opened", opened.c_str(), path.c_str());
-    WritePrivateProfileStringA(g_lootSection.c_str(), "Bosses", BossTimersText().c_str(), path.c_str());
+    async_io::IniWrite(g_lootSection.c_str(), "Altars", altars.c_str(), path.c_str());
+    async_io::IniWrite(g_lootSection.c_str(), "Looted", looted.c_str(), path.c_str());
+    async_io::IniWrite(g_lootSection.c_str(), "Opened", opened.c_str(), path.c_str());
+    async_io::IniWrite(g_lootSection.c_str(), "Bosses", BossTimersText().c_str(), path.c_str());
     std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(std::time(nullptr)));
-    WritePrivateProfileStringA(g_lootSection.c_str(), "LastPlayed", buf, path.c_str());
+    async_io::IniWrite(g_lootSection.c_str(), "LastPlayed", buf, path.c_str());
     if (g_lootDaySec >= 0.0) {
         std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_lootDaySec));
-        WritePrivateProfileStringA(g_lootSection.c_str(), "TimeOfDay", buf, path.c_str());
+        async_io::IniWrite(g_lootSection.c_str(), "TimeOfDay", buf, path.c_str());
     }
     SaveBuiltWater(path);
 }
 
 // Finds this world's saved record (or starts one) and merges its looted chests into the current state.
 void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
+    async_io::Flush(); // the writer's queue on disk before reading
     const std::string path = GetLootedChestsPath();
     std::vector<char> names(64 * 1024);
     DWORD len = GetPrivateProfileSectionNamesA(names.data(), static_cast<DWORD>(names.size()), path.c_str());
@@ -3820,6 +3822,7 @@ std::string GetMinimapConfigPath();
 // [General] WindowsJoysticks=false: pads that are not XInput are not looked for at all (written as true the first time,
 // so it can be found in the file)
 bool WindowsJoysticksInConfig() {
+    async_io::Flush(); // the writer's queue on disk before reading
     const std::string cfg = GetMinimapConfigPath();
     char v[16]{};
     GetPrivateProfileStringA("General", "WindowsJoysticks", "", v, sizeof(v), cfg.c_str());
@@ -8705,6 +8708,7 @@ std::string GetMinimapConfigPath() {
 }
 
 void LoadMinimapConfig() {
+    async_io::Flush(); // the writer's queue on disk before reading
     // The text language: decided once Steam is up (every frame until then), then logged once.
     static bool languageLogged = false;
     if (!languageLogged) {
@@ -8937,14 +8941,14 @@ void SaveCollapsedSections() {
         std::snprintf(buf, sizeof(buf), "%s%u", ids.empty() ? "" : ",", static_cast<unsigned>(kCategoryGroups[c].category));
         ids += buf;
     }
-    WritePrivateProfileStringA("MinimapV2", "CollapsedSections", ids.empty() ? "none" : ids.c_str(),
+    async_io::IniWrite("MinimapV2", "CollapsedSections", ids.empty() ? "none" : ids.c_str(),
                                GetMinimapConfigPath().c_str());
     std::string known;
     for (const auto& grp : kCategoryGroups) {
         std::snprintf(buf, sizeof(buf), "%s%u", known.empty() ? "" : ",", static_cast<unsigned>(grp.category));
         known += buf;
     }
-    WritePrivateProfileStringA("MinimapV2", "KnownSections", known.c_str(), GetMinimapConfigPath().c_str());
+    async_io::IniWrite("MinimapV2", "KnownSections", known.c_str(), GetMinimapConfigPath().c_str());
 }
 
 void SaveFilterLocks() {
@@ -8966,9 +8970,9 @@ void SaveFilterLocks() {
             collapsed += buf;
         }
     }
-    WritePrivateProfileStringA("Locks", "Rows", rows.c_str(), cfg.c_str());
-    WritePrivateProfileStringA("Locks", "Categories", cats.c_str(), cfg.c_str());
-    WritePrivateProfileStringA("Locks", "Collapsed", collapsed.c_str(), cfg.c_str());
+    async_io::IniWrite("Locks", "Rows", rows.c_str(), cfg.c_str());
+    async_io::IniWrite("Locks", "Categories", cats.c_str(), cfg.c_str());
+    async_io::IniWrite("Locks", "Collapsed", collapsed.c_str(), cfg.c_str());
 
     // The locked rows' ON / OFF, read from the live filters (kept as last saved while there is no world)
     uint8_t* client = GetUiClient();
@@ -8990,7 +8994,7 @@ void SaveFilterLocks() {
         std::snprintf(buf, sizeof(buf), "%s%08x:%d", states.empty() ? "" : ",", hash, on ? 1 : 0);
         states += buf;
     }
-    WritePrivateProfileStringA("Locks", "RowStates", states.c_str(), cfg.c_str());
+    async_io::IniWrite("Locks", "RowStates", states.c_str(), cfg.c_str());
 }
 
 void SaveMinimapConfig() {
@@ -9000,61 +9004,61 @@ void SaveMinimapConfig() {
     std::string cfg = GetMinimapConfigPath();
     char buf[64]{};
     std::snprintf(buf, sizeof(buf), "%d", g_minimapCustomPos ? 1 : 0);
-    WritePrivateProfileStringA("MinimapV2", "CustomPos", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "CustomPos", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_minimapPosX + 0.5f));
-    WritePrivateProfileStringA("MinimapV2", "PosX", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "PosX", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_minimapPosY + 0.5f));
-    WritePrivateProfileStringA("MinimapV2", "PosY", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "PosY", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_minimapSize + 0.5f));
-    WritePrivateProfileStringA("MinimapV2", "Size", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "Size", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_minimapZoomIdx);
-    WritePrivateProfileStringA("MinimapV2", "ZoomIdx", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "ZoomIdx", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_otherPlayersEnabled ? 1 : 0);
-    WritePrivateProfileStringA("MinimapV2", "OtherPlayers", buf, cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "TownPortals", g_townPortalsEnabled ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "OtherPlayers", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "TownPortals", g_townPortalsEnabled ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_minimapShowTerrain ? 1 : 0);
-    WritePrivateProfileStringA("MinimapV2", "ShowTerrain", buf, cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "ThinBorder", g_minimapThinBorder ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "InfoBar", g_minimapInfoBar ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "ShowTerrain", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "ThinBorder", g_minimapThinBorder ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "InfoBar", g_minimapInfoBar ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_fogRevealMode));
-    WritePrivateProfileStringA("MinimapV2", "FogRevealMode", buf, cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "ShowPosition", g_minimapShowPosition ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "RegionFilter", g_regionFilterEnabled ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "LevelAreas", g_levelAreas ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "RegionNames", g_regionNames ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "VanillaWorldMap", g_vanillaWorldMap ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "VanillaMinimap", g_vanillaMinimap ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "FogRevealMode", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "ShowPosition", g_minimapShowPosition ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "RegionFilter", g_regionFilterEnabled ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "LevelAreas", g_levelAreas ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "RegionNames", g_regionNames ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "VanillaWorldMap", g_vanillaWorldMap ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "VanillaMinimap", g_vanillaMinimap ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%u", g_regionMask & kAllRegionsMask);
-    WritePrivateProfileStringA("MinimapV2", "RegionMask", buf, cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "RegionFocus", nullptr, cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "RegionDrawerOpen", g_regionDrawerOpen ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "RegionOutsideHide", g_regionOutsideHide ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "RegionMask", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "RegionFocus", nullptr, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "RegionDrawerOpen", g_regionDrawerOpen ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "RegionOutsideHide", g_regionOutsideHide ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_minimapVisible ? 1 : 0);
-    WritePrivateProfileStringA("MinimapV2", "ShowMinimap", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "ShowMinimap", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_minimapClockWeatherMode ? 1 : 0);
-    WritePrivateProfileStringA("MinimapV2", "ClockWeather", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "ClockWeather", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_lootedChestMode);
-    WritePrivateProfileStringA("MinimapV2", "LootedChestMode", buf, cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "HideCompletedPlaces", g_hideCompletedPlaces ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "LootedChestMode", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "HideCompletedPlaces", g_hideCompletedPlaces ? "1" : "0", cfg.c_str());
     {
         std::string order;
         if (!g_categoryOrderSet) ResetCategoryOrder();
         for (size_t i = 0; i < kCategoryGroupCount; ++i) order += (i ? "," : "") + std::to_string(g_categoryOrder[i]);
-        WritePrivateProfileStringA("MinimapV2", "CategoryOrder", order.c_str(), cfg.c_str());
+        async_io::IniWrite("MinimapV2", "CategoryOrder", order.c_str(), cfg.c_str());
     }
     std::snprintf(buf, sizeof(buf), "%d", g_clockFormat);
-    WritePrivateProfileStringA("MinimapV2", "ClockFormat", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "ClockFormat", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_customMarkerScaleIdx);
-    WritePrivateProfileStringA("MinimapV2", "CustomMarkerScaleIdx", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "CustomMarkerScaleIdx", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(g_pinRevealMode));
-    WritePrivateProfileStringA("MinimapV2", "PinRevealMode", buf, cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "GoldChests", g_goldChestEnabled ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "SilverChests", g_silverChestEnabled ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "WoodChests", g_woodChestEnabled ? "1" : "0", cfg.c_str());
-    WritePrivateProfileStringA("MinimapV2", "DungeonSpoils", g_spoilsEnabled ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "PinRevealMode", buf, cfg.c_str());
+    async_io::IniWrite("MinimapV2", "GoldChests", g_goldChestEnabled ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "SilverChests", g_silverChestEnabled ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "WoodChests", g_woodChestEnabled ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "DungeonSpoils", g_spoilsEnabled ? "1" : "0", cfg.c_str());
     char ores[kOreCount + 1]{};
     for (size_t o = 0; o < kOreCount; ++o) ores[o] = g_oreEnabled[o] ? '1' : '0';
-    WritePrivateProfileStringA("Mining", "Ores", ores, cfg.c_str());
+    async_io::IniWrite("Mining", "Ores", ores, cfg.c_str());
 }
 
 // A position anywhere on the world (a Hollow Hall reaches the west edge, x under 100 m: no minimap there before)
@@ -11662,12 +11666,14 @@ bool InstallMapKeyPanelHook(LogFn logger) {
 
 // At load (main.cpp): with Vanilla World Map saved on, the patches aren't written at all.
 bool VanillaWorldMapInConfig() {
+    async_io::Flush(); // the writer's queue on disk before reading
     return GetPrivateProfileIntA("MinimapV2", "VanillaWorldMap", 0, GetMinimapConfigPath().c_str()) != 0;
 }
 
 // [General] PotatoPC=true: the game's texture memory stays as the game sets it (main.cpp RaiseMapTextureBudget), for
 // graphics cards short of memory. Written as false the first time, so it can be found in the file.
 bool PotatoPcInConfig() {
+    async_io::Flush(); // the writer's queue on disk before reading
     const std::string cfg = GetMinimapConfigPath();
     // The last PotatoPC= line in [General] counts: the mod writes PotatoPC=false there itself, and Windows reads the
     // first one, so a PotatoPC=true added under it was ignored (TillYouCry, 2026-11-01)

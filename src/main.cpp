@@ -18,6 +18,7 @@
 #include "map_key_panel.h"
 #include "scan.h"
 #include "greeneye.h"
+#include "async_io.h"
 
 #ifndef UMM_VERSION // build.bat / build-dev.bat pass mod.json's version
 #define UMM_VERSION "dev"
@@ -29,8 +30,8 @@ bool g_patchesApplied = false;
 uintptr_t g_imageBase = 0;
 unlock_map_markers::ResolvedSite g_resolvedSites[unlock_map_markers::kNumPatchSites]{};
 
-// The log and status file live in the mod's folder (greeneye\unlock-map-markers\). The log is
-// opened per line, so a hot-reloaded generation appends to the same file.
+// The log and status file live in the mod's folder (greeneye\unlock-map-markers\). The log is appended by
+// async_io's thread, which a hot reload ends after writing what is queued; the next generation appends to the same file.
 void LogMessage(const char* fmt, ...) {
     char message[1024]{};
     va_list args;
@@ -41,17 +42,11 @@ void LogMessage(const char* fmt, ...) {
     SYSTEMTIME st{};
     GetLocalTime(&st);
 
-    FILE* fp = nullptr;
-    if (fopen_s(&fp, greeneye::DataPath("unlock_map_markers.log"), "a") == 0 && fp) {
-        std::fprintf(
-            fp,
-            "[%04u-%02u-%02u %02u:%02u:%02u.%03u] %s\n",
-            st.wYear, st.wMonth, st.wDay,
-            st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
-            message
-        );
-        std::fclose(fp);
-    }
+    // Written by async_io's thread: a slow disk no longer stalls the game
+    char line[1100];
+    std::snprintf(line, sizeof(line), "[%04u-%02u-%02u %02u:%02u:%02u.%03u] %s\n", st.wYear, st.wMonth, st.wDay,
+                  st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, message);
+    async_io::Append(greeneye::DataPath("unlock_map_markers.log"), line);
 }
 
 void WriteStatusFile(const char* state) {
@@ -310,6 +305,7 @@ GREENEYE_MOD_START
 static bool HotPrepare() {
     unlock_map_markers::PrepareMapKeyPanelForReload();
     LogMessage("stopping for a reload");
+    async_io::Stop(); // its queue on disk, its thread ended before this copy goes
     return true;
 }
 

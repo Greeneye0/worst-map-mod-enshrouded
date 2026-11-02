@@ -1,0 +1,2 @@
+Fixed: opening a chest could freeze the game for several seconds (the game window lost focus and the taskbar showed) when the disk was slow to answer. The mod wrote its log and its saves (looted chests, bosses, settings) on the game's own thread; they are now written on a thread of their own. Reported by HadToRegister.
+The log rolls over at 10 MB instead of growing forever: the earlier part moves to unlock_map_markers.old.log, kept through restarts.

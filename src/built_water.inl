@@ -283,7 +283,7 @@ void SaveBuiltWater(const std::string& path) {
         std::snprintf(buf, sizeof(buf), "%s%.0f,%.0f,%.0f", text.empty() ? "" : ";", w.x, w.y, w.z);
         text += buf;
     }
-    WritePrivateProfileStringA(g_lootSection.c_str(), "BuiltWater", text.c_str(), path.c_str());
+    async_io::IniWrite(g_lootSection.c_str(), "BuiltWater", text.c_str(), path.c_str());
     g_builtWaterDirty = false;
 }
 

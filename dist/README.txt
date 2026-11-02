@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.31
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.32
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -326,11 +326,20 @@ TROUBLESHOOTING
 ---------------
 If something doesn't work, please post these files with your report (all in the game folder):
 - greeneye\unlock-map-markers\unlock_map_markers.log   what the mod found and patched
+- greeneye\unlock-map-markers\unlock_map_markers.old.log  the log's earlier part, if there is one
 - greeneye\loader.log                                  what the Greeneye Loader did
 
 
 CHANGES
 -------
+1.3.32
+- Fixed: opening a chest could freeze the game for several seconds (the game window lost focus
+  and the taskbar showed) when the disk was slow to answer. The mod wrote its log and its
+  saves (looted chests, bosses, settings) on the game's own thread; they are now written on a
+  thread of their own. Reported by HadToRegister.
+- The log rolls over at 10 MB instead of growing forever: the earlier part moves to
+  unlock_map_markers.old.log, kept through restarts.
+
 1.3.31
 - Updated for the 2 November 2026 game patch (game build 1283531): on the patched game 1.3.30
   showed no Map Key & Filters panel, and the mod's map drawings, the Hollow Halls HD maps and

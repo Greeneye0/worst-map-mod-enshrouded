@@ -236,8 +236,8 @@ void SaveManualBosses() {
             const OreDeposit& d = kOreDeposits[kKnowledgeFirstDeposit + s];
             text += (text.empty() ? "" : ";") + std::to_string(d.x) + "," + std::to_string(d.z) + "," + std::to_string(d.topY);
         }
-        WritePrivateProfileStringA(section.c_str(), key, text.c_str(), path.c_str());
-        WritePrivateProfileStringA(section.c_str(), legacyKey, nullptr, path.c_str());
+        async_io::IniWrite(section.c_str(), key, text.c_str(), path.c_str());
+        async_io::IniWrite(section.c_str(), legacyKey, nullptr, path.c_str());
     };
     save("BossesAt", "Bosses", g_manualBosses);
     save("NotBeatenAt", "NotBeaten", g_notBeatenBosses);
@@ -251,7 +251,7 @@ void SaveManualBosses() {
         text += (text.empty() ? "" : ";") + std::to_string(static_cast<int32_t>(k >> 32)) + "," +
                 std::to_string(static_cast<int32_t>(k & 0xffffffffu));
     }
-    WritePrivateProfileStringA(section.c_str(), "VisitedAt", text.c_str(), path.c_str());
+    async_io::IniWrite(section.c_str(), "VisitedAt", text.c_str(), path.c_str());
 }
 
 // The spot of a kind (boss, unique item, lore note) at (x, z, top y), or -1. A boss can share its place with the item
@@ -286,6 +286,7 @@ void UpdateManualBosses(uint8_t* client) {
     }
     if (name.empty() || name == g_bossCharacter) return;
     g_bossCharacter = name;
+    async_io::Flush(); // the writer's queue on disk before reading
     const std::string path = greeneye::DataPath("defeated_bosses.ini");
     const std::string section = "Character_" + name;
     bool legacy = false;
