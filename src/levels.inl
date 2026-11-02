@@ -50,10 +50,10 @@ bool LevelMapView(uint8_t* mapState, float& zoom, float& originX, float& originY
     zoom = *reinterpret_cast<float*>(mapView + 0x10);
     mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
-    originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
-              *reinterpret_cast<float*>(mapView + 0x1e8);
-    originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
-              *reinterpret_cast<float*>(mapView + 0x1ec);
+    originX = *reinterpret_cast<float*>(mapView + 0x1f0) + *reinterpret_cast<float*>(mapView + 0x18c) -
+              *reinterpret_cast<float*>(mapView + 0x1f8);
+    originY = *reinterpret_cast<float*>(mapView + 0x1f4) + *reinterpret_cast<float*>(mapView + 0x190) -
+              *reinterpret_cast<float*>(mapView + 0x1fc);
     return zoom > 0.0f;
 }
 

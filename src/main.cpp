@@ -286,6 +286,12 @@ static void RaiseMapTextureBudget(bool firstStart) {
 // every hook goes through the loader, so the mod can be hot reloaded while the game runs.
 GREENEYE_MOD_START
 {
+    const auto* module = reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr));
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(module + reinterpret_cast<const IMAGE_DOS_HEADER*>(module)->e_lfanew);
+    if (nt->FileHeader.TimeDateStamp != 0x6ae4601e || nt->OptionalHeader.SizeOfImage != 0x2a40000) {
+        if (host && host->log) host->log("Worst Map: unsupported game layout; no hooks installed"); return false;
+    }
+
     if (!greeneye::HostOk(host) || host->side != kGreeneyeClient) {
         return false;
     }

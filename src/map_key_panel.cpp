@@ -1,3 +1,4 @@
+#include "map_state_layout.h"
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -724,22 +725,22 @@ uint32_t GuidToLocaId(const void* guid16) {
     return h;
 }
 
-constexpr size_t kPrimitivesOffset = 0xd250;
+constexpr size_t kPrimitivesOffset = 0xd3d0;
 constexpr size_t kCirclePrimitive = kPrimitivesOffset + 0x00;
 constexpr size_t kCircleOutlinePrimitive = kPrimitivesOffset + 0x10;
 constexpr size_t kSoftGlowPrimitive = kPrimitivesOffset + 0x20;
-constexpr size_t kMapPulseColorOffset = 0xd4c0;
-constexpr size_t kMapPulseRingPrimitive = 0xecc0;
-constexpr size_t kCheckmarkPrimitive = 0xed80;
+constexpr size_t kMapPulseColorOffset = 0xd640;
+constexpr size_t kMapPulseRingPrimitive = 0xee70;
+constexpr size_t kCheckmarkPrimitive = 0xef30;
 // Nine-slice boxes of the game's FbUiPrimitives (the boxes vanilla menus and dialogs are made of).
 constexpr size_t kBoxInnerGlowPrimitive = kPrimitivesOffset + 0x120;
 constexpr size_t kGlowBoxSmallPrimitive = kPrimitivesOffset + 0x140;
 constexpr size_t kRoundedBoxPrimitive = kPrimitivesOffset + 0x180;
-constexpr size_t kSmallTextStyleOffset = 0x10a0c;
-// FbUiBundle.namedStyles (0x10a0c) .h3 (+0x318): the game's bold 24 px heading, the base of the deposit title
-constexpr size_t kH3StyleOffset = 0x10a0c + 0x318;
+constexpr size_t kSmallTextStyleOffset = 0x10bbc;
+// FbUiBundle.namedStyles (0x10bbc) .h3 (+0x318): the game's bold 24 px heading, the base of the deposit title
+constexpr size_t kH3StyleOffset = 0x10bbc + 0x318;
 // FbUiBundle.namedStyles .map (+0x1340) .locationName (+0x58): the map's region names (uppercase, outlined)
-constexpr size_t kMapLocationNameStyleOffset = 0x10a0c + 0x1340 + 0x58;
+constexpr size_t kMapLocationNameStyleOffset = 0x10bbc + 0x1340 + 0x58;
 constexpr size_t kUiCharacterStyleSize = 0x58;
 constexpr size_t kStyleFontSize = 0x20; // UiCharacterStyle.fontSize
 constexpr float kFilterRowFontScale = 0.86f; // the Map Key's filter rows, a little smaller so long lists do not crowd
@@ -1846,8 +1847,8 @@ void SetSingleFilterState(uint8_t* client, uint8_t* mapState, uint32_t typeHash,
         typeHash == kSpoilsTypeHash)
         SaveMinimapConfig();
     if (mapState) {
-        *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
-        *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+        *reinterpret_cast<uint64_t*>(mapState + 0x542f8) = 0;
+        marker_cache_layout::MarkDirty(mapState);
     }
     if (FilterLockCount() > 0) SaveFilterLocks();
 }
@@ -1887,8 +1888,8 @@ void SetCategoryFilterState(uint8_t* client, uint8_t* mapState, uint8_t category
     }
     if (category == 3) SaveMinimapConfig();
     if (mapState) {
-        *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
-        *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+        *reinterpret_cast<uint64_t*>(mapState + 0x542f8) = 0;
+        marker_cache_layout::MarkDirty(mapState);
     }
     if (FilterLockCount() > 0) SaveFilterLocks();
 }
@@ -1915,8 +1916,8 @@ void SetAllFiltersState(uint8_t* client, uint8_t* mapState, bool enable, bool pa
         ApplyFilterChange(client, entries[i].typeHash, enable);
     }
     if (mapState) {
-        *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
-        *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+        *reinterpret_cast<uint64_t*>(mapState + 0x542f8) = 0;
+        marker_cache_layout::MarkDirty(mapState);
     }
     if (FilterLockCount() > 0) SaveFilterLocks();
 }
@@ -1995,8 +1996,8 @@ void RestoreFilterSnapshot(uint8_t* client, uint8_t* mapState, const FilterSnaps
     }
     SaveMinimapConfig();
     if (mapState) {
-        *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
-        *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+        *reinterpret_cast<uint64_t*>(mapState + 0x542f8) = 0;
+        marker_cache_layout::MarkDirty(mapState);
     }
     if (FilterLockCount() > 0) SaveFilterLocks();
 }
@@ -2188,8 +2189,8 @@ const void* GetIconRefForType(uint8_t* client, uint32_t typeHash) {
     if (IsOreHash(typeHash)) return kOreIcons[OreIndexOf(typeHash)];
     if (typeHash == 0x26d18a06u) {
         if (uint8_t* assets = GetUiAssets()) {
-            const auto* bytes = reinterpret_cast<const uint64_t*>(assets + 0xdf60);
-            if (bytes[0] != 0 || bytes[1] != 0) return assets + 0xdf60;
+            const auto* bytes = reinterpret_cast<const uint64_t*>(assets + 0xe0e0);
+            if (bytes[0] != 0 || bytes[1] != 0) return assets + 0xe0e0;
         }
     }
     if (!client || !g_getMarkerType) return nullptr;
@@ -2288,7 +2289,7 @@ size_t CollectActiveBuildZones(uint8_t* client, BuildZoneBox* outZones, size_t m
     if (uint8_t* clientWorld = GetClientWorld(client)) {
         if (*reinterpret_cast<uint8_t**>(clientWorld + 0x3da8) == client ||
             *reinterpret_cast<uint8_t**>(clientWorld + 0x3d98) == client) {
-            if (uint8_t* baseReg = *reinterpret_cast<uint8_t**>(clientWorld + 0x3eb8)) {
+            if (uint8_t* baseReg = *reinterpret_cast<uint8_t**>(clientWorld + 0x3ec8)) {
                 uint32_t baseCount = *reinterpret_cast<uint32_t*>(baseReg + 0x24);
                 if (baseCount <= 64u) {
                     for (uint32_t b = 0; b < baseCount && count < maxZones; ++b) {
@@ -2756,9 +2757,9 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     if (interactDown && !g_interactKeyWasDown) {
         g_lootPendingChest = kTotalChestCount;
         if (uint8_t* clientWorld = GetClientWorld(client)) {
-            int64_t rawX = *reinterpret_cast<int64_t*>(clientWorld + 0x2c08);
-            int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
-            int64_t rawZ = *reinterpret_cast<int64_t*>(clientWorld + 0x2c18);
+            int64_t rawX = *reinterpret_cast<int64_t*>(clientWorld + 0x2c18);
+            int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c20);
+            int64_t rawZ = *reinterpret_cast<int64_t*>(clientWorld + 0x2c28);
             if (rawX != 0 || rawZ != 0) {
                 g_lootPendingChest = NearestChestTo(static_cast<float>(static_cast<double>(rawX) * 2.3283064365386963e-10),
                                                     static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10),
@@ -3770,8 +3771,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
     if (dirty) {
         ++(*reinterpret_cast<uint32_t*>(client + 0x36e9fc));
         if (mapState) {
-            *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
-            *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+            *reinterpret_cast<uint64_t*>(mapState + 0x542f8) = 0;
+            marker_cache_layout::MarkDirty(mapState);
         }
     }
 }
@@ -4807,7 +4808,7 @@ void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vec
     uint8_t numSteps = *reinterpret_cast<uint8_t*>(mapView + 0x54);
     float baseZoomFactor = *reinterpret_cast<float*>(mapView + 0x58);
     if (baseZoomFactor <= 0.0001f) baseZoomFactor = 1.0f;
-    size_t* zoomStepPtr = *reinterpret_cast<size_t**>(mapView + 0x248);
+    size_t* zoomStepPtr = *reinterpret_cast<size_t**>(mapView + 0x258);
 
     float targetZoom = *reinterpret_cast<float*>(mapView + 0x10);
     if (numSteps > 0 && numSteps <= 16) {
@@ -4831,8 +4832,8 @@ void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vec
         targetZoom = maxStepZoom;
 
         if (g_pulsingPlaces.size() > 1) {
-            float viewW = *reinterpret_cast<float*>(mapView + 0x1d8);
-            float viewH = *reinterpret_cast<float*>(mapView + 0x1dc);
+            float viewW = *reinterpret_cast<float*>(mapView + 0x1e8);
+            float viewH = *reinterpret_cast<float*>(mapView + 0x1ec);
             if (viewW <= 100.0f) viewW = 1920.0f;
             if (viewH <= 100.0f) viewH = 1080.0f;
             float usableW = std::max(400.0f, viewW - 520.0f) * 0.72f;
@@ -4855,14 +4856,14 @@ void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vec
         if (zoomStepPtr) {
             *zoomStepPtr = targetStep;
         }
-        *reinterpret_cast<uint8_t*>(mapView + 0x240) = 1;
-        *reinterpret_cast<uint8_t*>(mapView + 0x250) = 0;
-        *reinterpret_cast<float*>(mapView + 0x258) = 0.0f;
+        *reinterpret_cast<uint8_t*>(mapView + 0x250) = 1;
+        *reinterpret_cast<uint8_t*>(mapView + 0x260) = 0;
+        *reinterpret_cast<float*>(mapView + 0x268) = 0.0f;
         *reinterpret_cast<float*>(mapView + 0x10) = targetZoom;
-        *reinterpret_cast<float*>(mapView + 0x228) = targetZoom;
+        *reinterpret_cast<float*>(mapView + 0x238) = targetZoom;
     }
 
-    *reinterpret_cast<uint64_t*>(mapView + 0x17c) = 0;
+    *reinterpret_cast<uint64_t*>(mapView + 0x18c) = 0;
 
     if (g_centerMapOnPos) {
         g_centerMapOnPos(mapView, targetCanvasPos2D, 1);
@@ -4870,27 +4871,27 @@ void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vec
 
     // Ensure immediate frame-accurate zoom & center state even when mapState[3] is 0 while dialog closes
     *reinterpret_cast<float*>(mapView + 0x10) = targetZoom;
-    *reinterpret_cast<float*>(mapView + 0x228) = targetZoom;
+    *reinterpret_cast<float*>(mapView + 0x238) = targetZoom;
     *reinterpret_cast<float*>(mapView + 0x20) = targetCanvasPos2D[0];
     *reinterpret_cast<float*>(mapView + 0x24) = targetCanvasPos2D[1];
     // NOTE: mapView + 0x28/+0x2c is the right-click waypoint target pos (0x140c269e1), NOT camera center!
     *reinterpret_cast<uint64_t*>(mapView + 0x28) = 0;
     *reinterpret_cast<float*>(mapView + 0x30) = targetCanvasPos2D[0];
     *reinterpret_cast<float*>(mapView + 0x34) = targetCanvasPos2D[1];
-    *reinterpret_cast<float*>(mapView + 0x198) = targetCanvasPos2D[0];
-    *reinterpret_cast<float*>(mapView + 0x19c) = targetCanvasPos2D[1];
-    *reinterpret_cast<float*>(mapView + 0x1a0) = targetCanvasPos2D[0];
-    *reinterpret_cast<float*>(mapView + 0x1a4) = targetCanvasPos2D[1];
-    *reinterpret_cast<float*>(mapView + 0x188) = 0.0f;
-    *reinterpret_cast<float*>(mapView + 0x18c) = 0.0f;
-    *reinterpret_cast<float*>(mapView + 0x1e8) = targetZoom * targetCanvasPos2D[0];
-    *reinterpret_cast<float*>(mapView + 0x1ec) = targetZoom * targetCanvasPos2D[1];
-    uint64_t panTs = *reinterpret_cast<uint64_t*>(mapView + 0x190);
+    *reinterpret_cast<float*>(mapView + 0x1a8) = targetCanvasPos2D[0];
+    *reinterpret_cast<float*>(mapView + 0x1ac) = targetCanvasPos2D[1];
+    *reinterpret_cast<float*>(mapView + 0x1b0) = targetCanvasPos2D[0];
+    *reinterpret_cast<float*>(mapView + 0x1b4) = targetCanvasPos2D[1];
+    *reinterpret_cast<float*>(mapView + 0x198) = 0.0f;
+    *reinterpret_cast<float*>(mapView + 0x19c) = 0.0f;
+    *reinterpret_cast<float*>(mapView + 0x1f8) = targetZoom * targetCanvasPos2D[0];
+    *reinterpret_cast<float*>(mapView + 0x1fc) = targetZoom * targetCanvasPos2D[1];
+    uint64_t panTs = *reinterpret_cast<uint64_t*>(mapView + 0x1a0);
     *reinterpret_cast<uint64_t*>(mapView + 0x08) = (panTs != 0) ? panTs : *reinterpret_cast<uint64_t*>(mapView + 0x00);
 
     // Clear any latched click state on mapView/mapState so releasing the mouse or pressing Ctrl cannot open the Waypoint menu
     *reinterpret_cast<uint8_t*>(mapState + 0xf8) = 0;
-    *reinterpret_cast<uint64_t*>(mapState + 0x56310) = 0;
+    *reinterpret_cast<uint64_t*>(mapState + 0x542e8) = 0;
     *reinterpret_cast<uint64_t*>(mapState + 0x28) = 0;
     *reinterpret_cast<uint64_t*>(mapState + 0x48) = 0;
     *reinterpret_cast<uint64_t*>(mapState + 0x50) = 0;
@@ -4900,8 +4901,8 @@ void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vec
     mapView[0x66] = 0;
     mapView[0x67] = 0;
     mapView[0x68] = 0;
-    *reinterpret_cast<uint64_t*>(mapView + 0x148) = 0;
-    *reinterpret_cast<uint64_t*>(mapView + 0x150) = 0;
+    *reinterpret_cast<uint64_t*>(mapView + 0x158) = 0;
+    *reinterpret_cast<uint64_t*>(mapView + 0x160) = 0;
 
     if (auto* g = static_cast<uint8_t*>(GetUiG())) {
         if (auto** pD0 = *reinterpret_cast<uint8_t***>(g + 0xd0)) {
@@ -5009,7 +5010,7 @@ uint64_t g_lastWorldMapFrameTick = 0;
 void ClearMapViewClickLatch(uint8_t* mapState) {
     if (!mapState) return;
     *reinterpret_cast<uint8_t*>(mapState + 0xf8) = 0;
-    *reinterpret_cast<uint64_t*>(mapState + 0x56310) = 0;
+    *reinterpret_cast<uint64_t*>(mapState + 0x542e8) = 0;
     *reinterpret_cast<uint64_t*>(mapState + 0x28) = 0;
     *reinterpret_cast<uint64_t*>(mapState + 0x48) = 0;
     *reinterpret_cast<uint64_t*>(mapState + 0x50) = 0;
@@ -5047,7 +5048,7 @@ void CenterMapViewOnWorldPos(uint8_t* mapState, float playerX, float playerZ) {
     float curZoom = *reinterpret_cast<float*>(mapView + 0x10);
     if (curZoom <= 0.01f) curZoom = 1.0f;
 
-    *reinterpret_cast<uint64_t*>(mapView + 0x17c) = 0;
+    *reinterpret_cast<uint64_t*>(mapView + 0x18c) = 0;
     if (g_centerMapOnPos) {
         g_centerMapOnPos(mapView, targetCanvasPos2D, 1);
     }
@@ -5058,15 +5059,15 @@ void CenterMapViewOnWorldPos(uint8_t* mapState, float playerX, float playerZ) {
     *reinterpret_cast<uint64_t*>(mapView + 0x28) = 0;
     *reinterpret_cast<float*>(mapView + 0x30) = targetCanvasPos2D[0];
     *reinterpret_cast<float*>(mapView + 0x34) = targetCanvasPos2D[1];
-    *reinterpret_cast<float*>(mapView + 0x198) = targetCanvasPos2D[0];
-    *reinterpret_cast<float*>(mapView + 0x19c) = targetCanvasPos2D[1];
-    *reinterpret_cast<float*>(mapView + 0x1a0) = targetCanvasPos2D[0];
-    *reinterpret_cast<float*>(mapView + 0x1a4) = targetCanvasPos2D[1];
-    *reinterpret_cast<float*>(mapView + 0x188) = 0.0f;
-    *reinterpret_cast<float*>(mapView + 0x18c) = 0.0f;
-    *reinterpret_cast<float*>(mapView + 0x1e8) = curZoom * targetCanvasPos2D[0];
-    *reinterpret_cast<float*>(mapView + 0x1ec) = curZoom * targetCanvasPos2D[1];
-    uint64_t panTs = *reinterpret_cast<uint64_t*>(mapView + 0x190);
+    *reinterpret_cast<float*>(mapView + 0x1a8) = targetCanvasPos2D[0];
+    *reinterpret_cast<float*>(mapView + 0x1ac) = targetCanvasPos2D[1];
+    *reinterpret_cast<float*>(mapView + 0x1b0) = targetCanvasPos2D[0];
+    *reinterpret_cast<float*>(mapView + 0x1b4) = targetCanvasPos2D[1];
+    *reinterpret_cast<float*>(mapView + 0x198) = 0.0f;
+    *reinterpret_cast<float*>(mapView + 0x19c) = 0.0f;
+    *reinterpret_cast<float*>(mapView + 0x1f8) = curZoom * targetCanvasPos2D[0];
+    *reinterpret_cast<float*>(mapView + 0x1fc) = curZoom * targetCanvasPos2D[1];
+    uint64_t panTs = *reinterpret_cast<uint64_t*>(mapView + 0x1a0);
     *reinterpret_cast<uint64_t*>(mapView + 0x08) = (panTs != 0) ? panTs : *reinterpret_cast<uint64_t*>(mapView + 0x00);
 
     ClearMapViewClickLatch(mapState);
@@ -5097,12 +5098,12 @@ void DrawPulsingMapHighlights(void* widgetRaw, const float* rootRect, uint8_t* m
     float zoom = *reinterpret_cast<float*>(mapView + 0x10);
     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
-    float originX = *reinterpret_cast<float*>(mapView + 0x1e0) +
-                    *reinterpret_cast<float*>(mapView + 0x17c) -
-                    *reinterpret_cast<float*>(mapView + 0x1e8);
-    float originY = *reinterpret_cast<float*>(mapView + 0x1e4) +
-                    *reinterpret_cast<float*>(mapView + 0x180) -
-                    *reinterpret_cast<float*>(mapView + 0x1ec);
+    float originX = *reinterpret_cast<float*>(mapView + 0x1f0) +
+                    *reinterpret_cast<float*>(mapView + 0x18c) -
+                    *reinterpret_cast<float*>(mapView + 0x1f8);
+    float originY = *reinterpret_cast<float*>(mapView + 0x1f4) +
+                    *reinterpret_cast<float*>(mapView + 0x190) -
+                    *reinterpret_cast<float*>(mapView + 0x1fc);
 
     const float rootX = rootRect ? rootRect[0] : 0.0f;
     const float rootY = rootRect ? rootRect[1] : 0.0f;
@@ -5121,7 +5122,7 @@ void DrawPulsingMapHighlights(void* widgetRaw, const float* rootRect, uint8_t* m
         pulseCol = *reinterpret_cast<uint32_t*>(assets + kMapPulseColorOffset) | 0xff000000u;
     }
 
-    // Use the game's native World Map marker pulse function (0x140cf63e0, assets+0xecc0 with blend mode 4)
+    // Use the game's native World Map marker pulse function (0x140cf63e0, assets+0xee70 with blend mode 4)
     for (const auto& p : g_pulsingPlaces) {
         float sx = originX + p.wx * zoom;
         float sy = originY + (mapWorldH - p.wz) * zoom;
@@ -5229,12 +5230,12 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
     if (!(zoom > 0.0f)) return 0;
-    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) +
-                          *reinterpret_cast<float*>(mapView + 0x17c) -
-                          *reinterpret_cast<float*>(mapView + 0x1e8);
-    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) +
-                          *reinterpret_cast<float*>(mapView + 0x180) -
-                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1f0) +
+                          *reinterpret_cast<float*>(mapView + 0x18c) -
+                          *reinterpret_cast<float*>(mapView + 0x1f8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1f4) +
+                          *reinterpret_cast<float*>(mapView + 0x190) -
+                          *reinterpret_cast<float*>(mapView + 0x1fc);
     const float left = rootRect[0], top = rootRect[1] + 114.0f; // below the menu banner
     const float right = rootRect[0] + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
     const float bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
@@ -5371,10 +5372,10 @@ void DrawVisitedSanctumsOnMap(void* widgetRaw, const float* rootRect, uint8_t* c
     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
     if (!(zoom > 0.0f)) return;
-    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
-                          *reinterpret_cast<float*>(mapView + 0x1e8);
-    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
-                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1f0) + *reinterpret_cast<float*>(mapView + 0x18c) -
+                          *reinterpret_cast<float*>(mapView + 0x1f8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1f4) + *reinterpret_cast<float*>(mapView + 0x190) -
+                          *reinterpret_cast<float*>(mapView + 0x1fc);
     const float left = rootRect[0], top = rootRect[1];
     const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
     const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
@@ -5406,10 +5407,10 @@ void DrawRefilledChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* cl
     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
     if (!(zoom > 0.0f)) return;
-    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
-                          *reinterpret_cast<float*>(mapView + 0x1e8);
-    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
-                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1f0) + *reinterpret_cast<float*>(mapView + 0x18c) -
+                          *reinterpret_cast<float*>(mapView + 0x1f8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1f4) + *reinterpret_cast<float*>(mapView + 0x190) -
+                          *reinterpret_cast<float*>(mapView + 0x1fc);
     const float left = rootRect[0], top = rootRect[1];
     const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
     const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
@@ -5456,7 +5457,7 @@ void DrawHeightCaretAbs(void* widgetRaw, float ax, float ay, bool up, float alph
 bool LocalPlayerY(uint8_t* client, float& y) {
     uint8_t* clientWorld = GetClientWorld(client);
     if (!clientWorld) return false;
-    const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
+    const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c20);
     y = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
     return rawY != 0 && std::isfinite(y);
 }
@@ -5488,10 +5489,10 @@ void DrawGraveHeightsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clie
     uint8_t* base = *reinterpret_cast<uint8_t**>(client + 0x3e6a78);
     const uint64_t count = *reinterpret_cast<uint64_t*>(client + 0x3e6a78 + 8);
     if (!base || count == 0 || count > 10000) return;
-    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
-                          *reinterpret_cast<float*>(mapView + 0x1e8);
-    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
-                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1f0) + *reinterpret_cast<float*>(mapView + 0x18c) -
+                          *reinterpret_cast<float*>(mapView + 0x1f8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1f4) + *reinterpret_cast<float*>(mapView + 0x190) -
+                          *reinterpret_cast<float*>(mapView + 0x1fc);
     const float left = rootRect[0], top = rootRect[1];
     const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
     const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
@@ -5593,12 +5594,12 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
     if (!(zoom > 0.0f)) return;
-    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) +
-                          *reinterpret_cast<float*>(mapView + 0x17c) -
-                          *reinterpret_cast<float*>(mapView + 0x1e8);
-    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) +
-                          *reinterpret_cast<float*>(mapView + 0x180) -
-                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1f0) +
+                          *reinterpret_cast<float*>(mapView + 0x18c) -
+                          *reinterpret_cast<float*>(mapView + 0x1f8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1f4) +
+                          *reinterpret_cast<float*>(mapView + 0x190) -
+                          *reinterpret_cast<float*>(mapView + 0x1fc);
     const float left = rootRect[0], top = rootRect[1];
     const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
     const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
@@ -5726,10 +5727,10 @@ void DrawWoodChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client
     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
     if (!(zoom > 0.0f)) return;
-    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + *reinterpret_cast<float*>(mapView + 0x17c) -
-                          *reinterpret_cast<float*>(mapView + 0x1e8);
-    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + *reinterpret_cast<float*>(mapView + 0x180) -
-                          *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1f0) + *reinterpret_cast<float*>(mapView + 0x18c) -
+                          *reinterpret_cast<float*>(mapView + 0x1f8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1f4) + *reinterpret_cast<float*>(mapView + 0x190) -
+                          *reinterpret_cast<float*>(mapView + 0x1fc);
     const float left = rootRect[0], top = rootRect[1];
     const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
     const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
@@ -6478,7 +6479,7 @@ const PanelLayout& CurrentPanelLayout() {
 }
 
 // World Map zoom steps. The map view keeps its steps in a float[5] at mapView+0x40, the count at +0x54 and the
-// current step's index at **(mapView+0x248); the zoom is step * mapView+0x58 (0.2). The game fills in 16, 8, 4, 2
+// current step's index at **(mapView+0x258); the zoom is step * mapView+0x58 (0.2). The game fills in 16, 8, 4, 2
 // (it leaves out its 0.7, which would make the map narrower than the screen), and a sixth step has no room. So the
 // mod keeps the whole list and shows the view five of them at a time: when the view reaches the window's last (or
 // first) step and there are more, the window slides one along and the index moves back one, which leaves the
@@ -6497,7 +6498,7 @@ int g_mapZoomWindowStart = kOverworldFirstStep;
 void FitMapZoom(uint8_t* mapState, float w, float h, float areaW, float areaH) {
     uint8_t* mapView = mapState ? *reinterpret_cast<uint8_t**>(mapState + 8) : nullptr;
     if (!mapView || mapView[0x54] != kMapZoomWindow || w <= 0.0f || h <= 0.0f) return;
-    uint64_t* idx = *reinterpret_cast<uint64_t**>(mapView + 0x248);
+    uint64_t* idx = *reinterpret_cast<uint64_t**>(mapView + 0x258);
     const float scale = *reinterpret_cast<float*>(mapView + 0x58);
     if (!idx || !(scale > 0.0f)) return;
     const float fit = std::min(areaW / w, areaH / h) * 0.92f;
@@ -6515,7 +6516,7 @@ void ApplyMapZoomSteps(uint8_t* mapState) {
     uint8_t* mapView = mapState ? *reinterpret_cast<uint8_t**>(mapState + 8) : nullptr;
     if (!mapView) return;
     auto* steps = reinterpret_cast<float*>(mapView + 0x40);
-    uint64_t* idx = *reinterpret_cast<uint64_t**>(mapView + 0x248);
+    uint64_t* idx = *reinterpret_cast<uint64_t**>(mapView + 0x258);
     if (!idx) return;
     auto windowMatches = [&](int start) {
         for (int i = 0; i < kMapZoomWindow; ++i) {
@@ -6587,18 +6588,18 @@ void KeepDungeonInView(uint8_t* mapState, const float* rootRect) {
     float minX, minZ, maxX, maxZ;
     uint8_t* mapView = mapState ? *reinterpret_cast<uint8_t**>(mapState + 8) : nullptr;
     if (!mapView || !rootRect || !g_centerMapOnPos || !halls::MapBounds(minX, minZ, maxX, maxZ)) return;
-    const float dragX = *reinterpret_cast<float*>(mapView + 0x17c), dragY = *reinterpret_cast<float*>(mapView + 0x180);
+    const float dragX = *reinterpret_cast<float*>(mapView + 0x18c), dragY = *reinterpret_cast<float*>(mapView + 0x190);
     const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
     // Only when the map has just opened on this hall, the zoom step has changed or the map was moved and has come to
     // rest with the mouse button up (the game moves the view itself while you drag; +0x17c keeps an offset a zoom left)
-    uint64_t* stepIdx = *reinterpret_cast<uint64_t**>(mapView + 0x248);
+    uint64_t* stepIdx = *reinterpret_cast<uint64_t**>(mapView + 0x258);
     const int step = g_mapZoomWindowStart + (stepIdx ? static_cast<int>(*stepIdx) : 0);
     static int s_dungeon = -1, s_step = -1;
     static bool s_dragging = false, s_pending = false, s_moved = false;
     static uint64_t s_lastFrame = 0, s_movedTick = 0;
     static float s_cx = 0.0f, s_cy = 0.0f;
     const uint64_t now = GetTickCount64();
-    const float cx = *reinterpret_cast<float*>(mapView + 0x1e8), cy = *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float cx = *reinterpret_cast<float*>(mapView + 0x1f8), cy = *reinterpret_cast<float*>(mapView + 0x1fc);
     if (std::fabs(cx - s_cx) > 0.5f || std::fabs(cy - s_cy) > 0.5f) {
         s_moved = true;
         s_movedTick = now;
@@ -6623,8 +6624,8 @@ void KeepDungeonInView(uint8_t* mapState, const float* rootRect) {
     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
     if (!(zoom > 0.0001f)) return;
-    const float originX = *reinterpret_cast<float*>(mapView + 0x1e0) + dragX - *reinterpret_cast<float*>(mapView + 0x1e8);
-    const float originY = *reinterpret_cast<float*>(mapView + 0x1e4) + dragY - *reinterpret_cast<float*>(mapView + 0x1ec);
+    const float originX = *reinterpret_cast<float*>(mapView + 0x1f0) + dragX - *reinterpret_cast<float*>(mapView + 0x1f8);
+    const float originY = *reinterpret_cast<float*>(mapView + 0x1f4) + dragY - *reinterpret_cast<float*>(mapView + 0x1fc);
     const float left = rootRect[0], right = rootRect[0] + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
     const float top = rootRect[1] + 88.0f, bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f) - 64.0f;
     // What the screen shows, on the map's canvas (x east, y south from the world's north edge), and the hall there
@@ -6640,20 +6641,20 @@ void KeepDungeonInView(uint8_t* mapState, const float* rootRect) {
     const float dx = shift(v0x, v1x, minX, maxX), dy = shift(v0y, v1y, h0y, h1y);
     if (std::fabs(dx) < 0.5f && std::fabs(dy) < 0.5f) return;
     // What is in the middle now (as the zoom steps work it out), moved by the difference; the offset cleared first
-    float center[2] = {(*reinterpret_cast<float*>(mapView + 0x1e8) - dragX) / zoom + dx,
-                       (*reinterpret_cast<float*>(mapView + 0x1ec) - dragY) / zoom + dy};
-    *reinterpret_cast<uint64_t*>(mapView + 0x17c) = 0;
+    float center[2] = {(*reinterpret_cast<float*>(mapView + 0x1f8) - dragX) / zoom + dx,
+                       (*reinterpret_cast<float*>(mapView + 0x1fc) - dragY) / zoom + dy};
+    *reinterpret_cast<uint64_t*>(mapView + 0x18c) = 0;
     // The game's re-centring also sets the zoom: kept as it is (+0x10 now, +0x228 the target), as the zoom steps do
-    const float zoomTarget = *reinterpret_cast<float*>(mapView + 0x228);
+    const float zoomTarget = *reinterpret_cast<float*>(mapView + 0x238);
     g_centerMapOnPos(mapView, center, 1);
     *reinterpret_cast<float*>(mapView + 0x10) = zoom;
-    *reinterpret_cast<float*>(mapView + 0x228) = zoomTarget;
+    *reinterpret_cast<float*>(mapView + 0x238) = zoomTarget;
     *reinterpret_cast<float*>(mapView + 0x20) = center[0];
     *reinterpret_cast<float*>(mapView + 0x24) = center[1];
     *reinterpret_cast<float*>(mapView + 0x30) = center[0];
     *reinterpret_cast<float*>(mapView + 0x34) = center[1];
-    *reinterpret_cast<float*>(mapView + 0x198) = center[0];
-    *reinterpret_cast<float*>(mapView + 0x19c) = center[1];
+    *reinterpret_cast<float*>(mapView + 0x1a8) = center[0];
+    *reinterpret_cast<float*>(mapView + 0x1ac) = center[1];
 }
 
 void DrawMapKeyOverlay(void* mapStateVoid) {
@@ -6675,8 +6676,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
     // Detect World Map opening so we always center on the player's actual location when opening the map
     if (g_bridgeRefreshMap) {
-        *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
-        *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+        *reinterpret_cast<uint64_t*>(mapState + 0x542f8) = 0;
+        marker_cache_layout::MarkDirty(mapState);
         g_bridgeRefreshMap = false;
     }
     if (g_bridgeRecenterMap) {
@@ -6809,7 +6810,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     g_toggleKeyWasDown = toggleKeyDown;
 
     // Numpad + / - (or Page Up / Page Down) zoom the World Map one step in / out about the middle of the view (the
-    // wheel zooms about the cursor). The view's centre in map canvas units is (mapView+0x1e8 - drag) / zoom; the step
+    // wheel zooms about the cursor). The view's centre in map canvas units is (mapView+0x1f8 - drag) / zoom; the step
     // is set as Find does.
     {
         static bool plusWasDown = false, minusWasDown = false;
@@ -6821,7 +6822,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         plusWasDown = plusDown;
         minusWasDown = minusDown;
         uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
-        uint64_t* idx = mapView ? *reinterpret_cast<uint64_t**>(mapView + 0x248) : nullptr;
+        uint64_t* idx = mapView ? *reinterpret_cast<uint64_t**>(mapView + 0x258) : nullptr;
         const uint8_t numSteps = mapView ? mapView[0x54] : 0;
         const float zoom = mapView ? *reinterpret_cast<float*>(mapView + 0x10) : 0.0f;
         if (dir != 0 && idx && numSteps > 0 && numSteps <= 16 && *idx < numSteps && zoom > 0.0001f) {
@@ -6830,32 +6831,32 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 float base = *reinterpret_cast<float*>(mapView + 0x58);
                 if (base <= 0.0001f) base = 1.0f;
                 const float target = *reinterpret_cast<float*>(mapView + 0x40 + next * 4) * base;
-                // (mapView+0x17c is a drag still in progress, in screen units: part of what is in the middle now)
-                float center[2] = {(*reinterpret_cast<float*>(mapView + 0x1e8) - *reinterpret_cast<float*>(mapView + 0x17c)) / zoom,
-                                   (*reinterpret_cast<float*>(mapView + 0x1ec) - *reinterpret_cast<float*>(mapView + 0x180)) / zoom};
+                // (mapView+0x18c is a drag still in progress, in screen units: part of what is in the middle now)
+                float center[2] = {(*reinterpret_cast<float*>(mapView + 0x1f8) - *reinterpret_cast<float*>(mapView + 0x18c)) / zoom,
+                                   (*reinterpret_cast<float*>(mapView + 0x1fc) - *reinterpret_cast<float*>(mapView + 0x190)) / zoom};
                 *idx = static_cast<uint64_t>(next);
-                *reinterpret_cast<uint8_t*>(mapView + 0x240) = 1;
-                *reinterpret_cast<uint8_t*>(mapView + 0x250) = 0;
-                *reinterpret_cast<float*>(mapView + 0x258) = 0.0f;
+                *reinterpret_cast<uint8_t*>(mapView + 0x250) = 1;
+                *reinterpret_cast<uint8_t*>(mapView + 0x260) = 0;
+                *reinterpret_cast<float*>(mapView + 0x268) = 0.0f;
                 *reinterpret_cast<float*>(mapView + 0x10) = target;
-                *reinterpret_cast<float*>(mapView + 0x228) = target;
-                *reinterpret_cast<uint64_t*>(mapView + 0x17c) = 0;
+                *reinterpret_cast<float*>(mapView + 0x238) = target;
+                *reinterpret_cast<uint64_t*>(mapView + 0x18c) = 0;
                 if (g_centerMapOnPos) g_centerMapOnPos(mapView, center, 1);
                 *reinterpret_cast<float*>(mapView + 0x10) = target;
-                *reinterpret_cast<float*>(mapView + 0x228) = target;
+                *reinterpret_cast<float*>(mapView + 0x238) = target;
                 *reinterpret_cast<float*>(mapView + 0x20) = center[0];
                 *reinterpret_cast<float*>(mapView + 0x24) = center[1];
                 *reinterpret_cast<float*>(mapView + 0x30) = center[0];
                 *reinterpret_cast<float*>(mapView + 0x34) = center[1];
-                *reinterpret_cast<float*>(mapView + 0x198) = center[0];
-                *reinterpret_cast<float*>(mapView + 0x19c) = center[1];
-                *reinterpret_cast<float*>(mapView + 0x1a0) = center[0];
-                *reinterpret_cast<float*>(mapView + 0x1a4) = center[1];
-                *reinterpret_cast<float*>(mapView + 0x188) = 0.0f;
-                *reinterpret_cast<float*>(mapView + 0x18c) = 0.0f;
-                *reinterpret_cast<float*>(mapView + 0x1e8) = target * center[0];
-                *reinterpret_cast<float*>(mapView + 0x1ec) = target * center[1];
-                const uint64_t panTs = *reinterpret_cast<uint64_t*>(mapView + 0x190);
+                *reinterpret_cast<float*>(mapView + 0x1a8) = center[0];
+                *reinterpret_cast<float*>(mapView + 0x1ac) = center[1];
+                *reinterpret_cast<float*>(mapView + 0x1b0) = center[0];
+                *reinterpret_cast<float*>(mapView + 0x1b4) = center[1];
+                *reinterpret_cast<float*>(mapView + 0x198) = 0.0f;
+                *reinterpret_cast<float*>(mapView + 0x19c) = 0.0f;
+                *reinterpret_cast<float*>(mapView + 0x1f8) = target * center[0];
+                *reinterpret_cast<float*>(mapView + 0x1fc) = target * center[1];
+                const uint64_t panTs = *reinterpret_cast<uint64_t*>(mapView + 0x1a0);
                 *reinterpret_cast<uint64_t*>(mapView + 0x08) = panTs ? panTs : *reinterpret_cast<uint64_t*>(mapView + 0x00);
                 // Centring leaves a waypoint target (+0x28) and a latched click behind: cleared as after Find, and the
                 // map's clicks stay latched off for a few frames
@@ -6915,11 +6916,11 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         halls::DrawMapPlan(root.raw, rootRect, mapState); // in a Hollow Hall: its floor plan over the empty corner
         if (!halls::MapActive()) DrawLevelAreasOnMap(root.raw, rootRect, mapState);
         // A marker's menu (Fast Travel / Send Ping / Set as Waypoint) is open: the mod's icons are drawn after the
-        // game's, so they stay out of its box (mapState +0xf8 is 3 and +0x56310 holds the marker while it is open; the
+        // game's, so they stay out of its box (mapState +0xf8 is 3 and +0x542e8 holds the marker while it is open; the
         // menu opens beside the marker, on its right unless that runs off the screen)
         g_drawExclusion.active = false;
         if (*reinterpret_cast<uint32_t*>(mapState + 0xf8) == 3) {
-            const uint8_t* menuMarker = *reinterpret_cast<uint8_t**>(mapState + 0x56310);
+            const uint8_t* menuMarker = *reinterpret_cast<uint8_t**>(mapState + 0x542e8);
             uint8_t* view = *reinterpret_cast<uint8_t**>(mapState + 8);
             if (menuMarker && view) {
                 const float zoom = *reinterpret_cast<float*>(view + 0x10);
@@ -7079,12 +7080,12 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     float zoom = *reinterpret_cast<float*>(mapView + 0x10);
                     float mapWorldH = *reinterpret_cast<float*>(mapView + 0x3c);
                     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
-                    float originX = *reinterpret_cast<float*>(mapView + 0x1e0) +
-                                    *reinterpret_cast<float*>(mapView + 0x17c) -
-                                    *reinterpret_cast<float*>(mapView + 0x1e8);
-                    float originY = *reinterpret_cast<float*>(mapView + 0x1e4) +
-                                    *reinterpret_cast<float*>(mapView + 0x180) -
-                                    *reinterpret_cast<float*>(mapView + 0x1ec);
+                    float originX = *reinterpret_cast<float*>(mapView + 0x1f0) +
+                                    *reinterpret_cast<float*>(mapView + 0x18c) -
+                                    *reinterpret_cast<float*>(mapView + 0x1f8);
+                    float originY = *reinterpret_cast<float*>(mapView + 0x1f4) +
+                                    *reinterpret_cast<float*>(mapView + 0x190) -
+                                    *reinterpret_cast<float*>(mapView + 0x1fc);
                     if (zoom > 0.01f) {
                         float clickWx = (mx - originX) / zoom;
                         float clickWz = mapWorldH - ((my - originY) / zoom);
@@ -7849,8 +7850,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             if (g_settingsOpen && !g_findDialogOpen) {
                 if (DrawSettingsCardAbs(anchor.raw, settingsX, settingsY, mx, my, haveCursor, clicked, g_settingsOpen, mapState)) {
                     SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
-                    *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
-                    *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+                    *reinterpret_cast<uint64_t*>(mapState + 0x542f8) = 0;
+                    marker_cache_layout::MarkDirty(mapState);
                 }
             }
 
@@ -8739,8 +8740,8 @@ bool GetHudPlayerWorldPos(uint8_t* client, float& outX, float& outZ) {
     if (!client) return false;
     // 1. Primary live player world position from clientWorld (GetUiG() + 0x47d4e0)
     if (uint8_t* clientWorld = GetClientWorld(client)) {
-        int64_t rawX = *reinterpret_cast<int64_t*>(clientWorld + 0x2c08);
-        int64_t rawZ = *reinterpret_cast<int64_t*>(clientWorld + 0x2c18);
+        int64_t rawX = *reinterpret_cast<int64_t*>(clientWorld + 0x2c18);
+        int64_t rawZ = *reinterpret_cast<int64_t*>(clientWorld + 0x2c28);
         if (rawX != 0 || rawZ != 0) {
             float wx = static_cast<float>(static_cast<double>(rawX) * 2.3283064365386963e-10);
             float wz = static_cast<float>(static_cast<double>(rawZ) * 2.3283064365386963e-10);
@@ -9080,7 +9081,7 @@ int GetActivePlayerWeather(uint8_t* client, float /*playerX*/, float /*playerZ*/
         if (!weatherSys || !clientWorld) return 0;
         int64_t nowNs = 0;
         if (!WeatherClockNs(weatherSys, nowNs)) return 0;
-        const int64_t* pos = reinterpret_cast<const int64_t*>(clientWorld + 0x2c08); // x, y, z (32.32)
+        const int64_t* pos = reinterpret_cast<const int64_t*>(clientWorld + 0x2c18); // x, y, z (32.32)
         float mix[4]{}; // clear, rain, snow, blizzard
         weatherAt(mix, weatherSys, pos, nowNs);
         // 1 rain, 2 storm (the game's blizzard), 3 snow
@@ -10016,7 +10017,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             float playerY = 0.0f;
             bool havePlayerY = false;
             if (uint8_t* clientWorld = GetClientWorld(client)) {
-                const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
+                const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c20);
                 playerY = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
                 havePlayerY = rawY != 0 && std::isfinite(playerY);
             }
@@ -10093,7 +10094,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             float knowPlayerY = 0.0f;
             bool knowHavePlayerY = false;
             if (uint8_t* clientWorld = GetClientWorld(client)) {
-                const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
+                const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c20);
                 knowPlayerY = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
                 knowHavePlayerY = rawY != 0 && std::isfinite(knowPlayerY);
             }
@@ -10191,7 +10192,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                             md.sx - md.size * 0.5f, md.sy - md.size * 0.5f,
                             md.size, md.size, md.color, md.alpha);
             if (md.isCleared) {
-                // Draw the native completed checkmark (assets + 0xed80) on completed Shroud Roots, Vaults, POIs, or looted chests
+                // Draw the native completed checkmark (assets + 0xef30) on completed Shroud Roots, Vaults, POIs, or looted chests
                 float checkSz = std::max(10.0f, md.size * 0.62f);
                 float checkX = md.sx + md.size * 0.45f - checkSz * 0.72f;
                 float checkY = md.sy + md.size * 0.45f - checkSz * 0.72f;
@@ -10248,7 +10249,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             float localY = 0.0f;
             bool haveLocalY = false;
             if (uint8_t* clientWorld = GetClientWorld(client)) {
-                const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c10);
+                const int64_t rawY = *reinterpret_cast<int64_t*>(clientWorld + 0x2c20);
                 localY = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
                 haveLocalY = rawY != 0 && std::isfinite(localY);
             }
@@ -10619,8 +10620,8 @@ void SafeDrawHudMinimapOverlay() {
 void RefreshMapMarkers() {
     if (uint8_t* mapState = g_lastMapState) {
         __try {
-            *reinterpret_cast<uint64_t*>(mapState + 0x56320) = 0;
-            *reinterpret_cast<uint8_t*>(mapState + 0xe1dc) = 1;
+            *reinterpret_cast<uint64_t*>(mapState + 0x542f8) = 0;
+            marker_cache_layout::MarkDirty(mapState);
         } __except (EXCEPTION_EXECUTE_HANDLER) {
         }
     }
@@ -10657,7 +10658,7 @@ void RestoreGameZoomSteps() {
                 auto* steps = reinterpret_cast<float*>(mapView + 0x40);
                 for (int i = 0; i < 4; ++i) steps[i] = kMapZoomSteps[kOverworldFirstStep + i];
                 mapView[0x54] = 4;
-                if (uint64_t* idx = *reinterpret_cast<uint64_t**>(mapView + 0x248)) *idx = std::min<uint64_t>(*idx, 3);
+                if (uint64_t* idx = *reinterpret_cast<uint64_t**>(mapView + 0x258)) *idx = std::min<uint64_t>(*idx, 3);
             }
         } __except (EXCEPTION_EXECUTE_HANDLER) {
         }
@@ -10821,7 +10822,7 @@ void BuildWorldMapPlayersHook(void* outVec, void* mapState) {
     if (lease && g_worldMapModded) {
         FilterWorldMapPlayerMarkers(outVec);
         // BuildWorldMapPlayers is called by 0x140d8f270 immediately before iterating arr0..arr3
-        // to populate mapState+0x56318. Syncing arr0 here ensures newly replicated ECS markers
+        // to populate mapState+0x542f0. Syncing arr0 here ensures newly replicated ECS markers
         // are always filtered (hiding duplicate 0x98b2d65d spires and locked 0xa17072be spires)
         // before the World Map reads arr0.
         SafePreSyncWorldMapMarkers();
@@ -11123,7 +11124,7 @@ bool InstallMapKeyPanelHook(LogFn logger) {
     uint8_t* fnOpaque = FindUnique("40 53 48 83 EC 20 F3 0F 10 0D ?? ?? ?? ?? 48 8B D9 48 8B 49 08 0F 28 C1 0F 14 C1 66 48 0F 7E C2 E8");
     // drawMapFilterMenu, worldMapInput and doPlayStateUi are matched behind their prologues (the
     // bytes a hook replaces), so they are found whichever mod hooked them first.
-    uint8_t* fnDrawMapFilterMenuTail = FindUnique("48 81 EC 30 08 00 00 0F 29 70 B8 4C 8B F9 48 8B 0D");
+    uint8_t* fnDrawMapFilterMenuTail = FindUnique("48 81 EC 60 08 00 00 0F 29 70 B8 4C 8B F9 48 8B 0D");
     uint8_t* fnWorldMapInputTail = FindUnique("48 8D AC 24 A0 F8 FF FF 48 81 EC 60 08 00 00 48 8B 05");
     uint8_t* fnUpdateMapViewport = FindUnique("48 8B C4 48 89 58 20 55 56 57 41 56 41 57 48 8D 68 98 48 81 EC 40 01 00 00");
     uint8_t* fnSetTypeFilterMid = FindUnique("8D 42 0C C6 06 44 89 47 40");
@@ -11163,6 +11164,13 @@ bool InstallMapKeyPanelHook(LogFn logger) {
     }
 
     uint8_t* fnDrawMapFilterMenu = fnDrawMapFilterMenuTail - 20;
+    // Check the field actually read by this native build, before attaching map hooks.
+    uint8_t dirtyRead[sizeof(marker_cache_layout::nativeRead)]{};
+    ReadCode(fnDrawMapFilterMenu+marker_cache_layout::nativeReadOffset,dirtyRead,sizeof(dirtyRead));
+    if(!marker_cache_layout::NativeMatches(dirtyRead)) {
+        if(g_log)g_log("MapKeyPanel: native marker-cache layout changed; map UI hooks disabled");return false;
+    }
+
 
     // Read through the loader: the game's bytes even if another mod hooked BeginWidget.
     int32_t gDisp = 0;

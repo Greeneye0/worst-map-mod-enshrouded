@@ -1,6 +1,6 @@
 // Included in map_key_panel.cpp's private namespace, after halls.inl.
 // The dungeon map pans only over its hall's box, through the game's own pan clamp (FUN_140d7ffd0, the World Map view's
-// update): it writes the view's bounds as the whole world ({0, 0, +0x38, +0x3c} into mapView +0x1b8..+0x1c4, x, y,
+// update): it writes the view's bounds as the whole world ({0, 0, +0x38, +0x3c} into mapView +0x1c8..+0x1c4, x, y,
 // width, height on the map's canvas), calls FUN_140a412f0 and then clamps the view to those bounds. The call is sent
 // through a small stub that, while a dungeon map shows, writes the hall's box over the bounds first and then goes on to
 // the game's function; the game's clamp does the rest, so nothing fights the drag. Moving the view from the mod each
@@ -86,7 +86,7 @@ void InstallTerrainSkip(uint8_t* page) {
 
 bool Install() {
     // movups [rsi+0x1b8], xmm2 / call FUN_140a412f0 / movss xmm0, [rsi+0x1b8]
-    uint8_t* hit = FindUnique("0F 11 96 B8 01 00 00 E8 ?? ?? ?? ?? F3 0F 10 86 B8 01 00 00");
+    uint8_t* hit = FindUnique("0F 11 96 C8 01 00 00 E8 ?? ?? ?? ?? F3 0F 10 86 C8 01 00 00");
     if (!hit) {
         if (g_log) g_log("Dungeon map panning: the game's pan clamp was not found; panning is free");
         return false;
@@ -130,14 +130,14 @@ bool Install() {
                                  0x48, 0x3B, 0x70, 0x18,
                                  0x0F, 0x85, 0, 0, 0, 0,
                                  0x4C, 0x8B, 0x58, 0x04,
-                                 0x4C, 0x89, 0x9E, 0xB8, 0x01, 0x00, 0x00,
+                                 0x4C, 0x89, 0x9E, 0xC8, 0x01, 0x00, 0x00,
                                  0x4C, 0x8B, 0x58, 0x0C,
-                                 0x4C, 0x89, 0x9E, 0xC0, 0x01, 0x00, 0x00};
+                                 0x4C, 0x89, 0x9E, 0xD0, 0x01, 0x00, 0x00};
     auto sse = [&](uint8_t op, uint8_t modrm, uint32_t disp) { // F3 0F op xmm4, [base+disp32]
         stub.insert(stub.end(), {0xF3, 0x0F, op, modrm});
         for (int i = 0; i < 4; ++i) stub.push_back(static_cast<uint8_t>(disp >> (8 * i)));
     };
-    for (uint32_t field : {0x20u, 0x24u, 0x1a0u, 0x1a4u}) {
+    for (uint32_t field : {0x20u, 0x24u, 0x1b0u, 0x1b4u}) {
         const uint32_t axis = (field & 4) ? 4u : 0u;
         sse(0x10, 0xA6, field);                                      // movss xmm4, [rsi+field]
         sse(0x5F, 0xA0, static_cast<uint32_t>(offsetof(StubData, lo)) + axis); // maxss xmm4, [rax+lo]
