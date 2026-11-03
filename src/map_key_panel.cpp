@@ -132,6 +132,35 @@ int KnowledgeRemaining(size_t ore); // knowledge.inl
 namespace chest_glow { void UpdateKey(uint8_t* client, bool appFocused); void DrawMarkers(uint8_t* client); } // chest_glow.inl
 bool IsKnowledgeDeposit(size_t d);
 const char* KnowledgeSpotName(size_t d);
+bool ReadLocaText(uint32_t locaId, char* out, size_t cap);
+
+// A kStaticItems item's name in the game's language (its markup dropped: "<keyitem>Kettle</keyitem>"), "" if none
+const char* StaticItemName(size_t i) {
+    static char names[kStaticItemCount][80]{};
+    static uint8_t state[kStaticItemCount]{}; // 0 not read yet, 1 have it, 2 none
+    static int builtFor = -1;
+    const int lang = static_cast<int>(umm_lang::Current());
+    if (builtFor != lang) {
+        std::memset(state, 0, sizeof(state));
+        builtFor = lang;
+    }
+    if (i >= kStaticItemCount) return "";
+    if (state[i] == 0) {
+        state[i] = ReadLocaText(kStaticItems[i].nameLoca, names[i], sizeof(names[i])) ? 1 : 2;
+        char* out = names[i];
+        for (const char* in = names[i]; *in; ++in) {
+            if (*in == '<') {
+                if (const char* close = std::strchr(in, '>')) {
+                    in = close;
+                    continue;
+                }
+            }
+            *out++ = *in;
+        }
+        *out = 0;
+    }
+    return state[i] == 1 ? names[i] : "";
+}
 void UpdateKnowledge();
 void UpdateManualBosses(uint8_t* client);
 void NoteBossKills(uint8_t* client);
@@ -4911,6 +4940,28 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
         const char* name = IsKnowledgeDeposit(d) ? KnowledgeSpotName(d) : OreName(dep.ore);
         processCandidate(static_cast<float>(dep.x), static_cast<float>(dep.z), OreHash(dep.ore), OreHash(dep.ore),
                          isFilterOn, false, name, OreName(dep.ore));
+    }
+
+    // 2c. Items the game always puts in one container (Ghost Glider, recipes, blocks, tools...) by their own names, at
+    // that container: a gold, silver or wooden chest by its kind, any other as a container. Shown whatever the filters
+    // (an item searched for by name).
+    for (size_t i = 0; i < kStaticItemCount; ++i) {
+        const StaticItem& it = kStaticItems[i];
+        const char* name = StaticItemName(i);
+        if (!*name) continue;
+        float wx = static_cast<float>(it.x), wz = static_cast<float>(it.z);
+        uint32_t icon = OreHash(static_cast<size_t>(Ore::UniqueGear));
+        const char* where = umm_lang::T(umm_lang::Str::Container);
+        if (it.chest < kTotalChestCount) {
+            const ChestSpawn& sp = kChestSpawns[it.chest];
+            wx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
+            wz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
+            icon = ChestTypeHash(it.chest);
+            where = IsGoldChest(it.chest) ? umm_lang::T(umm_lang::Str::GoldChest)
+                    : !IsWoodChest(it.chest) ? umm_lang::T(umm_lang::Str::SilverChest)
+                                             : WoodChestName();
+        }
+        processCandidate(wx, wz, icon, icon, true, false, name, where);
     }
 
     // 3. Scan Other Players in multiplayer from client + 0x4642c0

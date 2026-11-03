@@ -530,6 +530,9 @@ const Row kTable[] = {
     {"Tint Strength", "Farbstärke", "Intensité de la teinte", "Intensità della tinta", "Intensidad del tinte",
      "Intensidade da cor", "Siła zabarwienia", "Сила заливки", "Сила заливки", "Renk yoğunluğu", "色の濃さ", "색 농도",
      "着色强度", "著色強度", "ความเข้มของสี"},
+    // Container: Find on the map, an item the game always puts in one container that is not a chest (a crate, a box)
+    {"Container", "Behälter", "Conteneur", "Contenitore", "Contenedor", "Recipiente", "Pojemnik", "Контейнер",
+     "Контейнер", "Kap", "容器", "보관함", "容器", "容器", "ภาชนะ"},
 };
 // clang-format on
 
