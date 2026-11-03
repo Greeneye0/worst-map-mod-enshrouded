@@ -4806,7 +4806,8 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
     std::string queryLower = ToLowerAscii(queryTrim);
 
     auto processCandidate = [&](float wx, float wz, uint32_t iconHash, uint32_t filterHash,
-                                bool isFilterOn, bool isLocked, const std::string& title, const char* typeLabel) {
+                                bool isFilterOn, bool isLocked, const std::string& title, const char* typeLabel,
+                                bool listAlways = false) {
         std::string titleLower = ToLowerAscii(title);
         // The type in the current language, plus its English name so English searches work in any language
         std::string typeLower = ToLowerAscii(typeLabel ? typeLabel : "");
@@ -4816,7 +4817,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
         int tier = ComputeNameMatchTier(queryLower, titleLower, typeLower);
         if (tier < 0) return;
 
-        if (!isFilterOn && g_findRespectFilters) {
+        if (!isFilterOn && g_findRespectFilters && !listAlways) {
             ++g_findFilteredOutCount;
             return;
         }
@@ -4943,25 +4944,27 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
     }
 
     // 2c. Items the game always puts in one container (Ghost Glider, recipes, blocks, tools...) by their own names, at
-    // that container: a gold, silver or wooden chest by its kind, any other as a container. Shown whatever the filters
-    // (an item searched for by name).
+    // that container: a gold, silver or wooden chest by its kind, any other as a container. Listed whatever the filters
+    // (an item searched for by name); picking one turns on the row that shows its container.
     for (size_t i = 0; i < kStaticItemCount; ++i) {
         const StaticItem& it = kStaticItems[i];
         const char* name = StaticItemName(i);
         if (!*name) continue;
         float wx = static_cast<float>(it.x), wz = static_cast<float>(it.z);
         uint32_t icon = OreHash(static_cast<size_t>(Ore::UniqueGear));
+        bool rowOn = g_oreEnabled[static_cast<size_t>(Ore::UniqueGear)];
         const char* where = umm_lang::T(umm_lang::Str::Container);
         if (it.chest < kTotalChestCount) {
             const ChestSpawn& sp = kChestSpawns[it.chest];
             wx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
             wz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
             icon = ChestTypeHash(it.chest);
+            rowOn = ChestRowEnabled(it.chest);
             where = IsGoldChest(it.chest) ? umm_lang::T(umm_lang::Str::GoldChest)
                     : !IsWoodChest(it.chest) ? umm_lang::T(umm_lang::Str::SilverChest)
                                              : WoodChestName();
         }
-        processCandidate(wx, wz, icon, icon, true, false, name, where);
+        processCandidate(wx, wz, icon, icon, rowOn, false, name, where, true);
     }
 
     // 3. Scan Other Players in multiplayer from client + 0x4642c0
@@ -5329,8 +5332,7 @@ bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uin
         }
     }
     }
-    // A Fast Travel Point is clicked on to travel or ping it, not to hide its row
-    if (h == 0u || h == 0x1095684eu || h == kLockedFastTravelTypeHash) return false;
+    if (h == 0u) return false;
     const char* name = nullptr;
     for (const auto& grp : kCategoryGroups) {
         for (size_t r = 0; r < grp.rowCount && !name; ++r) {

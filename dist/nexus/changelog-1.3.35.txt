@@ -1,0 +1,6 @@
+Updated for the 3 November 2026 game patch (game build 1285601): on the patched game the Hollow Halls HD maps fell back to plain maps, the Ground rows showed nothing and the Trees rows drew as plain rectangles, because all three use a GPU image pool that checks the exact game build.
+G G's chest silhouettes through walls are smooth again: on the patched game they fell back to a blocky look.
+Find on the map: picking an item the game always puts in one chest (Ghost Glider, recipes, blocks, tools...) turns on the row that shows that chest, for example Gold Chest. These items are still listed whatever the filters.
+G G vein sight: the yellow build-zone lines within 12 m are gone; they also outlined grass and the player. Veins now show as their on-screen outlines out to 50 m with the deposit's icon, so the glow on the rock and on the walls of a hole you dig is gone with them.
+Alt + left click can now hide the Fast Travel Points row too, from a locked or an unlocked point.
+Reported bugs fixed: the Ground filters did nothing (TheSefer).

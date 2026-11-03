@@ -1,6 +1,5 @@
 // GG's vein sight: with GG, the ore and Materials veins around you (50 m) whose Mining / Materials rows are on show
-// through the ground for a while, each outlined in its ore's colour (the edge its 4 m chunks make on screen); near you
-// (12 m) its edges glow on the rock itself (the game's build-zone borders), following you as you dig; each deposit's
+// through the ground for a while, each outlined in its ore's colour (the edge its 4 m chunks make on screen); each deposit's
 // icon marks its middle. The voxels come from the game's world files (tools/resources/make_veins.py:
 // data/veins.bin, next to the DLL, unpacked on the first GG). Included by map_key_panel.cpp before chest_glow.inl,
 // whose GG and projection it shares.
@@ -390,10 +389,10 @@ void InstallZoneHook() {
         if (g_log) g_log("Vein sight: mining outlines disabled; GG chest glow unchanged");
         return;
     }
-    uint8_t* fn = FindUnique("48 89 5C 24 18 55 56 57 41 54 41 55 48 8D AC 24 A0 FC FF FF 48 81 EC 60 04 00 00 0F 57 C0 "
-                             "49 8B F0 66 0F 7F 01 48 8B FA 4C 8B E9 33 D2 48 8D 4C 24 60 41 B8 00 04 00 00 49 8B D9");
-    if (fn) g_origZoneFill = reinterpret_cast<ZoneFillFn>(InstallHook(fn, reinterpret_cast<void*>(&ZoneFillHook), 12));
-    if (g_log) g_log(g_origZoneFill ? "Vein sight: ore outlines on the rock ready" : "Vein sight: zone visualization not found");
+    // GG uses dotted silhouettes; its experimental near renderer draws veins.
+    // Do not inject build-zone boxes: those yellow borders also outline grass
+    // and the player, and are not ore geometry. Native building UI is untouched.
+    if (g_log) g_log("Vein sight: dotted outlines ready; GG build-zone borders removed");
 }
 
 // Near you (12 m): each 1 m cell of the rows that are on, nearest first; refreshed as you move while vein sight shows
@@ -613,10 +612,6 @@ void Draw(uint8_t* client, void* widgetRaw, const float* view, const float* proj
         }
     }
     // Near you: the ore's 1 m cells, for how deep it goes (they are not drawn: a cloud of them reads as noise)
-    if (now - g_cellsAt >= 400) {
-        GatherCells(client);
-        g_cellsAt = now;
-    }
     for (size_t d : g_deposits) {
         const OreDeposit& dep = kOreDeposits[d];
         float sx = 0.0f, sy = 0.0f;

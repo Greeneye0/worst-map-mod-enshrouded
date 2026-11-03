@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.34
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.35
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -103,10 +103,8 @@ bosses you haven't beaten, and what the quests you're on want there (the quest's
 place, with its quest icon), while their filters are on. They pulse on the world map and the
 minimap too.
 Vein sight: the ore and materials of the Mining and Materials rows you have on show for 30
-seconds too, for the deposits the map shows near you. Within 12 m their edges glow on the
-rock itself, in the game's build zone colour (dig in and the glow on the walls of your hole
-shows where the ore ends); farther out (50 m) each vein is outlined on screen in its ore's
-colour, with the deposit's icon in its middle.
+seconds too, for the deposits the map shows near you. Out to 50 m each vein is outlined on
+screen in its ore's colour, with the deposit's icon in its middle.
 
 
 MINING, MATERIALS, PLANTS, BAIT, TREES AND GROUND
@@ -335,6 +333,23 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.35
+- Updated for the 3 November 2026 game patch (game build 1285601): on the patched game the
+  Hollow Halls HD maps fell back to plain maps, the Ground rows showed nothing and the Trees
+  rows drew as plain rectangles, because all three use a GPU image pool that checks the exact
+  game build.
+- G G's chest silhouettes through walls are smooth again: on the patched game they fell back
+  to a blocky look.
+- Find on the map: picking an item the game always puts in one chest (Ghost Glider, recipes,
+  blocks, tools...) turns on the row that shows that chest, for example Gold Chest. These
+  items are still listed whatever the filters.
+- G G vein sight: the yellow build-zone lines within 12 m are gone; they also outlined grass
+  and the player. Veins now show as their on-screen outlines out to 50 m with the deposit's
+  icon, so the glow on the rock and on the walls of a hole you dig is gone with them.
+- Alt + left click can now hide the Fast Travel Points row too, from a locked or an unlocked
+  point.
+- Reported bugs fixed: the Ground filters did nothing (TheSefer).
+
 1.3.34
 - Find on the map finds items the game always puts in one chest or container, by name: type
   ghost glider and it shows the chest it's in. 138 of them (gliders, recipes, building blocks,
