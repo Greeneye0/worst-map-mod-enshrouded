@@ -1,0 +1,1 @@
+Find on the map finds items the game always puts in one chest or container, by name: type ghost glider and it shows the chest it's in. 138 of them (gliders, recipes, building blocks, crafting tools and more), besides the unique weapons, equipment, collectibles and cosmetics it already found. Random chest loot isn't known ahead, so it isn't included.

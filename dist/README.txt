@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.33
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.34
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -149,6 +149,8 @@ nothing selected) shows every match at once.
 - F2 (or Ctrl+F) switches whether Find skips marker types you've hidden with the filters.
   Pick a result a filter hides and the Map Key opens its row and flashes it.
 - Lore notes and bosses are found by their own names.
+- Items the game always puts in one chest or container are found by their names too (ghost
+  glider): the result is that chest. Random chest loot isn't known ahead.
 - Esc closes it (Shift+F types a capital F in the search).
 
 
@@ -333,6 +335,12 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.34
+- Find on the map finds items the game always puts in one chest or container, by name: type
+  ghost glider and it shows the chest it's in. 138 of them (gliders, recipes, building blocks,
+  crafting tools and more), besides the unique weapons, equipment, collectibles and cosmetics
+  it already found. Random chest loot isn't known ahead, so it isn't included.
+
 1.3.33
 - Fixed: 1.3.32 could keep the game on its loading screen forever at start (its new disk
   writer waited on a thread Windows doesn't let run until the game has loaded). Reported by
