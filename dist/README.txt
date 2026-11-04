@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.36
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.37
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -225,7 +225,7 @@ clock kept running (one that stands still while nobody is on counts nothing). Lo
 are saved per world in greeneye\unlock-map-markers\looted_chests.ini. In minimap_config.ini:
     [Chests]
     InteractKey=E          the key you open chests with
-    RespawnMinutes=30
+    RespawnMinutes=30      0: a looted chest stays looted on the map, even after it refills
     ResetRadius=0          meters; a player this close also holds the 30 minutes (0: only
                            the game's rule)
 
@@ -335,6 +335,17 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.37
+- Updated for the 4 November 2026 game patch (game build 1287369): the Hollow Halls HD maps,
+  the Ground rows and Trees heat maps, smooth chest silhouettes and G G's ore through the
+  rock had turned off on the patched game.
+- New: RespawnMinutes=0 under [Chests] in minimap_config.ini keeps every looted chest off
+  the map for good, even after the game refills it. With the default, 30, a chest that
+  refilled still comes back with its tick.
+Reported bugs fixed:
+- Looted chests coming back with a tick when you want them gone (asked by izisot, Identico
+  and AnkuSol).
+
 1.3.36
 - G G shows the ore around you through the rock: for 5 seconds the ore of the Mining rows you
   have on, within 10 m of where you pressed it, draws as see-through shaded surfaces in its

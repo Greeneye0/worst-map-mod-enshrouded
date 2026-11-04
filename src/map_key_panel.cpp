@@ -306,8 +306,13 @@ PinRevealMode g_pinRevealMode = PinRevealMode::RevealAll;
 bool g_settingsOpen = false;
 bool g_minimapSettingsOpen = false;
 bool g_bridgeRefreshMap = false;
+#ifdef UMM_DEV_BRIDGE
+bool g_dumpMarkersRequested = false; // the next world-map marker pass writes markers_dump.txt
+int DumpMarkersToFile(uint8_t* client); // map_native_filters.inl
+#endif
 bool g_bridgeRecenterMap = false;
 float g_chestRespawnMinutes = 30.0f;
+bool g_chestsStayLooted = false; // [Chests] RespawnMinutes=0: a looted chest stays marked looted, refilled or not
 float g_chestResetRadiusMeters = 0.0f; // [Chests] ResetRadius: a player this close also holds the respawn timer
 
 // The game's own respawn rule (server loop FUN_140a1ebb0): the world is cut into 256 m square scene chunks. One stays
@@ -1647,7 +1652,7 @@ void DrawIconRectAbs(void* parentWidgetRaw, const void* iconRef16, float absX, f
 void DrawBoxAbs(void* parentWidgetRaw, size_t assetOffset, float absX, float absY, float w, float h,
                 uint32_t rgba, float alpha, float border, float brightness = 1.0f) {
     uint8_t* assets = GetUiAssets();
-    if (!assets || !parentWidgetRaw || w <= 0.0f || h <= 0.0f || alpha <= 0.0f) return;
+    if (!assets || !parentWidgetRaw || w <= 0.0f || h <= 0.0f || alpha <= 0.0f || Excluded(absX, absY, w, h)) return;
     if (!g_nineSlice) {
         if (assetOffset == kRoundedBoxPrimitive) {
             DrawSolidRectAbs(parentWidgetRaw, absX, absY, w, h, rgba, alpha, brightness);
@@ -2882,7 +2887,8 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
             }
             return false;
         };
-        const double respawnSec = std::max(1.0, static_cast<double>(g_chestRespawnMinutes) * 60.0);
+        const double bossRespawnSec = std::max(1.0, static_cast<double>(g_chestRespawnMinutes) * 60.0);
+        const double respawnSec = g_chestsStayLooted ? 1e15 : bossRespawnSec; // RespawnMinutes=0: chests never come back
         double daySec = 0.0;
         if (!g_lootSection.empty() && WorldTimeOfDaySec(client, daySec)) {
             g_lootDaySec = daySec;
@@ -2919,7 +2925,7 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
                         ++back;
                     }
                 }
-                AdvanceBossTimers(g_lootOfflineSec, respawnSec, zones, numZones, true);
+                AdvanceBossTimers(g_lootOfflineSec, bossRespawnSec, zones, numZones, true);
                 g_chestLootDirty = true;
                 g_lootSaveDirty = true;
                 if (g_log) g_log("Looted chests: away from this server world for %.0f min; %zu chests came back meanwhile",
@@ -2946,7 +2952,7 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
                 }
             }
         }
-        AdvanceBossTimers(dtSec, respawnSec, zones, numZones, false);
+        AdvanceBossTimers(dtSec, bossRespawnSec, zones, numZones, false);
     }
 
     for (auto& st : g_chestLootStates) {
@@ -3709,6 +3715,13 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
         }
     }
 
+#ifdef UMM_DEV_BRIDGE
+    if (g_dumpMarkersRequested) {
+        g_dumpMarkersRequested = false;
+        const int dumped = DumpMarkersToFile(client);
+        if (g_log) g_log("Dev: markers_dump.txt written (%d markers)", dumped);
+    }
+#endif
     static uint64_t s_lastArr0Sig = 0ULL;
     if (s_lastArr0Sig != arr0Sig) {
         if (s_lastArr0Sig != 0ULL) {
@@ -7052,6 +7065,45 @@ void KeepDungeonInView(uint8_t* mapState, const float* rootRect) {
     *reinterpret_cast<float*>(mapView + 0x1ac) = center[1];
 }
 
+#ifdef UMM_DEV_BRIDGE
+// MapNativeFilters "find": a search and its first result's pick (as Enter would), no dialog or focus.
+std::string g_devFindQuery, g_devFindResult = "{}";
+bool g_devFindPending = false;
+void RunDevFind(uint8_t* client, uint8_t* mapState) {
+    if (!g_devFindPending) return;
+    g_devFindPending = false;
+    const std::string kept = g_findQuery;
+    g_findQuery = g_devFindQuery;
+    g_findRespectFilters = true;
+    RebuildFindResults(client, mapState);
+    const FindDisplayRow* pick = nullptr;
+    for (const auto& row : g_findDisplayRows) {
+        if (!row.isToggleFilterRow && !row.matchIndices.empty()) { pick = &row; break; }
+    }
+    std::string title, where;
+    bool filterOnBefore = false;
+    if (pick && pick->matchIndices[0] < g_findMatchedPlaces.size()) {
+        const auto& place = g_findMatchedPlaces[pick->matchIndices[0]];
+        title = place.title;
+        where = place.typeLabel;
+        filterOnBefore = place.isFilterOn;
+    }
+    const size_t matches = g_findMatchedPlaces.size(), filtered = g_findFilteredOutCount;
+    if (pick) FocusMapOnWorldPositions(client, mapState, pick->matchIndices);
+    auto clean = [](std::string s) { for (char& c : s) if (c == '"' || c == '\\' || static_cast<unsigned char>(c) < 0x20) c = ' '; return s; };
+    char buffer[512];
+    std::snprintf(buffer, sizeof(buffer),
+                  "{\"query\":\"%s\",\"matches\":%zu,\"filteredOut\":%zu,\"picked\":\"%s\",\"where\":\"%s\",\"filterOnBefore\":%s,\"goldChest\":%s,\"silverChest\":%s,\"woodChest\":%s}",
+                  clean(g_devFindQuery).c_str(), matches, filtered, clean(title).c_str(), clean(where).c_str(),
+                  filterOnBefore ? "true" : "false", g_goldChestEnabled ? "true" : "false",
+                  g_silverChestEnabled ? "true" : "false", g_woodChestEnabled ? "true" : "false");
+    g_devFindResult = buffer;
+    g_findQuery = kept;
+    g_findMatchedPlaces.clear();
+    g_findDisplayRows.clear();
+}
+#endif
+
 void DrawMapKeyOverlay(void* mapStateVoid) {
     g_lastMapState = static_cast<uint8_t*>(mapStateVoid);
     // A generation's first map frame: the game's text input flag an earlier generation left on (its search box typed
@@ -7312,6 +7364,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         // Forests and deposits share one budget of extra draws a frame (see DrawTreeAreasOnMap)
         UpdateFocusedRegion(client);
 #ifdef UMM_DEV_BRIDGE
+        RunDevFind(client, mapState);
         hdpool::DrawTest(root.raw, rootRect);
         halls::DrawPoolTest(root.raw, rootRect);
 #endif
@@ -8964,7 +9017,8 @@ void LoadMinimapConfig() {
     umm_lang::SetClockFormat(g_clockFormat);
     g_customMarkerScaleIdx = std::max(0, std::min(kMarkerScaleCount - 1, markerScaleIdx));
     g_pinRevealMode = static_cast<PinRevealMode>(std::max(0, std::min(2, pinRevealMode)));
-    g_chestRespawnMinutes = std::max(1.0f, static_cast<float>(respawnMins));
+    g_chestsStayLooted = respawnMins == 0;
+    g_chestRespawnMinutes = respawnMins == 0 ? 30.0f : std::max(1.0f, static_cast<float>(respawnMins));
     g_chestResetRadiusMeters = std::max(0.0f, static_cast<float>(resetRadius));
     ApplyCustomMarkerScale();
 

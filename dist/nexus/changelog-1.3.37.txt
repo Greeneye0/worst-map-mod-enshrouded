@@ -1,0 +1,4 @@
+- Updated for the 4 November 2026 game patch (game build 1287369): the Hollow Halls HD maps, the Ground rows and Trees heat maps, smooth chest silhouettes and G G's ore through the rock had turned off on the patched game.
+- New: RespawnMinutes=0 under [Chests] in minimap_config.ini keeps every looted chest off the map for good, even after the game refills it. With the default, 30, a chest that refilled still comes back with its tick.
+Reported bugs fixed:
+- Looted chests coming back with a tick when you want them gone (asked by izisot, Identico and AnkuSol).

@@ -223,7 +223,7 @@ void Update(uint64_t nowTick, uint32_t screen) {
                 g_lootSaveDirty = true;
                 if (g_log) g_log("Live chests: chest %zu is empty in the game; marked looted", c);
             }
-        } else if (state[c] == 0 && st.looted && g_seenEmpty[c]) {
+        } else if (state[c] == 0 && st.looted && g_seenEmpty[c] && !g_chestsStayLooted) {
             if (++g_fullReads[c] < 2) continue;
             g_fullReads[c] = 0;
             g_seenEmpty[c] = false;

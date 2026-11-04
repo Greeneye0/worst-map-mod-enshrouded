@@ -8,7 +8,7 @@ namespace vein_surface {
 
 using ore_overlay::V;
 
-constexpr uint32_t kGameStamp = 0x6ae9b2ac, kGameImageSize = 0x2a3f000; // the game build of 2026-11-03
+constexpr uint32_t kGameStamp = 0x6aeb144c, kGameImageSize = 0x2a3f000; // the game build of 2026-11-03
 constexpr float kRadius = 10.0f;
 constexpr uint64_t kShowMs = 5000, kFadeFromMs = 4000;
 constexpr size_t kMaxTriangles = 60000, kMaxChunks = 64;
@@ -22,11 +22,11 @@ constexpr float kColourScale = 0.60f;                   // the rows' colours, to
 constexpr uint8_t kRowMaterials[] = {19, 17, 26, 25, 18, 27, 69, 38, 30, 29, 31, 6, 63, 24, 7, 89, 96, 97, 60, 113, 115};
 static_assert(std::size(kRowMaterials) == kMiningCount);
 
-constexpr size_t kRvaUploadRange = 0x4e960, kRvaAddPass = 0x6c270, kRvaBufferHandle = 0x1030750;
-constexpr size_t kRvaNewCommandBlock = 0xfc60b0, kRvaVertexLayout = 0xfe53b0, kRvaUpscaled = 0x11a740;
-constexpr size_t kRvaUpscaleCall = 0x13d4db, kRvaUpscale = 0x11a7a0;
-constexpr size_t kRvaMeshReadCall = 0x1d7ef6, kRvaMeshRead = 0x10b2000;
-constexpr size_t kRvaProcessCall = 0x1e66d2, kRvaProcess = 0x1e06f0, kRvaMarkDirty = 0x1e21a0;
+constexpr size_t kRvaUploadRange = 0x4e960, kRvaAddPass = 0x6c340, kRvaBufferHandle = 0x1030830;
+constexpr size_t kRvaNewCommandBlock = 0xfc6190, kRvaVertexLayout = 0xfe5490, kRvaUpscaled = 0x11a810;
+constexpr size_t kRvaUpscaleCall = 0x13d5ab, kRvaUpscale = 0x11a870;
+constexpr size_t kRvaMeshReadCall = 0x1d7fc6, kRvaMeshRead = 0x10b20e0;
+constexpr size_t kRvaProcessCall = 0x1e67b2, kRvaProcess = 0x1e07c0, kRvaMarkDirty = 0x1e2280;
 
 struct State {
     V centre{};

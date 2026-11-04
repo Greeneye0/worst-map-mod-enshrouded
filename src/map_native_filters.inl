@@ -117,6 +117,91 @@ bool FindFilterRow(const char* target, uint32_t& rowHash, uint32_t& pairedHash, 
     return false;
 }
 
+// Dev: every marker slot of the 4 UI arrays, one line each with the visibility inputs, to markers_dump.txt
+// next to the mod log (too big for the bridge buffer). Returns the line count.
+struct MarkerDumpRow {
+    uint32_t orig, norm, questQ, qid;
+    int posExpl, mkExpl, filterOn, stage;
+    const uint8_t* quest; // by marker id (started or not)
+    const uint8_t* active; // active for this marker
+    uint8_t questHead[0x60];
+};
+
+void FillMarkerDumpRowInner(uint8_t* client, uint8_t* m, FilterEntry* entries, size_t count, MarkerDumpRow& r) {
+    r.stage = 1;
+    r.orig = GetMarkerOrigTypeHash(m);
+    r.qid = IsSlotSaved(m) ? *reinterpret_cast<uint32_t*>(m + 0x4c) : 0u;
+    if (r.qid == 0u) r.qid = *reinterpret_cast<uint32_t*>(m + 0x08);
+    r.stage = 2;
+    r.norm = r.orig == 0xafce0c5fu ? ClassifyQuestOrRumorMarker(r.qid, m[0x35]) : NormalizeFilterTypeHash(r.orig);
+    r.stage = 3;
+    r.questQ = GetQuestFilterHashForMarkerId(r.qid, true);
+    r.stage = 4;
+    const int32_t x = *reinterpret_cast<int32_t*>(m + 0x14), z = *reinterpret_cast<int32_t*>(m + 0x24);
+    r.posExpl = IsPositionExploredByCharacter(client, x, z) ? 1 : 0;
+    r.stage = 5;
+    r.mkExpl = IsMarkerExplored(client, m, r.orig) ? 1 : 0;
+    r.stage = 6;
+    r.filterOn = IsFilterEnabled(entries, count, r.norm) ? 1 : 0;
+    r.stage = 7;
+    r.quest = g_getQuestByMarkerId && r.qid ? static_cast<const uint8_t*>(g_getQuestByMarkerId(r.qid)) : nullptr;
+    r.active = g_getActiveQuestForMarkerId && r.qid ? static_cast<const uint8_t*>(g_getActiveQuestForMarkerId(r.qid)) : nullptr;
+    const uint8_t* q = r.quest ? r.quest : r.active;
+    if (q) std::memcpy(r.questHead, q, sizeof(r.questHead));
+    r.stage = 0;
+}
+
+void FillMarkerDumpRow(uint8_t* client, uint8_t* m, FilterEntry* entries, size_t count, MarkerDumpRow& r) {
+    __try {
+        FillMarkerDumpRowInner(client, m, entries, count, r);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+int DumpMarkersToFile(uint8_t* client) {
+    FILE* fp = nullptr;
+    if (fopen_s(&fp, greeneye::DataPath("markers_dump.txt"), "w") != 0 || !fp) return -1;
+    auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+    const size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
+    std::fprintf(fp, "arr\ti\tuid\tid08\tid4c\tt30\torig\tnorm\tquestQ\tb34\tb35\tb48\tchg\tx\tz\tposExpl\tmkExpl\tfilterOn\tfault\tname\ttypeName\tquest\tactive\tqname\tqhead\traw\n");
+    constexpr size_t kArrays[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+    for (size_t a = 0; a < 4; ++a) {
+        if (g_log) g_log("Dev: marker array %zu count %llu cap %llu", a,
+                         static_cast<unsigned long long>(*reinterpret_cast<uint64_t*>(client + kArrays[a] + 8)),
+                         static_cast<unsigned long long>(*reinterpret_cast<uint64_t*>(client + kArrays[a] + 16)));
+    }
+    int lines = 0;
+    for (size_t a = 0; a < 4; ++a) {
+        uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrays[a]);
+        const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrays[a] + 8);
+        if (!base || count == 0 || count > 10000) continue;
+        for (uint64_t i = 0; i < count; ++i) {
+            uint8_t* m = base + i * 0xA0;
+            MarkerDumpRow r{};
+            FillMarkerDumpRow(client, m, filterEntries, filterCount, r);
+            char name[160] = "", typeName[96] = "";
+            if (r.qid && r.stage == 0) ReadLocaText(r.qid, name, sizeof(name));
+            if (r.orig && r.stage == 0) ReadGameMarkerTypeName(r.orig, typeName, sizeof(typeName));
+            std::fprintf(fp, "%zu\t%llu\t%08x\t%08x\t%08x\t%08x\t%08x\t%08x\t%08x\t%u\t%02x\t%u\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t",
+                         a, static_cast<unsigned long long>(i), *reinterpret_cast<uint32_t*>(m),
+                         *reinterpret_cast<uint32_t*>(m + 0x08), *reinterpret_cast<uint32_t*>(m + 0x4c),
+                         *reinterpret_cast<uint32_t*>(m + 0x30), r.orig, r.norm, r.questQ, m[0x34], m[0x35], m[0x48],
+                         *reinterpret_cast<uint64_t*>(m + 0x40) != 0 ? 1 : 0, *reinterpret_cast<int32_t*>(m + 0x14),
+                         *reinterpret_cast<int32_t*>(m + 0x24), r.posExpl, r.mkExpl, r.filterOn, r.stage, name, typeName);
+            char questName[160] = "";
+            if (r.stage == 0 && (r.quest || r.active)) ReadLocaText(GuidToLocaId(r.questHead), questName, sizeof(questName));
+            std::fprintf(fp, "%p\t%p\t%s\t", r.quest, r.active, questName);
+            for (int b = 0; b < 0x60; ++b) std::fprintf(fp, "%02x", (r.quest || r.active) ? r.questHead[b] : 0);
+            std::fputc('\t', fp);
+            for (int b = 0; b < 0xA0; ++b) std::fprintf(fp, "%02x", m[b]);
+            std::fputc('\n', fp);
+            ++lines;
+        }
+    }
+    std::fclose(fp);
+    return lines;
+}
+
 } // namespace
 
 // Called on the game thread by the authenticated local bridge, like MapNativeControl.
@@ -129,9 +214,27 @@ extern "C" __declspec(dllexport) int MapNativeFilters(const char* action, const 
     greeneye::Lease lease;
     if (!lease) return 0;
     if (!action || !target || !out || outCap == 0) return -1;
+    if (std::strcmp(action, "hdstatus") == 0 || std::strcmp(action, "hdtest") == 0)
+        return hdpool::Control(action, target, out, outCap);
     auto* client = static_cast<uint8_t*>(uiClient);
     if (!client || (client[0x1cd8] != 1 && client[0x1cd8] != 5)) return -2;
     LoadMinimapConfig();
+    if (std::strcmp(action, "markers") == 0) {
+        g_dumpMarkersRequested = true; // in the world map's marker pass, where the quest lookups work
+        const int n = std::snprintf(out, outCap, "{\"file\":\"markers_dump.txt\",\"requested\":true}");
+        return n > 0 && static_cast<uint32_t>(n) < outCap ? 1 : -4;
+    }
+    if (std::strcmp(action, "find") == 0) { // needs the world map open; findresult answers next
+        g_devFindQuery = target;
+        g_devFindResult = "{\"pending\":true}";
+        g_devFindPending = true;
+        const int n = std::snprintf(out, outCap, "{\"queued\":true}");
+        return n > 0 && static_cast<uint32_t>(n) < outCap ? 1 : -4;
+    }
+    if (std::strcmp(action, "findresult") == 0) {
+        const int n = std::snprintf(out, outCap, "%s", g_devFindResult.c_str());
+        return n > 0 && static_cast<uint32_t>(n) < outCap ? 1 : -4;
+    }
     const bool on = std::strcmp(action, "on") == 0, off = std::strcmp(action, "off") == 0;
     const bool expand = std::strcmp(action, "expand") == 0, collapse = std::strcmp(action, "collapse") == 0;
     if (!on && !off && !expand && !collapse && std::strcmp(action, "list") != 0) return -1;

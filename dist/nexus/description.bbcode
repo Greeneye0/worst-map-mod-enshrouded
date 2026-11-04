@@ -259,6 +259,16 @@ If something doesn't work, please post these files with your report. Both are in
 
 [size=4][b]Changelog[/b][/size]
 
+[b]1.3.37[/b]
+[list]
+[*]Updated for the 4 November 2026 game patch (game build 1287369): the Hollow Halls HD maps, the Ground rows and Trees heat maps, smooth chest silhouettes and G G's ore through the rock had turned off on the patched game.
+[*]New: RespawnMinutes=0 under [Chests] in minimap_config.ini keeps every looted chest off the map for good, even after the game refills it. With the default, 30, a chest that refilled still comes back with its tick.
+[/list]
+Reported bugs fixed:
+[list]
+[*]Looted chests coming back with a tick when you want them gone (asked by izisot, Identico and AnkuSol).
+[/list]
+
 [b]1.3.36[/b]
 [list]
 [*][b]G G shows the ore around you through the rock[/b]: for 5 seconds the ore of the Mining rows you have on, within 10 m of where you pressed it, draws as see-through shaded surfaces in its ore's colour, beside the outlines. Your character stays clear of them, and very large deposits are simplified so the game keeps its frame rate. GGVeinSurfaces=false under [General] in minimap_config.ini turns them off. They only run on the game build they were made for: after a game patch G G keeps its outlines until the mod is updated.
