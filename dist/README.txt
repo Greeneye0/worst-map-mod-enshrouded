@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.35
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.36
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -105,6 +105,8 @@ minimap too.
 Vein sight: the ore and materials of the Mining and Materials rows you have on show for 30
 seconds too, for the deposits the map shows near you. Out to 50 m each vein is outlined on
 screen in its ore's colour, with the deposit's icon in its middle.
+Within 10 m of where you pressed it, the ore of the Mining rows you have on also shows through
+the rock for 5 seconds, as see-through shaded surfaces in its ore's colour.
 
 
 MINING, MATERIALS, PLANTS, BAIT, TREES AND GROUND
@@ -333,6 +335,14 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.36
+- G G shows the ore around you through the rock: for 5 seconds the ore of the Mining rows you
+  have on, within 10 m of where you pressed it, draws as see-through shaded surfaces in its
+  ore's colour, beside the outlines. Your character stays clear of them, and very large
+  deposits are simplified so the game keeps its frame rate. GGVeinSurfaces=false under
+  [General] in minimap_config.ini turns them off. They only run on the game build they were
+  made for: after a game patch G G keeps its outlines until the mod is updated.
+
 1.3.35
 - Updated for the 3 November 2026 game patch (game build 1285601): on the patched game the
   Hollow Halls HD maps fell back to plain maps, the Ground rows showed nothing and the Trees

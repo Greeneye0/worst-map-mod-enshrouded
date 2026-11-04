@@ -6,6 +6,8 @@
 
 bool LocalPlayerY(uint8_t* client, float& y); // map_key_panel.cpp, below
 
+#include "vein_surface.inl"
+
 namespace vein_sight {
 
 // Allow the cutaway renderer to replace mining outlines without disabling GG chest glow.
@@ -192,6 +194,12 @@ std::vector<size_t> g_deposits; // the deposits among them, for their icons
 uint64_t g_start = 0, g_until = 0;
 uint64_t g_cellsAt = 0; // when the cells near you were last gathered
 
+} // namespace vein_sight
+namespace vein_surface {
+uint32_t RowColour(size_t miningRow) { return vein_sight::kRowColour[miningRow]; }
+} // namespace vein_surface
+namespace vein_sight {
+
 bool RowOn(size_t row) { return row < kMiningCount + kMaterialsCount && g_oreEnabled[kMiningFirst + row]; }
 
 // A chunk of a row within reach of one of the deposits of that row the map shows around you
@@ -208,6 +216,7 @@ bool NearShownDeposit(uint8_t row, float x, float z) {
 void LightNearby(uint8_t* client) {
     g_veins.clear();
     g_deposits.clear();
+    vein_surface::Start(client); // the ore right around you, as shaded surfaces
     if (!g_enabled) return;
     bool any = false;
     for (size_t r = 0; r < kMiningCount + kMaterialsCount && !any; ++r) any = RowOn(r);

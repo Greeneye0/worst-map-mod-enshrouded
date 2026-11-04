@@ -437,6 +437,7 @@ void LightNearbyChests(uint8_t* client) {
 
 // G ([Keys] Glow) twice within half a second while playing (not in a menu, where G sorts the inventory).
 void UpdateKey(uint8_t* client, bool appFocused) {
+    vein_surface::Tick(client);
     static bool wasDown = false;
     static uint64_t firstTick = 0;
 

@@ -38,6 +38,11 @@
 #include "chest_spawns.h"
 #include "chest_loot_ids.h"
 #include "ore_deposits.h"
+#include <iterator>
+#include <limits>
+#include "ore_shading.h" // GG's vein surfaces (vein_surface.inl)
+#include "ore_upload.h"
+#include "ore_shader_bytes.h"
 #include "knowledge_legacy.h"
 #include "regions.h"
 #include "levels.h"
@@ -11746,6 +11751,7 @@ bool InstallMapKeyPanelHook(LogFn logger) {
     InstallXInputHook();
     hall_pan::Install();
     vein_sight::InstallZoneHook();
+    vein_surface::Install();
     // The hovered marker's name (Map Key > Region > Hide drops it for hidden markers); 14 bytes: mov [rsp+10h], rbx;
     // mov [rsp+18h], rdi; push rbp; mov rbp, rsp
     if (fnGetMarkerTitleText) {
@@ -11805,6 +11811,7 @@ void UseKeptState(KeptState* kept) {
 
 void PrepareMapKeyPanelForReload() {
     RemoveMapKeyWheelHook();
+    vein_surface::Stop();
     g_padKeyFocus = false; // the game reads the pad again
     hall_pan::Off(); // the stubs stay in the game; the next generation turns them on again
     // The search box typed in when the reload comes: the game's text input flag goes off with it (left on, the game
