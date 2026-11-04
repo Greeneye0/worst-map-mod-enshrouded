@@ -756,6 +756,22 @@ const char* ResourceName(size_t index) {
     return (text && *text) ? text : kResourceNames[index][0];
 }
 
+// The Plants rows after the Ground rows (ore_deposits.h, from kLatePlantsFirst), in the game's own words: each item's
+// name, and for the banana plants the game's names of its two fruits.
+// clang-format off
+const Row kLatePlantNames[] = {
+    {"Chanterelle", "Pfifferling", "Chanterelle", "Finferlo", "Rebozuelo", "Cantarelo", "Kurka", "Лисичка", "Лисичка", "Horozmantarı", "シャンテレール", "살구버섯", "鸡油菌", "雞油菌", "เห็ดชานเทอเรล"},
+    {"Raw Rice", "Ungekochter Reis", "Riz cru", "Riso crudo", "Arroz crudo", "Arroz Cru", "Surowy ryż", "Сырой рис", "Сирий рис", "Pirinç", "生米", "생쌀", "生米", "生米", "ข้าวสาร"},
+    {"Banana / Plantain", "Banane / Kochbanane", "Banane / Plantain", "Banana / Platano", "Plátano / Plátano macho", "Banana / Banana-da-terra", "Banan / Plantan", "Банан / Плантан", "Банан / Подорожник", "Muz / Yemeklik Muz", "バナナ / プランテン", "바나나 / 플랜테인", "香蕉 / 大蕉", "香蕉 / 大蕉", "กล้วย / กล้าย"},
+};
+// clang-format on
+
+const char* LatePlantName(size_t index) {
+    if (index >= sizeof(kLatePlantNames) / sizeof(kLatePlantNames[0])) return nullptr;
+    const char* text = kLatePlantNames[index][static_cast<int>(g_lang)];
+    return (text && *text) ? text : kLatePlantNames[index][0];
+}
+
 Lang Current() { return g_lang; }
 
 const char* SteamCode(Lang lang) {

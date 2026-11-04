@@ -8,7 +8,6 @@ namespace vein_surface {
 
 using ore_overlay::V;
 
-constexpr uint32_t kGameStamp = 0x6aeb144c, kGameImageSize = 0x2a3f000; // the game build of 2026-11-03
 constexpr float kRadius = 10.0f;
 constexpr uint64_t kShowMs = 5000, kFadeFromMs = 4000;
 constexpr size_t kMaxTriangles = 60000, kMaxChunks = 64;
@@ -22,6 +21,7 @@ constexpr float kColourScale = 0.60f;                   // the rows' colours, to
 constexpr uint8_t kRowMaterials[] = {19, 17, 26, 25, 18, 27, 69, 38, 30, 29, 31, 6, 63, 24, 7, 89, 96, 97, 60, 113, 115};
 static_assert(std::size(kRowMaterials) == kMiningCount);
 
+// The reference build's addresses, keys for map_natives.h; they never change.
 constexpr size_t kRvaUploadRange = 0x4e960, kRvaAddPass = 0x6c340, kRvaBufferHandle = 0x1030830;
 constexpr size_t kRvaNewCommandBlock = 0xfc6190, kRvaVertexLayout = 0xfe5490, kRvaUpscaled = 0x11a810;
 constexpr size_t kRvaUpscaleCall = 0x13d5ab, kRvaUpscale = 0x11a870;
@@ -82,7 +82,7 @@ T& At(void* p, size_t off) {
 }
 template <class F>
 F GameFn(size_t rva) {
-    return reinterpret_cast<F>(reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr)) + rva);
+    return reinterpret_cast<F>(map_natives::At(static_cast<uint32_t>(rva)));
 }
 
 State Snapshot() {
@@ -780,53 +780,35 @@ void UpscaleHook(void* scope, uint8_t* upscalers, uint8_t* inputs) {
     DrawPass(scope, upscalers - 0xf38);
 }
 
-bool CallTargets(const GreeneyeHost* h, uint8_t* base, size_t rva, size_t target) {
+bool CallTargets(const GreeneyeHost* h, size_t rva, size_t target) {
+    uint8_t* site = map_natives::At(static_cast<uint32_t>(rva));
+    uint8_t* wanted = map_natives::At(static_cast<uint32_t>(target));
+    if (!site || !wanted) return false;
     uint8_t call[5]{};
-    h->read(base + rva, call, sizeof(call));
+    h->read(site, call, sizeof(call));
     int32_t rel = 0;
     std::memcpy(&rel, call + 1, 4);
-    return call[0] == 0xe8 && static_cast<int64_t>(rva) + 5 + rel == static_cast<int64_t>(target);
+    return call[0] == 0xe8 && site + 5 + rel == wanted;
 }
 
 // Each hook goes through the loader, so Town Portal can share the upscale call
 void Install() {
     if (!GetPrivateProfileIntA("General", "GGVeinSurfaces", 1, greeneye::DataPath("minimap_config.ini"))) return;
     const GreeneyeHost* h = greeneye::Host();
-    auto* base = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
-    auto* nt = reinterpret_cast<IMAGE_NT_HEADERS64*>(base + reinterpret_cast<IMAGE_DOS_HEADER*>(base)->e_lfanew);
-    if (!h || !h->read || !h->redirectCall || nt->FileHeader.TimeDateStamp != kGameStamp || nt->OptionalHeader.SizeOfImage != kGameImageSize) {
+    map_natives::Ensure(h, g_log);
+    if (!h || !h->read || !h->redirectCall || !map_natives::At(kRvaUploadRange) || !map_natives::At(kRvaAddPass) || !map_natives::At(kRvaBufferHandle) || !map_natives::At(kRvaNewCommandBlock) || !map_natives::At(kRvaVertexLayout) || !map_natives::At(kRvaUpscaled) || !map_natives::At(kRvaUpscaleCall) || !map_natives::At(kRvaUpscale) || !map_natives::At(kRvaMeshReadCall) || !map_natives::At(kRvaMeshRead) || !map_natives::At(kRvaProcessCall) || !map_natives::At(kRvaProcess) || !map_natives::At(kRvaMarkDirty)) {
         if (g_log) g_log("Vein surfaces: not for this game build; GG keeps its outlines");
         return;
     }
-    struct Guard {
-        size_t rva;
-        uint8_t bytes[16];
-    };
-    static const Guard kGuards[] = {
-        {kRvaUpscaled, {0x80, 0x39, 0x00, 0x74, 0x37, 0x48, 0x83, 0x79, 0x08, 0x00, 0x74, 0x06, 0x80, 0x79, 0x28, 0x00}},
-        {kRvaUploadRange, {0x4c, 0x89, 0x4c, 0x24, 0x20, 0x53, 0x48, 0x81, 0xec, 0xa0, 0x00, 0x00, 0x00, 0x48, 0x8b, 0x84}},
-        {kRvaBufferHandle, {0x48, 0x8b, 0x01, 0x48, 0x85, 0xc0, 0x74, 0x10, 0x0f, 0xb7, 0x49, 0x08, 0x48, 0x8b, 0x80, 0x68}},
-        {kRvaAddPass, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x48, 0x89, 0x7c, 0x24, 0x18, 0x55}},
-        {kRvaNewCommandBlock, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x57, 0x48, 0x83, 0xec, 0x20, 0x48, 0x8d, 0x99, 0x10, 0x07, 0x00}},
-        {kRvaVertexLayout, {0x48, 0x8b, 0xc4, 0x53, 0x48, 0x81, 0xec, 0x90, 0x00, 0x00, 0x00, 0x4c, 0x8b, 0x4a, 0x08, 0x48}},
-    };
-    for (const Guard& g : kGuards) {
-        uint8_t bytes[16];
-        h->read(base + g.rva, bytes, sizeof(bytes));
-        if (std::memcmp(bytes, g.bytes, sizeof(bytes)) != 0) {
-            if (g_log) g_log("Vein surfaces: the game's code at %llx differs; off", static_cast<unsigned long long>(g.rva));
-            return;
-        }
-    }
-    if (!CallTargets(h, base, kRvaMeshReadCall, kRvaMeshRead) || !CallTargets(h, base, kRvaProcessCall, kRvaProcess) ||
-        !CallTargets(h, base, kRvaUpscaleCall, kRvaUpscale)) {
+    if (!CallTargets(h, kRvaMeshReadCall, kRvaMeshRead) || !CallTargets(h, kRvaProcessCall, kRvaProcess) ||
+        !CallTargets(h, kRvaUpscaleCall, kRvaUpscale)) {
         if (g_log) g_log("Vein surfaces: a call site differs; off");
         return;
     }
-    g_markDirty = reinterpret_cast<MarkDirtyFn>(base + kRvaMarkDirty);
-    g_origMeshRead = reinterpret_cast<MeshReadFn>(h->redirectCall(base + kRvaMeshReadCall, reinterpret_cast<void*>(&MeshReadHook)));
-    g_origProcess = reinterpret_cast<ProcessFn>(h->redirectCall(base + kRvaProcessCall, reinterpret_cast<void*>(&ProcessHook)));
-    g_origUpscale = reinterpret_cast<UpscaleFn>(h->redirectCall(base + kRvaUpscaleCall, reinterpret_cast<void*>(&UpscaleHook)));
+    g_markDirty = reinterpret_cast<MarkDirtyFn>(map_natives::At(kRvaMarkDirty));
+    g_origMeshRead = reinterpret_cast<MeshReadFn>(h->redirectCall(map_natives::At(kRvaMeshReadCall), reinterpret_cast<void*>(&MeshReadHook)));
+    g_origProcess = reinterpret_cast<ProcessFn>(h->redirectCall(map_natives::At(kRvaProcessCall), reinterpret_cast<void*>(&ProcessHook)));
+    g_origUpscale = reinterpret_cast<UpscaleFn>(h->redirectCall(map_natives::At(kRvaUpscaleCall), reinterpret_cast<void*>(&UpscaleHook)));
     g_installed = g_origMeshRead && g_origProcess && g_origUpscale;
     if (g_log) g_log("Vein surfaces: %s", g_installed.load() ? "ready" : "hooks failed; off");
 }

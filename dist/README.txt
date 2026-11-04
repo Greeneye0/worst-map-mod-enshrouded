@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.37
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.38
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -335,6 +335,19 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.38
+- New Plants rows: Chanterelle, Raw Rice and Banana / Plantain, in every language.
+- A game patch that only moves the game's code should no longer need an update: the HD maps,
+  heat maps, smooth silhouettes and G G's ore surfaces find the game's functions themselves
+  when the mod starts. If a patch changes something they need, they turn off on their own.
+- On a new game build, if the game dies within two minutes of play, those features stay off
+  on that build at the next start, so they can't crash you in a loop. Delete
+  greeneye\unlock-map-markers\untested-build.txt to try again.
+- Greeneye Loader 1.2.2: logs are written in the background, so a slow drive can't stall the
+  game through them. This may help the freezes HadToRegister reported.
+Reported bugs fixed:
+- Missing plants (reported by antisocialIan).
+
 1.3.37
 - Updated for the 4 November 2026 game patch (game build 1287369): the Hollow Halls HD maps,
   the Ground rows and Trees heat maps, smooth chest silhouettes and G G's ore through the

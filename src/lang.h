@@ -54,6 +54,8 @@ const char* T(Str s);
 // A resource row's name (ore_deposits.h kOreLabels order) in the current language.
 size_t ResourceNameCount();
 const char* ResourceName(size_t index);
+// The same for the Plants rows added after the Ground rows (index: from kLatePlantsFirst).
+const char* LatePlantName(size_t index);
 
 // "1 match" / "12 matches" in English, "Treffer: 12" style elsewhere (no plural rules needed).
 std::string FormatMatches(size_t count);

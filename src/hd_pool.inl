@@ -10,7 +10,7 @@ using hd_pool_policy::kBytes;
 using hd_pool_policy::Slot;
 template<class T> T& At(void* p, size_t offset) { return *reinterpret_cast<T*>(static_cast<uint8_t*>(p)+offset); }
 uint8_t* g_base{};
-template<class F> F Fn(const native::Entry& e) { return reinterpret_cast<F>(g_base+e.rva); }
+template<class F> F Fn(const native::Entry& e) { return reinterpret_cast<F>(map_natives::At(e.rva)); }
 struct Image { uint64_t context{}, id{}; };
 struct GpuSlot { Image image{}; void* registry{}; uint32_t ui{}; };
 // POD only: the loader retains these native resources across a hot reload.
@@ -269,23 +269,21 @@ bool Init() {
     return false;
 #else
     g_base=reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
-    auto* nt=reinterpret_cast<IMAGE_NT_HEADERS64*>(g_base+reinterpret_cast<IMAGE_DOS_HEADER*>(g_base)->e_lfanew);
-    // The game build of 2026-11-03 (hd_pool_native.h)
-    if(nt->FileHeader.TimeDateStamp!=0x6aeb144c || nt->OptionalHeader.SizeOfImage!=0x2a3f000)return false;
     const native::Entry* entries[]={&native::scope,&native::plan,&native::image,&native::commit,&native::end,
         &native::release,&native::upload,&native::registerImage,&native::unregisterImage,&native::bindImage,
         &native::sceneTick,&native::viewDestroy,&native::rootDestroy,&native::registryDestroy,&native::freeImage};
-    for(auto* e:entries)if(std::memcmp(g_base+e->rva+32,e->body,sizeof(e->body)))return false;
+    map_natives::Ensure(greeneye::Host(),g_log);
+    for(auto* e:entries)if(!map_natives::At(e->rva))return false;
     auto* host=greeneye::Host();
     g_state=static_cast<State*>(host->keep("halls.gpu-pool.v1",sizeof(State)));
     if(!g_state)return false;
     // Transient upload buffers belong to the old DLL. Keep only finished GPU contents.
     for(auto& slot:g_state->slots){slot.queued=false;slot.pending=0;}
     g_wanted=g_state->ticket!=0;
-    g_tick=reinterpret_cast<TickFn>(host->hook(g_base+native::sceneTick.rva,reinterpret_cast<void*>(TickHook),16,nullptr,0));
-    g_destroy=reinterpret_cast<DestroyFn>(host->hook(g_base+native::viewDestroy.rva,reinterpret_cast<void*>(DestroyHook),12,nullptr,0));
-    g_rootDestroy=reinterpret_cast<RootDestroyFn>(host->hook(g_base+native::rootDestroy.rva,reinterpret_cast<void*>(RootDestroyHook),18,nullptr,0));
-    g_registryDestroy=reinterpret_cast<RegistryDestroyFn>(host->hook(g_base+native::registryDestroy.rva,reinterpret_cast<void*>(RegistryDestroyHook),16,nullptr,0));
+    g_tick=reinterpret_cast<TickFn>(host->hook(map_natives::At(native::sceneTick.rva),reinterpret_cast<void*>(TickHook),16,nullptr,0));
+    g_destroy=reinterpret_cast<DestroyFn>(host->hook(map_natives::At(native::viewDestroy.rva),reinterpret_cast<void*>(DestroyHook),12,nullptr,0));
+    g_rootDestroy=reinterpret_cast<RootDestroyFn>(host->hook(map_natives::At(native::rootDestroy.rva),reinterpret_cast<void*>(RootDestroyHook),18,nullptr,0));
+    g_registryDestroy=reinterpret_cast<RegistryDestroyFn>(host->hook(map_natives::At(native::registryDestroy.rva),reinterpret_cast<void*>(RegistryDestroyHook),16,nullptr,0));
     g_enabled=g_tick && g_destroy && g_rootDestroy && g_registryDestroy;
     if(g_log)g_log("Hollow Halls GPU pool: %s; native UI loader bypassed",g_enabled?"ready":"hooks unavailable");
     return g_enabled;

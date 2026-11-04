@@ -33,6 +33,7 @@
 #include "async_io.h" // the saves are written off the game's thread
 #include "map_control.h"
 #include "hd_pool_policy.h"
+#include "map_natives.h"
 #include "ui_mesh.h" // smooth chest silhouettes (shared with Find and Quick Deposit)
 #include "player_markers.h"
 #include "chest_spawns.h"
@@ -895,9 +896,10 @@ constexpr std::array<MarkerRowSpec, A + B> JoinRows(const std::array<MarkerRowSp
     for (size_t i = 0; i < B; ++i) out[A + i] = b[i];
     return out;
 }
-constexpr auto kPlantsRows = JoinRows(
+constexpr auto kPlantsRows = JoinRows(JoinRows(
     MakeResourceRows<kPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kPlantsCount>{}),
-    MakeResourceRows<kNightPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kNightPlantsCount>{}));
+    MakeResourceRows<kNightPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kNightPlantsCount>{})),
+    MakeResourceRows<kLatePlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kLatePlantsCount>{}));
 constexpr auto kBaitRows = MakeResourceRows<kBaitFirst, kBaitCategory, umm_lang::Str::CatBait>(
     std::make_index_sequence<kBaitCount>{});
 constexpr auto kTreesRows = MakeResourceRows<kTreesFirst, kTreesCategory, umm_lang::Str::CatTrees>(
@@ -913,7 +915,7 @@ static_assert(kSummonsCount == 1, "one Fell Summoning Stone row");
 static_assert(kCosmeticCount == 1, "one Cosmetics row");
 static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount +
                   kLoreCount + kBossesCount + kUniqueCount + kSummonsCount + kNightPlantsCount + kCreaturesCount +
-                  kCosmeticCount + kGroundCount == kOreCount,
+                  kCosmeticCount + kGroundCount + kLatePlantsCount == kOreCount,
               "every row in one category");
 
 struct CategoryGroupSpec {
@@ -2783,6 +2785,13 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     }
     UpdateBuiltWater(client);
     chest_live::Update(nowTick, screen);
+    // Two minutes of play on an untested game build: nothing that runs early crashed it (map_natives.h)
+    {
+        static uint64_t playingSince = 0;
+        if (screen != 1) playingSince = 0;
+        else if (!playingSince) playingSince = nowTick;
+        else if (nowTick - playingSince > 120000ULL) map_natives::NoteStablePlay();
+    }
     UpdateKnowledge();
     UpdateManualBosses(client);
     NoteBossKills(client);
@@ -5578,7 +5587,7 @@ const char* OreName(size_t ore) {
         }
         if (state[ore] == 1) return names[ore];
     }
-    const char* own = umm_lang::ResourceName(ore);
+    const char* own = ore >= kLatePlantsFirst ? umm_lang::LatePlantName(ore - kLatePlantsFirst) : umm_lang::ResourceName(ore);
     return own ? own : kOreLabels[ore];
 }
 

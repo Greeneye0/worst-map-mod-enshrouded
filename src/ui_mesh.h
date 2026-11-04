@@ -12,15 +12,17 @@ static_assert(sizeof(Allocation)==32);
 // Build 1273043: verified against native quad/rotated-image emission in Ghidra. RVAs of the 2026-11-02 build (the three
 // functions are byte for byte the old ones there).
 // No hooks or retained resources: use the native per-frame allocator and batch.
+// The three game functions, found by signature (tools/patchcheck/gensig.py, at least 64 bytes with struct offsets
+// literal): a patch that only moves code needs no update, and a layout change turns smooth drawing off.
+inline uint8_t* g_allocate{},*g_submit{},*g_set{};
 inline bool Ready(){
     static const bool valid=[](){
-        auto base=reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
-        struct Check{size_t rva;uint8_t bytes[24];};
-        const Check checks[]={
-            {0x119e510,{0x38,0x03,0x00,0x00,0x49,0x81,0xf9,0x00,0x00,0x01,0x00,0x0f,0x87,0x2b,0x03,0x00,0x00,0x48,0x8b,0x8a,0xc0,0x52,0x03,0x00}},
-            {0x11a7be0,{0xb9,0x28,0x52,0x03,0x00,0x00,0x0f,0x84,0xe0,0x00,0x00,0x00,0x80,0xb9,0xd2,0x52,0x03,0x00,0x00,0x74,0x48,0x4c,0x8b,0x49}},
-            {0x11ceb90,{0x00,0x00,0x44,0x38,0x81,0x2e,0x52,0x03,0x00,0x74,0x0e,0x44,0x88,0x81,0x2e,0x52,0x03,0x00,0xc6,0x81,0xd2,0x52,0x03,0x00}}};
-        for(auto& c:checks){uint8_t bytes[24];auto host=greeneye::Host();if(host)host->read(base+c.rva+32,bytes,24);else memcpy(bytes,base+c.rva+32,24);if(memcmp(bytes,c.bytes,24))return false;}return true;
+        auto host=greeneye::Host();
+        if(!host||!host->find)return false;
+        g_allocate=host->find("48 8B C4 53 56 41 56 48 81 EC C0 00 00 00 4D 8B F1 48 8B DA 48 8B F1 49 81 F8 00 00 01 00 0F 87 ?? ?? ?? ?? 49 81 F9 00 00 01 00 0F 87 ?? ?? ?? ??",nullptr);
+        g_submit=host->find("40 53 48 83 EC 20 B8 FF FF 00 00 4C 8B C2 48 8B D9 66 39 81 2A 52 03 00 0F 84 ?? ?? ?? ?? 66 83 B9 28 52 03 00 00 0F 84 ?? ?? ?? ?? 80 B9 D2 52 03 00 00",nullptr);
+        g_set=host->find("85 D2 75 ?? 48 8B 11 8B 92 E0 53 03 00 39 91 1C 52 03 00 74 ?? 89 91 1C 52 03 00 C6 81 D2 52 03 00 00 44 38 81 2E 52 03 00 74 ??",nullptr);
+        return g_allocate&&g_submit&&g_set;
     }();return valid;
 }
 inline bool Draw(void* widget,const smooth_highlight::Batch& batch){
@@ -29,10 +31,9 @@ inline bool Draw(void* widget,const smooth_highlight::Batch& batch){
     auto state=Read<void*>(handle,0x50);if(!state)return false;
     state=Read<void*>(state,0x18);if(!state||Read<uint32_t>(state,8)!=4)return false;
     auto renderer=Read<void*>(state,0x6ce0);if(!renderer)return false;
-    auto base=reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
-    auto set=reinterpret_cast<void(*)(void*,uint32_t,uint8_t)>(base+0x11ceb90);
-    auto allocate=reinterpret_cast<bool(*)(Allocation*,void*,uint64_t,uint64_t)>(base+0x119e510);
-    auto submit=reinterpret_cast<void(*)(void*,const Allocation*)>(base+0x11a7be0);
+    auto set=reinterpret_cast<void(*)(void*,uint32_t,uint8_t)>(g_set);
+    auto allocate=reinterpret_cast<bool(*)(Allocation*,void*,uint64_t,uint64_t)>(g_allocate);
+    auto submit=reinterpret_cast<void(*)(void*,const Allocation*)>(g_submit);
     set(renderer,0,0);Allocation allocation{};
     if(!allocate(&allocation,renderer,batch.vertices.size(),batch.indices.size())||!allocation.vertices||!allocation.indices)return false;
     if(uint64_t(allocation.base)+batch.vertices.size()>65536)return false;
