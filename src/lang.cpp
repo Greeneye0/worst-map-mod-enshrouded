@@ -533,6 +533,12 @@ const Row kTable[] = {
     // Container: Find on the map, an item the game always puts in one container that is not a chest (a crate, a box)
     {"Container", "Behälter", "Conteneur", "Contenitore", "Contenedor", "Recipiente", "Pojemnik", "Контейнер",
      "Контейнер", "Kap", "容器", "보관함", "容器", "容器", "ภาชนะ"},
+    // MarkRefilled (the map's message for Ctrl + click): a looted chest marked as filled again
+    {"Refilled", "Wieder gefüllt", "Rempli", "Riempito", "Rellenado", "Reabastecido", "Uzupełnione", "Пополнено",
+     "Поповнено", "Yeniden dolu", "補充済み", "다시 채워짐", "已重新填充", "已重新填充", "เติมใหม่แล้ว"},
+    // MarkRespawned (the map's message for Ctrl + click): a beaten boss marked as back
+    {"Respawned", "Wieder da", "Réapparu", "Ricomparso", "Reaparecido", "Reapareceu", "Odrodzony", "Возродился",
+     "Відродився", "Yeniden doğdu", "復活済み", "다시 나타남", "已重生", "已重生", "เกิดใหม่แล้ว"},
 };
 // clang-format on
 

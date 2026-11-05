@@ -11,7 +11,7 @@ if not exist bin-dev\loader mkdir bin-dev\loader
 if not exist build-dev mkdir build-dev
 rem The version in the log: mod.json's
 for /f "tokens=2 delims=:, " %%v in ('findstr /c:"\"version\"" mod.json') do set "UMM_VER=%%~v"
-cl /nologo /std:c++20 /O2 /EHsc /MT /LD /W4 /utf-8 /DUMM_VERSION=\"%UMM_VER%\" /DUMM_DEV_BRIDGE /I "%GREENEYE_COMMON%" ^
+cl /nologo /std:c++20 /O2 /EHsc /MT /LD /W4 /utf-8 /DUMM_VERSION=\"%UMM_VER%\" /DUMM_DEV_BRIDGE /DGREENEYE_INPUT_TEST /I "%GREENEYE_COMMON%" ^
     src\main.cpp src\map_key_panel.cpp src\scan.cpp src\lang.cpp ^
     /Fo:build-dev\ ^
     /Fe:bin-dev\loader\unlock-map-markers.dll ^

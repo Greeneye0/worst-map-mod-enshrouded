@@ -745,6 +745,7 @@ bool UniqueSpotCloser(float wx, float wz, float distSq, float shiftMeters) {
         const size_t d = kKnowledgeFirstDeposit + i;
         if (!IsUniqueSpot(d) || !g_oreEnabled[kOreDeposits[d].ore]) continue;
         if (g_lootedChestMode == 0 && KnowledgeGrayed(d)) continue; // hidden
+        if (MarkClickSkipsSpot(kOreDeposits[d].x, kOreDeposits[d].topY, kOreDeposits[d].z)) continue;
         const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
         if (dx * dx + dz * dz <= distSq) return true;
     }
@@ -761,6 +762,7 @@ bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters, float shift
         const size_t d = kKnowledgeFirstDeposit + i;
         if (!IsBossSpot(d)) continue;
         if (g_lootedChestMode == 0 && KnowledgeGrayed(d)) continue; // hidden
+        if (MarkClickSkipsSpot(kOreDeposits[d].x, kOreDeposits[d].topY, kOreDeposits[d].z)) continue;
         const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
         if (dx * dx + dz * dz < best) {
             best = dx * dx + dz * dz;
@@ -774,6 +776,7 @@ bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters, float shift
     if (BossDeadNow(d)) {
         g_bossDead.erase(s);
         g_lootSaveDirty = true;
+        AnnounceMarkState(KnowledgeSpotName(d), umm_lang::Str::MarkRespawned);
         if (g_log) g_log("Bosses: boss spot %u marked back by hand", s);
         return true;
     }
@@ -786,6 +789,7 @@ bool ToggleManualBossNear(float wx, float wz, float maxRadiusMeters, float shift
         g_bossDead[s] = 0.0;
         g_lootSaveDirty = true;
     }
+    AnnounceMark(KnowledgeSpotName(d), 2, beaten);
     if (g_log) g_log("Bosses: boss spot %u marked %s by hand", s, beaten ? "beaten" : "not beaten");
     return true;
 }
@@ -800,6 +804,7 @@ bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shif
         const size_t d = kKnowledgeFirstDeposit + i;
         if (!IsUniqueSpot(d) || !g_oreEnabled[kOreDeposits[d].ore]) continue;
         if (g_lootedChestMode == 0 && KnowledgeGrayed(d)) continue; // hidden
+        if (MarkClickSkipsSpot(kOreDeposits[d].x, kOreDeposits[d].topY, kOreDeposits[d].z)) continue;
         const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
         if (dx * dx + dz * dz < best) {
             best = dx * dx + dz * dz;
@@ -815,6 +820,7 @@ bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shif
         g_chestLootDirty = true;
         g_lootSaveDirty = true;
         ShareChestState(chest, st.looted);
+        AnnounceMark(KnowledgeSpotName(kKnowledgeFirstDeposit + bestSpot), 0, st.looted);
         if (g_log) g_log("Unique items: spot %zu, chest %u marked %s by hand", bestSpot, chest, st.looted ? "looted" : "not looted");
         return true;
     }
@@ -822,6 +828,7 @@ bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shif
     const bool found = g_uniqueFound.erase(s) == 0;
     if (found) g_uniqueFound.insert(s);
     SaveManualBosses();
+    AnnounceMark(KnowledgeSpotName(kKnowledgeFirstDeposit + bestSpot), 0, found);
     if (g_log) g_log("Unique items: spot %u marked %s by hand", s, found ? "found" : "not found");
     return true;
 }
@@ -837,6 +844,7 @@ bool ToggleLoreReadNear(float wx, float wz, float maxRadiusMeters, float shiftMe
         const size_t d = kKnowledgeFirstDeposit + i;
         if (!IsLoreSpot(d)) continue;
         if (g_lootedChestMode == 0 && KnowledgeGrayed(d)) continue; // hidden
+        if (MarkClickSkipsSpot(kOreDeposits[d].x, kOreDeposits[d].topY, kOreDeposits[d].z)) continue;
         const float dx = kOreDeposits[d].x + StackSide(d) * shiftMeters - wx, dz = kOreDeposits[d].z - wz;
         if (dx * dx + dz * dz < best) {
             best = dx * dx + dz * dz;
@@ -846,7 +854,7 @@ bool ToggleLoreReadNear(float wx, float wz, float maxRadiusMeters, float shiftMe
     if (bestSpot == kKnowledgeSpotCount) return false;
     const float chestReach = std::min(best, chestRadiusMeters * chestRadiusMeters);
     for (size_t c = 0; c < kTotalChestCount; ++c) {
-        if (!ChestRowEnabled(c) || (g_chestLootStates[c].looted && g_lootedChestMode == 0)) continue;
+        if (!ChestRowEnabled(c) || (g_chestLootStates[c].looted && g_lootedChestMode == 0) || MarkClickSkipsChest(c)) continue;
         const ChestSpawn& sp = kChestSpawns[c];
         const float dx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f - wx;
         const float dz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f - wz;
@@ -859,8 +867,21 @@ bool ToggleLoreReadNear(float wx, float wz, float maxRadiusMeters, float shiftMe
     g_loreUnread.erase(s);
     if (read != KnowledgeDoneInGame(d)) (read ? g_loreRead : g_loreUnread).insert(s);
     SaveManualBosses();
+    AnnounceMark(KnowledgeSpotName(d), 1, read);
     if (g_log) g_log("Lore notes: spot %u marked %s by hand", s, read ? "read" : "not read");
     return true;
+}
+
+// A row whose markers Ctrl + click marks: chests, bosses, unique items, lore notes. Any other marker's click hides its row.
+bool RowCanBeMarked(uint32_t rowHash) {
+    if (rowHash == kGoldChestTypeHash || rowHash == kSilverChestTypeHash || rowHash == kWoodChestTypeHash ||
+        rowHash == kSpoilsTypeHash) return true;
+    if (!IsOreHash(rowHash)) return false;
+    for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
+        const size_t d = kKnowledgeFirstDeposit + i;
+        if (OreHash(kOreDeposits[d].ore) == rowHash && (IsBossSpot(d) || IsUniqueSpot(d) || IsLoreSpot(d))) return true;
+    }
+    return false;
 }
 
 // The note's or boss's own name (journal entry / health bar) in the game's language, else the row's name.

@@ -8,27 +8,63 @@ uint8_t* g_mapHintEntries = nullptr;
 constexpr size_t kMapHintSize = 0x48;
 constexpr size_t kMapBindingSize = 0xc4;
 
-uint8_t* MapHintBinding(uint8_t action) {
+uint8_t* MapHintRecord(uint8_t action) {
     auto* g = static_cast<uint8_t*>(GetUiG());
     auto* ui = g ? *reinterpret_cast<uint8_t**>(g + 0xd0) : nullptr;
     return ui ? ui + 0xf27c + action * kMapBindingSize : nullptr;
 }
 
-// Kinds: 0 Ctrl+click, 1 Shift+F, 2 the panel key, 3 middle click, 4 Alt+click, 5 Ctrl+Z, 6 Ctrl+Y.
-// Ctrl+click, Alt+click and Shift+F; Ctrl+Z / Ctrl+Y while there is a filter change to undo / redo; the panel key
-// unless it is set to None; middle click (copy X, Z) with Settings > Advanced > Position on
+// Kinds: 0 mark a chest (click), 1 Find, 2 the panel, 3 copy the position, 4 hide a row (click), 5 undo, 6 redo;
+// while the controller steers the Map Key, 7 move, 8 select, 9 back.
+// What each shows: its current keys, and its controller button if it has one.
+inp::Binding MapHintBinding(int kind) {
+    inp::Binding b;
+    auto withClick = [&](const inp::Binding& modifier) {
+        b = inp::MakeBinding("Mouse1");
+        if (modifier.keyCount) {
+            b.keys[0].ctrl = modifier.keys[0].ctrl;
+            b.keys[0].shift = modifier.keys[0].shift;
+            b.keys[0].alt = modifier.keys[0].alt;
+        }
+    };
+    switch (kind) {
+    case 0: withClick(g_keys.chestClick); break;
+    case 4: withClick(g_keys.hideRowClick); break;
+    case 1: b = g_keys.findOpen; break;
+    case 2:
+        b = g_keys.panelToggle;
+        if (!b.padCount) { b.pads[0] = g_keys.padMapKey.pads[0]; b.padCount = g_keys.padMapKey.padCount ? 1 : 0; }
+        break;
+    case 3: b = g_keys.copyPosition; break;
+    case 5: b = g_keys.undo; break;
+    case 6: b = g_keys.redo; break;
+    case 7: b = g_keys.padDown; break;
+    case 8: b = g_keys.padClick; break;
+    case 9: b = g_keys.padBack; break;
+    }
+    return b;
+}
+// The map's hints for the device the game is showing: Find, the panel and the rest with a binding on it.
+// Undo and redo while there is a change to take back; the copy with Settings > Advanced > Position on
 int MapHintKinds(int out[8]) {
     int n = 0;
-    // With a pad the game draws each hint's pad button, and ours (keyboard and mouse only) all came out as the model
-    // hint's A: none while the pad is in use
-    if (UsingGamepad()) return 0;
-    out[n++] = 0;
-    out[n++] = 4;
-    out[n++] = 1;
-    if (!g_filterUndo.empty()) out[n++] = 5;
-    if (!g_filterRedo.empty()) out[n++] = 6;
-    if (g_panelToggleVk) out[n++] = 2;
-    if (g_minimapShowPosition) out[n++] = 3;
+    const bool pad = greeneye::hints::PadInUse() || g_padKeyFocus;
+    auto add = [&](int kind) {
+        if (greeneye::hints::ShowsOn(MapHintBinding(kind), pad)) out[n++] = kind;
+    };
+    if (g_padKeyFocus) { // the Map Key has the controller: its buttons alone
+        add(7);
+        add(8);
+        add(9);
+        return n;
+    }
+    add(0);
+    add(4);
+    add(1);
+    if (!g_filterUndo.empty()) add(5);
+    if (!g_filterRedo.empty()) add(6);
+    add(2);
+    if (g_minimapShowPosition) add(3);
     return n;
 }
 int MapHintCount() {
@@ -41,23 +77,11 @@ int MapHintKind(int i) {
 }
 
 uint64_t DrawMapHintWithBinding(uint8_t* entry, void* params, int index) {
-    uint8_t* binding = MapHintBinding(entry[0]);
+    uint8_t* binding = MapHintRecord(entry[0]);
     if (!binding) return g_originalMapHint(entry, params);
     uint8_t saved[kMapBindingSize];
     std::memcpy(saved, binding, sizeof(saved));
-    // The first 16 bytes describe the keyboard/mouse input and its modifier.
-    std::memset(binding, 0, 16);
-    auto* words = reinterpret_cast<uint16_t*>(binding);
-    index = MapHintKind(index);
-    words[0] = (index == 0 || index == 3 || index == 4) ? 2 : 1; // mouse or keyboard
-    // F, the panel key (Tab), Z, Y (USB HID key codes)
-    words[1] = index == 1 ? 0x09 : index == 2 ? g_panelToggleHid : index == 5 ? 0x1d : index == 6 ? 0x1c : 0;
-    if (index == 0 || index == 4) *reinterpret_cast<uint32_t*>(binding + 4) = 1; // left mouse
-    if (index == 3) *reinterpret_cast<uint32_t*>(binding + 4) = 3; // middle mouse
-    if (index < 2 || index >= 4) {
-        words[6] = 1;
-        words[7] = index == 1 ? 0xe1 : index == 4 ? 0xe2 : 0xe0; // Shift, Alt, Ctrl
-    }
+    greeneye::hints::WriteRecord(binding, MapHintBinding(MapHintKind(index)));
     uint64_t result = 0;
     __try { result = g_originalMapHint(entry, params); }
     __finally { std::memcpy(binding, saved, sizeof(saved)); }
@@ -72,6 +96,17 @@ uint64_t MapHintHook(uint8_t* entry, void* params) {
                 return DrawMapHintWithBinding(entry, params, i);
     }
     return g_originalMapHint(entry, params);
+}
+
+// Move, Select, Back: the words of this language's "D-pad: Move   A: Select   B: Back"
+const char* MapKeyNavLabel(int i) {
+    static std::vector<std::string> nav;
+    static int navLanguage = -1;
+    if (const int language = static_cast<int>(umm_lang::Current()); language != navLanguage) {
+        navLanguage = language;
+        nav = PadStripLabels(umm_lang::T(umm_lang::Str::PadKeyNav));
+    }
+    return nav.size() == 3 ? nav[i].c_str() : "";
 }
 
 void DrawCombinedMapHints(MapHintSpan* span, void* options) {
@@ -89,7 +124,8 @@ void DrawCombinedMapHints(MapHintSpan* span, void* options) {
     for (int i = 0; i < count; ++i) {
         uint8_t* e = entries + i * kMapHintSize;
         std::memcpy(e, model, kMapHintSize);
-        UiText text = MakeUiText(umm_lang::T(labels[MapHintKind(i)]));
+        const int kind = MapHintKind(i);
+        UiText text = MakeUiText(kind >= 7 ? MapKeyNavLabel(kind - 7) : umm_lang::T(labels[kind]));
         std::memcpy(e + 0x20, &text, sizeof(text));
         e[0x1b] = 1;
     }
@@ -114,6 +150,10 @@ void MapHintsHook(MapHintSpan* span, void* options) {
         span->count <= 16 && g_originalMapHint)
         DrawCombinedMapHints(span, options);
     else g_originalMapHints(span, options);
+}
+
+bool MapHintBarWorks() {
+    return g_originalMapHint && g_originalMapHints;
 }
 
 void InstallNativeMapHints() {

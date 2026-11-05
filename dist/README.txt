@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.39
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.40
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -335,6 +335,26 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.40
+- Every key the map uses can now be rebound, and the controller has more of them: [Keys] in
+  minimap_config.ini holds them all, with buttons such as G, Pad:LB+A (chest outlines) and
+  Shift+F, Pad:LS+X (Find on the map). Edits apply within two seconds.
+- Key and button tips use the game's own look and show your current binding: the rebound key
+  on a keyboard, the button icon on a controller. Tested with an emulated controller, not
+  yet on a real pad.
+- Hiding or changing filters now says what happened: Alt + click, Ctrl+Z and Ctrl+Y show a
+  message naming the filter and ON or OFF. Ctrl + click shows what it marked, such as Silver
+  Chest - Looted: ON.
+- Ctrl + click on a marker that can't be marked (a Shroud Root, an ore, a town) now hides
+  its row, like Alt + click. It no longer catches a chest beside it by accident.
+- Ctrl + click and Alt + click now only act on what the map draws, not on markers hidden by
+  Region > Hide, in the Hollow Halls' corner or in another hall.
+Reported bugs fixed:
+- Hovering the empty Hollow Halls corner of the overworld map showed tips for the hidden
+  markers there.
+- Tome of Agony, and two other pins, showed in the wrong Hollow Hall.
+- Undiscovered Ancient Spires couldn't be hidden with a click.
+
 1.3.39
 - Picking a large group of hidden places in Find on the map, such as every Saffron patch, no
   longer freezes the game.

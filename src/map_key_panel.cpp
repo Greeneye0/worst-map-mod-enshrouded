@@ -30,12 +30,16 @@
 #include <vector>
 
 #include "map_key_panel.h"
+#include "input_binds.h"
+#include "game_bindings.h"
+#include "game_hints.h"
 #include "async_io.h" // the saves are written off the game's thread
 #include "map_control.h"
 #include "hd_pool_policy.h"
 #include "map_natives.h"
 #include "ui_mesh.h" // smooth chest silhouettes (shared with Find and Quick Deposit)
 #include "player_markers.h"
+#include "filter_notice.h"
 #include "chest_spawns.h"
 #include "chest_loot_ids.h"
 #include "ore_deposits.h"
@@ -1195,10 +1199,71 @@ bool g_toggleKeyWasDown = false;
 // game's own key code for the map's hint bar (USB HID usage: A = 4, 1 = 0x1e, Tab = 0x2b, F1 = 0x3a)
 int g_panelToggleVk = VK_TAB;
 uint16_t g_panelToggleHid = 0x2b;
-// G G's key ([Keys] Glow, pressed twice; None: off) and the keys held together for the minimap's mouse ([Keys]
-// MinimapMouse: up to three of Shift, Ctrl, Alt and a key; None: off). Requested by izisot.
-int g_glowVk = 'G';
-int g_minimapMouseVks[3] = {VK_SHIFT, VK_MENU, 0};
+// Every key and controller button of the mod, [Keys] in the ini (common/input_binds.h). Glow is pressed twice and
+// MinimapMouse is held with the mouse (requested by izisot). Read again when the file changes.
+namespace inp = greeneye::input;
+struct MapKeys {
+    inp::Binding panelToggle, glow, minimapMouse, findOpen, mapZoomIn, mapZoomOut, miniZoomIn, miniZoomOut, undo, redo,
+        hallRecenter, modOff, chestClick, hideRowClick, regionClick, copyPosition, padMapKey, padBack, padClick, padUp,
+        padDown, padLeft, padRight, findClose, findConfirm, findNext, findPrevious, findUp, findDown, findPageUp,
+        findPageDown, findFilters, interact;
+} g_keys;
+struct MapKeySetting { const char* name; const char* defaultText; inp::Binding MapKeys::* field; };
+constexpr MapKeySetting kMapKeySettings[] = {
+    {"PanelToggle", "Tab", &MapKeys::panelToggle},
+    {"Glow", "G, Pad:LB+A", &MapKeys::glow},
+    {"MinimapMouse", "Shift+Alt", &MapKeys::minimapMouse},
+    {"FindOnMap", "Shift+F, Pad:LS+X", &MapKeys::findOpen},
+    {"MapZoomIn", "NumPlus, PageUp", &MapKeys::mapZoomIn},
+    {"MapZoomOut", "NumMinus, PageDown", &MapKeys::mapZoomOut},
+    {"MinimapZoomIn", "], NumPlus, Pad:RS+Up", &MapKeys::miniZoomIn},
+    {"MinimapZoomOut", "[, NumMinus, Pad:RS+Down", &MapKeys::miniZoomOut},
+    {"FilterUndo", "Ctrl+Z", &MapKeys::undo},
+    {"FilterRedo", "Ctrl+Y, Ctrl+Shift+Z", &MapKeys::redo},
+    {"HallRecenter", "C, Pad:LS", &MapKeys::hallRecenter},
+    {"ModOnOff", "Ctrl+Shift+F12", &MapKeys::modOff},
+    {"ChestClick", "Ctrl", &MapKeys::chestClick},
+    {"HideRowClick", "Alt", &MapKeys::hideRowClick},
+    {"RegionOnlyClick", "Ctrl", &MapKeys::regionClick},
+    {"CopyPosition", "Mouse3", &MapKeys::copyPosition},
+    {"MapKeyEnter", "NoKeys, Pad:View", &MapKeys::padMapKey},
+    {"MapKeyBack", "NoKeys, Pad:B", &MapKeys::padBack},
+    {"MapKeyClick", "NoKeys, Pad:A", &MapKeys::padClick},
+    {"MapKeyUp", "NoKeys, Pad:Up", &MapKeys::padUp},
+    {"MapKeyDown", "NoKeys, Pad:Down", &MapKeys::padDown},
+    {"MapKeyLeft", "NoKeys, Pad:Left", &MapKeys::padLeft},
+    {"MapKeyRight", "NoKeys, Pad:Right", &MapKeys::padRight},
+    {"FindClose", "Esc, Pad:B", &MapKeys::findClose},
+    {"FindConfirm", "Enter, Pad:A", &MapKeys::findConfirm},
+    {"FindNext", "Tab", &MapKeys::findNext},
+    {"FindPrevious", "Shift+Tab", &MapKeys::findPrevious},
+    {"FindUp", "Up, Pad:Up", &MapKeys::findUp},
+    {"FindDown", "Down, Pad:Down", &MapKeys::findDown},
+    {"FindPageUp", "PageUp", &MapKeys::findPageUp},
+    {"FindPageDown", "PageDown", &MapKeys::findPageDown},
+    {"FindFilters", "F2, Ctrl+F", &MapKeys::findFilters},
+};
+bool KeyIsDown(int vk) { return inp::KeyDown(vk); }
+// A binding as text on the panel: the controller's chord when the game is showing controller tips.
+std::string CurrentKeyText(const inp::Binding& b) {
+    inp::Binding one;
+    const bool pad = greeneye::hints::PadInUse() && b.padCount;
+    if (pad) { one.pads[0] = b.pads[0]; one.padCount = 1; }
+    else if (b.keyCount) { one.keys[0] = b.keys[0]; one.keyCount = 1; }
+    std::string text = inp::BindingToText(one);
+    const size_t cut = text.find(", ");
+    if (pad) return cut == std::string::npos ? text : text.substr(cut + 2 + 4); // past "NoKeys, Pad:"
+    return cut == std::string::npos ? text : text.substr(0, cut);
+}
+// The search's line names its filter key F2 in every language; here the key it has now.
+void ShowFiltersKey(char* line, size_t size) {
+    const char* at = std::strstr(line, "F2");
+    if (!at || !g_keys.findFilters.keyCount) return;
+    const std::string rest(at + 2);
+    const std::string key = CurrentKeyText(g_keys.findFilters);
+    std::snprintf(line + (at - line), size - size_t(at - line), "%s%s", key.c_str(), rest.c_str());
+}
+bool BindingDown(const inp::Binding& b) { return inp::KeysHeld(b, KeyIsDown) || (b.padCount && inp::PadHeld(b, inp::ReadPad())); }
 
 // A key's name ("Tab", "G", "5", "F3", "CapsLock", "None"...) to its virtual key and HID code; false if not known.
 bool ParseKeyName(const char* name, int& vk, uint16_t& hid) {
@@ -1228,40 +1293,9 @@ bool ParseKeyName(const char* name, int& vk, uint16_t& hid) {
     return false;
 }
 
-// "Shift+Alt", "Ctrl+M", "F7" or "None" to up to three virtual keys (0: unused); false if a part isn't a key
-bool ParseKeyCombo(const char* text, int (&vks)[3]) {
-    int out[3]{};
-    int n = 0;
-    char part[16]{};
-    for (const char* t = text;;) {
-        const char* end = t;
-        while (*end && *end != '+') ++end;
-        const size_t len = static_cast<size_t>(end - t);
-        if (len == 0 || len >= sizeof(part) || n == 3) return false;
-        std::memcpy(part, t, len);
-        part[len] = 0;
-        int vk = 0;
-        uint16_t hid = 0;
-        if (_stricmp(part, "Shift") == 0) vk = VK_SHIFT;
-        else if (_stricmp(part, "Ctrl") == 0 || _stricmp(part, "Control") == 0) vk = VK_CONTROL;
-        else if (_stricmp(part, "Alt") == 0) vk = VK_MENU;
-        else if (!ParseKeyName(part, vk, hid)) return false;
-        if (vk == 0 && (n > 0 || *end)) return false; // None alone only
-        out[n++] = vk;
-        if (!*end) break;
-        t = end + 1;
-    }
-    std::memcpy(vks, out, sizeof(out));
-    return true;
-}
-
 // The minimap's mouse keys all held (none set: never)
 bool MinimapMouseKeysHeld() {
-    if (!g_minimapMouseVks[0]) return false;
-    for (int vk : g_minimapMouseVks) {
-        if (vk && (GetAsyncKeyState(vk) & 0x8000) == 0) return false;
-    }
-    return true;
+    return inp::KeysHeld(g_keys.minimapMouse, KeyIsDown);
 }
 
 uint8_t* ScanPattern(uint8_t* base, size_t size, const char* pattern) {
@@ -2045,6 +2079,65 @@ void RestoreFilterSnapshot(uint8_t* client, uint8_t* mapState, const FilterSnaps
     if (FilterLockCount() > 0) SaveFilterLocks();
 }
 
+// The message on the World Map for a hide click or an undo / redo: which rows changed and how (filter_notice.h).
+const char* RowText(const MarkerRowSpec& row);
+std::string g_filterNotice;
+uint64_t g_filterNoticeTick = 0;
+bool g_filterNoticeOnHud = false; // from a click on the minimap: shown beside it, not on the World Map
+
+void ShowMapNotice(std::string text) {
+    if (text.empty()) return;
+    if (g_log) g_log("Map: notice: %s", text.c_str());
+    g_filterNotice = std::move(text);
+    g_filterNoticeTick = GetTickCount64();
+    g_filterNoticeOnHud = false;
+}
+
+// A Ctrl + click's mark. Words: 0 looted, 1 read, 2 beaten, from the Settings line.
+void AnnounceMark(const char* name, size_t word, bool on) {
+    if (!name) return;
+    const std::string state = filter_notice::WordOf(umm_lang::T(umm_lang::Str::LootedChests), word);
+    ShowMapNotice(filter_notice::Mark(name, state, umm_lang::T(on ? umm_lang::Str::On : umm_lang::Str::Off)));
+}
+
+void AnnounceMarkState(const char* name, umm_lang::Str state) {
+    if (name) ShowMapNotice(filter_notice::Mark(name, umm_lang::T(state)));
+}
+
+// The name a row shows for one of its types, and that row: null when no row has the type
+const char* FilterRowName(uint32_t hash, const void** key = nullptr) {
+    for (const auto& grp : kCategoryGroups) {
+        for (size_t r = 0; r < grp.rowCount; ++r) {
+            const MarkerRowSpec& row = grp.rows[r];
+            if (row.typeHash != hash && row.pairedHash != hash && row.pairedHash2 != hash) continue;
+            if (key) *key = &row;
+            return RowText(row);
+        }
+    }
+    return nullptr;
+}
+
+void AnnounceFilterChange(const FilterSnapshot& before, const FilterSnapshot& after) {
+    if (!SameFilterRows(before, after)) return;
+    std::vector<std::pair<std::string, bool>> changes;
+    std::vector<const void*> named; // a row switching several types counts once
+    for (size_t i = 0; i < after.states.size(); ++i) {
+        const auto [hash, on] = after.states[i];
+        if (before.states[i].second == on) continue;
+        const void* key = nullptr;
+        const char* name = FilterRowName(hash, &key);
+        if (!name && std::find(std::begin(kCustomPinHashes), std::end(kCustomPinHashes), hash) !=
+                         std::end(kCustomPinHashes)) {
+            key = kCustomPinHashes; // the map key has one line for all of them
+            name = umm_lang::T(umm_lang::Str::CustomPin);
+        }
+        if (!name || std::find(named.begin(), named.end(), key) != named.end()) continue;
+        named.push_back(key);
+        changes.emplace_back(name, on);
+    }
+    ShowMapNotice(filter_notice::Format(changes, umm_lang::T(umm_lang::Str::On), umm_lang::T(umm_lang::Str::Off)));
+}
+
 std::vector<FilterSnapshot> g_filterUndo, g_filterRedo;
 FilterSnapshot g_filterLastSeen;
 
@@ -2142,15 +2235,13 @@ void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
     g_filterLastSeen = now;
     if (changed || first) SaveFilterHistory();
 
-    static bool zWasDown = false, yWasDown = false;
-    const bool ctrl = keysFree && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-    const bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-    const bool zDown = ctrl && (GetAsyncKeyState('Z') & 0x8000) != 0;
-    const bool yDown = ctrl && (GetAsyncKeyState('Y') & 0x8000) != 0;
-    const bool undo = zDown && !zWasDown && !shift;
-    const bool redo = (yDown && !yWasDown) || (zDown && !zWasDown && shift);
-    zWasDown = zDown;
-    yWasDown = yDown;
+    static bool undoWasDown = false, redoWasDown = false;
+    const bool undoDown = keysFree && inp::KeysHeld(g_keys.undo, KeyIsDown);
+    const bool redoDown = keysFree && inp::KeysHeld(g_keys.redo, KeyIsDown);
+    const bool undo = undoDown && !undoWasDown;
+    const bool redo = redoDown && !redoWasDown;
+    undoWasDown = undoDown;
+    redoWasDown = redoDown;
     auto& from = undo ? g_filterUndo : g_filterRedo;
     auto& to = undo ? g_filterRedo : g_filterUndo;
     if ((!undo && !redo) || from.empty()) return;
@@ -2158,6 +2249,7 @@ void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
     RestoreFilterSnapshot(client, mapState, from.back());
     from.pop_back();
     g_filterLastSeen = TakeFilterSnapshot(client);
+    AnnounceFilterChange(now, g_filterLastSeen);
     SaveFilterHistory();
     if (g_log) g_log("Map Key: %s a filter change (%zu more to undo, %zu to redo)", undo ? "undid" : "redid",
                      g_filterUndo.size(), g_filterRedo.size());
@@ -2431,7 +2523,6 @@ uint8_t* g_lootClientWorld = nullptr;   // the game's world object the state bel
 uint64_t g_lootLastAltarCheckTick = 0;
 size_t g_lootPendingChest = kTotalChestCount; // chest the interact key was pressed at
 uint64_t g_lootPendingTick = 0;
-int g_interactVk = 'E';
 
 std::string GetLootedChestsPath() {
     return greeneye::DataPath("looted_chests.ini");
@@ -2804,7 +2895,14 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     //    chest screen (21) right after. The key alone, or the inventory (9) opened by itself, marks nothing.
     //    A locked chest is unlocked first, so its chest screen can come several seconds later: the wait is
     //    10 s, starts over while the key is held, and the chest screen can come after another screen.
-    const bool interactDown = appFocused && screen == 1 && (GetAsyncKeyState(g_interactVk) & 0x8000) != 0;
+    // On a controller: InteractKey's Pad: part, or the game's own Interact (Y unless rebound).
+    const bool interactDown = appFocused && screen == 1 && [] {
+        if (inp::KeysHeld(g_keys.interact, KeyIsDown)) return true;
+        const inp::PadState pad = inp::ReadPad();
+        if (g_keys.interact.padCount) return inp::PadHeld(g_keys.interact, pad);
+        const auto game = greeneye::bindings::GameInteractKeys().pad;
+        return (pad.buttons & game.buttons) != 0 || (game.leftTrigger && pad.lt) || (game.rightTrigger && pad.rt);
+    }();
     if (interactDown && !g_interactKeyWasDown) {
         g_lootPendingChest = kTotalChestCount;
         if (uint8_t* clientWorld = GetClientWorld(client)) {
@@ -2979,11 +3077,36 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     }
 }
 
+// A Ctrl + click on the World Map is only for what that map draws: not a chest or spot hidden by Map Key > Region > Hide,
+// in the Hollow Halls' corner of the overworld map, or in another hall. The minimap's clicks aren't under these rules.
+namespace halls {
+bool MapHides(float x, float z);
+bool MapHidesChest(float x, float y, float z);
+bool MapHidesAt(float x, float y, float z, bool wide);
+}
+bool RegionHidesAt(float x, float z); // regions.inl
+bool g_markClickOnWorldMap = false;
+
+bool MarkClickSkipsChest(size_t c) {
+    if (!g_markClickOnWorldMap) return false;
+    const ChestSpawn& sp = kChestSpawns[c];
+    const float x = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
+    const float y = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f;
+    const float z = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
+    if (RegionHidesAt(x, z)) return true;
+    // Wooden chests and spoils are the mod's own icons, on a floor of the hall; gold and silver are the game's markers
+    return IsWoodChest(c) || c >= kEndChestFirst ? halls::MapHidesChest(x, y, z) : halls::MapHides(x, z);
+}
+
+bool MarkClickSkipsSpot(float x, float y, float z) {
+    return g_markClickOnWorldMap && (RegionHidesAt(x, z) || halls::MapHidesAt(x, y, z, true));
+}
+
 bool ToggleChestClearedNearWorldPos(float wx, float wz, float maxRadiusMeters) {
     float bestDistSq = maxRadiusMeters * maxRadiusMeters;
     size_t bestChest = kTotalChestCount;
     for (size_t c = 0; c < kTotalChestCount; ++c) {
-        if (!ChestRowEnabled(c)) continue;
+        if (!ChestRowEnabled(c) || MarkClickSkipsChest(c)) continue;
         if (g_chestLootStates[c].looted && g_lootedChestMode == 0) continue;
 
         const ChestSpawn& sp = kChestSpawns[c];
@@ -3000,12 +3123,16 @@ bool ToggleChestClearedNearWorldPos(float wx, float wz, float maxRadiusMeters) {
     if (bestChest < kTotalChestCount) {
         // Steps: looted -> refilled (its check mark stays) -> never looted -> looted
         auto& st = g_chestLootStates[bestChest];
+        const char* chestName = FilterRowName(ChestTypeHash(bestChest));
         if (st.looted) {
             st.looted = false;
+            AnnounceMarkState(chestName, umm_lang::Str::MarkRefilled);
         } else if (st.everLooted) {
             st.everLooted = false;
+            AnnounceMark(chestName, 0, false);
         } else {
             st.looted = st.everLooted = true;
+            AnnounceMark(chestName, 0, true);
         }
         st.elapsedOutOfBuildZoneSec = 0.0;
         g_chestLootDirty = true;
@@ -3016,7 +3143,6 @@ bool ToggleChestClearedNearWorldPos(float wx, float wz, float maxRadiusMeters) {
     return false;
 }
 
-bool RegionHidesAt(float x, float z); // regions.inl
 
 void SyncChestsInUiArrays(uint8_t* client, bool& dirty) {
     if (!client) return;
@@ -3891,6 +4017,26 @@ bool WindowsJoysticksInConfig() {
     return !(_strnicmp(v, "false", 5) == 0 || v[0] == '0' || _strnicmp(v, "no", 2) == 0);
 }
 
+bool MapHintBarWorks();
+// The words after the button in each part of a pad strip's line ("A: Select   B: Back": Select, Back).
+std::vector<std::string> PadStripLabels(const char* line) {
+    std::vector<std::string> labels;
+    std::string text(line);
+    while (!text.empty()) {
+        const size_t gap = text.find("   ");
+        std::string part = text.substr(0, gap);
+        text = gap == std::string::npos ? std::string() : text.substr(gap + 3);
+        size_t colon = part.rfind(':');
+        size_t after = colon == std::string::npos ? std::string::npos : colon + 1;
+        const size_t wide = part.rfind("\xEF\xBC\x9A"); // the full-width colon
+        if (wide != std::string::npos && (after == std::string::npos || wide + 3 > after)) after = wide + 3;
+        if (after == std::string::npos) return {};
+        while (after < part.size() && part[after] == ' ') ++after;
+        labels.push_back(part.substr(after));
+    }
+    return labels;
+}
+
 // The Map Key with a controller: View moves the pad into the panel, the D-pad steps between its controls, A clicks the
 // one picked, B goes back to the map. The game reads Xbox-style pads (XInput, Steam Input's too) with XInputGetState,
 // hooked so that while the panel has the pad the game sees it idle, and View is the panel's on the World Map.
@@ -3911,9 +4057,19 @@ XInputGetStateFn RealXInputGetState() {
 
 XInputGetStateFn g_origXInputGetStateEx = nullptr; // ordinal 100: the same, with the Guide button
 std::atomic<uint32_t> g_xinputCalls{0}, g_xinputExCalls{0};
+inp::SharedBinding g_padChords[4]; // glow, Find on the map, the minimap's zoom in and out
+inp::SharedBinding g_padEnter;     // the button that enters the Map Key
+std::atomic<uint16_t> g_padSearchHide{0};
 
 // Both read functions: while the panel has the pad the game gets it idle
 DWORD PadFilterState(DWORD r, DWORD user, XINPUT_STATE* st) {
+#ifdef GREENEYE_INPUT_TEST
+    // tools/inputtest.py --emulate: this hook is the lowest in the chain, so the pad starts here (common/input_binds.h)
+    if (st && r != ERROR_SUCCESS && inp::EmulatingPad(user)) {
+        inp::EmulatedState(st);
+        r = ERROR_SUCCESS;
+    }
+#endif
     if (r != ERROR_SUCCESS || !st || user >= XUSER_MAX_COUNT) return r;
     static uint16_t held[XUSER_MAX_COUNT]{};
     XINPUT_GAMEPAD& g = st->Gamepad;
@@ -3924,9 +4080,15 @@ DWORD PadFilterState(DWORD r, DWORD user, XINPUT_STATE* st) {
         std::memset(&g, 0, sizeof(g));
         return r;
     }
-    held[user] = (held[user] | g_padSwallow[user].exchange(0)) & g.wButtons;
+    // The chords' buttons once their modifiers are held, and the open search's: hidden until they come up
+    const inp::PadState pad{g.wButtons, g.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD, g.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD};
+    const uint16_t chords = static_cast<uint16_t>((onMap ? g_padSearchHide.load() : uint16_t(0)) | inp::PadHideMask(g_padChords[0].Get(), pad) |
+                                                  inp::PadHideMask(g_padChords[1].Get(), pad) |
+                                                  inp::PadHideMask(g_padChords[2].Get(), pad) |
+                                                  inp::PadHideMask(g_padChords[3].Get(), pad));
+    held[user] = static_cast<uint16_t>((held[user] | g_padSwallow[user].exchange(0) | chords) & g.wButtons);
     g.wButtons &= static_cast<WORD>(~held[user]);
-    if (onMap) g.wButtons &= static_cast<WORD>(~XINPUT_GAMEPAD_BACK);
+    if (onMap) g.wButtons &= static_cast<WORD>(~inp::PadButtons(g_padEnter.Get()));
     return r;
 }
 DWORD WINAPI XInputGetStateHook(DWORD user, XINPUT_STATE* st) {
@@ -3952,7 +4114,10 @@ void InstallXInputHook() {
     if (fn && StartsAsExpected(fn, kPrologue, sizeof(kPrologue))) {
         g_origXInputGetState = reinterpret_cast<XInputGetStateFn>(
             InstallHook(fn, reinterpret_cast<void*>(&XInputGetStateHook), sizeof(kPrologue)));
-        if (g_origXInputGetState) g_xinputHookTarget = fn;
+        if (g_origXInputGetState) {
+            g_xinputHookTarget = fn;
+            inp::PadReadFn() = g_origXInputGetState; // the mod's own reads, past its hook
+        }
     }
     // ordinal 100: "mov [rsp+8], rbx; mov [rsp+10h], rbp; push rdi; sub rsp, 30h" (15 bytes)
     auto* fnEx = x ? reinterpret_cast<uint8_t*>(GetProcAddress(x, reinterpret_cast<LPCSTR>(100))) : nullptr;
@@ -4132,6 +4297,15 @@ PadInput ReadPadPresses() {
         down |= b;
         prev[u] = b;
     }
+#ifdef GREENEYE_INPUT_TEST
+    {
+        static uint16_t prevTest = 0;
+        const uint16_t b = inp::ReadPad().buttons;
+        in.pressed |= b & static_cast<uint16_t>(~prevTest);
+        down |= b;
+        prevTest = b;
+    }
+#endif
     constexpr uint16_t kDpad = XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN | XINPUT_GAMEPAD_DPAD_LEFT |
                                XINPUT_GAMEPAD_DPAD_RIGHT;
     if (in.pressed & kDpad) repeatAt = now + 380;
@@ -4148,7 +4322,22 @@ bool PadKeyFrame(bool allowed, float& mx, float& my, bool& clicked, float& scrol
     g_padTargets.swap(g_padTargetsNow);
     g_padTargetsNow.clear();
     if (!g_origXInputGetState) return false;
-    const PadInput in = ReadPadPresses();
+    PadInput raw = ReadPadPresses();
+    // The rebindable buttons ([Keys] MapKey*) as the ones the code below moves by.
+    PadInput in;
+    {
+        const inp::PadState pad = inp::ReadPad();
+        auto set = [&](const inp::Binding& b, uint16_t canonical) {
+            if (inp::PadPressed(b, raw.pressed, pad)) in.pressed |= canonical;
+        };
+        set(g_keys.padMapKey, XINPUT_GAMEPAD_BACK);
+        set(g_keys.padBack, XINPUT_GAMEPAD_B);
+        set(g_keys.padClick, XINPUT_GAMEPAD_A);
+        set(g_keys.padUp, XINPUT_GAMEPAD_DPAD_UP);
+        set(g_keys.padDown, XINPUT_GAMEPAD_DPAD_DOWN);
+        set(g_keys.padLeft, XINPUT_GAMEPAD_DPAD_LEFT);
+        set(g_keys.padRight, XINPUT_GAMEPAD_DPAD_RIGHT);
+    }
     auto leave = [&] {
         g_padKeyFocus = false;
         for (auto& sw : g_padSwallow) sw = 0xFFFF; // what is still down stays the panel's until released
@@ -4599,6 +4788,7 @@ void SyncNativeFindDialogState() {
         char filters[96]{};
         std::snprintf(filters, sizeof(filters), umm_lang::T(umm_lang::Str::FiltersFmt),
                       umm_lang::T(g_findRespectFilters ? umm_lang::Str::On : umm_lang::Str::Off));
+        ShowFiltersKey(filters, sizeof(filters));
         std::snprintf(g_hintLineBuf, sizeof(g_hintLineBuf), "%s  |  %s",
                       umm_lang::T(umm_lang::Str::TypeToSearch), filters);
         *reinterpret_cast<UiText*>(g_mapFindDialog + 0x878) = MakeRuntimeUiText(g_hintLineBuf);
@@ -4638,6 +4828,7 @@ void SyncNativeFindDialogState() {
     char filters[96]{};
     std::snprintf(filters, sizeof(filters), umm_lang::T(umm_lang::Str::FiltersFmt),
                   umm_lang::T(g_findRespectFilters ? umm_lang::Str::On : umm_lang::Str::Off));
+    ShowFiltersKey(filters, sizeof(filters));
     std::snprintf(g_hintLineBuf, sizeof(g_hintLineBuf), "%s%s  |  %s",
                   umm_lang::FormatMatches(g_findMatchedPlaces.size()).c_str(), hidden, filters);
     *reinterpret_cast<UiText*>(g_mapFindDialog + 0x878) = MakeRuntimeUiText(g_hintLineBuf);
@@ -5304,6 +5495,7 @@ struct HideRowTarget {
 };
 
 const char* RowText(const MarkerRowSpec& row);
+bool MarkerHiddenOnMap(const uint8_t* m); // regions.inl
 
 // The Map Key row of the marker clicked: the shown marker nearest the spot, within maxDist metres. The mod's own icons
 // (lore notes, ores, ...) aren't markers of the game's: knownRow is the one under the cursor.
@@ -5321,7 +5513,9 @@ bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uin
         for (uint64_t i = 0; i < count; ++i) {
             const uint8_t* m = base + i * 0xA0;
             const uint32_t origHash = GetMarkerOrigTypeHash(m);
-            if (origHash == 0u || origHash == 0x98b2d65du) continue;
+            // Only what the map draws: the type at +0x30 is 0 for a marker its row or its reveal rule took off the map
+            // (an Ancient Spire's second marker, once you have the spire)
+            if (origHash == 0u || *reinterpret_cast<const uint32_t*>(m + 0x30) == 0u || MarkerHiddenOnMap(m)) continue;
             const float dx = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14) - wx);
             const float dz = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24) - wz);
             const float d2 = dx * dx + dz * dz;
@@ -5353,7 +5547,8 @@ bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uin
         for (uint64_t i = 0; i < playerCount; ++i) {
             const uint8_t* p = players + i * 0x240;
             const uint32_t pid = *reinterpret_cast<const uint32_t*>(p);
-            if (pid == 0 || pid == localId) continue;
+            if (pid == 0 || pid == localId || halls::MapHides(*reinterpret_cast<const float*>(p + 0x10),
+                                                              *reinterpret_cast<const float*>(p + 0x18))) continue;
             const float dx = *reinterpret_cast<const float*>(p + 0x10) - static_cast<float>(wx);
             const float dz = *reinterpret_cast<const float*>(p + 0x18) - static_cast<float>(wz);
             if (dx * dx + dz * dz > best) continue;
@@ -5380,6 +5575,16 @@ bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uin
         name = umm_lang::T(umm_lang::Str::CustomPin);
     }
     return name != nullptr;
+}
+
+// Turns the clicked marker's row off, with the message
+void HideClickedRow(uint8_t* client, uint8_t* mapState, const HideRowTarget& target, const char* how) {
+    const FilterSnapshot before = TakeFilterSnapshot(client);
+    for (uint32_t h : target.hashes) {
+        if (h != 0u) SetSingleFilterState(client, mapState, h, false);
+    }
+    AnnounceFilterChange(before, TakeFilterSnapshot(client));
+    if (g_log) g_log("Map: hid the row %08x (%s)", target.hashes[0], how);
 }
 
 bool g_worldMapWasOpen = true;
@@ -5736,6 +5941,37 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
 #include "ground_areas.inl"
 #include "hall_pan_clamp.inl"
 #include "cursor_position.inl"
+
+// The message's plate width, for placing it beside the minimap
+float FilterNoticeWidth(float rootW) {
+    return std::min(rootW - 80.0f, umm_lang::TextWidth(g_filterNotice.c_str()) * 1.2f + 32.0f);
+}
+
+// The message: a plate, for three seconds, fading in the last half second. By default over the Position plate's place
+// on the World Map; onHud, at the left edge given (the minimap's side).
+void DrawFilterNotice(void* widgetRaw, const float* rootRect, bool onHud = false, float hudX = 0.0f, float hudY = 0.0f) {
+    if (g_filterNotice.empty() || !widgetRaw || onHud != g_filterNoticeOnHud) return;
+    constexpr uint64_t kShowMs = 3000, kFadeMs = 500;
+    const uint64_t age = GetTickCount64() - g_filterNoticeTick;
+    if (age >= kShowMs) {
+        g_filterNotice.clear();
+        return;
+    }
+    using namespace key_style;
+    const float alpha = age + kFadeMs > kShowMs ? static_cast<float>(kShowMs - age) / kFadeMs : 1.0f;
+    const float rootW = rootRect[2] > 100.0f ? rootRect[2] : 1920.0f;
+    const float rootH = rootRect[3] > 100.0f ? rootRect[3] : 1080.0f;
+    constexpr float kPlateH = 30.0f;
+    const float plateW = FilterNoticeWidth(rootW);
+    const float plateX = onHud ? hudX : rootRect[0] + rootW * 0.5f - plateW * 0.5f;
+    const float plateY = onHud ? hudY : rootRect[1] + rootH - 130.0f;
+    constexpr uint32_t kTraySlate = 0xFF6C5A58u, kTrayEdge = 0xFF2A2020u, kTrayGoldLine = 0xFF4986A0u;
+    DrawFramedBoxAbs(widgetRaw, plateX, plateY, plateW, kPlateH, kTraySlate, 0.97f * alpha, kTrayEdge, 0.95f * alpha, 6.0f);
+    DrawFramedBoxAbs(widgetRaw, plateX + 2.0f, plateY + 2.0f, plateW - 4.0f, kPlateH - 4.0f, kTraySlate, alpha,
+                     kTrayGoldLine, 0.75f * alpha, 5.0f);
+    DrawLabelAbs(plateX, plateY, plateW, kPlateH, g_filterNotice.c_str(), 0xFFC6EFFCu, 0.97f * alpha, TextAlignH::Center,
+                 TextAlignV::Center, nullptr, 0.9f);
+}
 #include "chest_silhouette.inl"
 #include "vein_sight.inl"
 #include "chest_glow.inl"
@@ -6028,7 +6264,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         const bool checked = KnowledgeDone(d), done = checked && KnowledgeGrayed(d);
         if (done && g_lootedChestMode == 0) continue;
         const bool outside = OutsideFocusedRegion(dep.x, dep.z); // Map Key > Region
-        if ((outside && g_regionOutsideHide) || halls::MapHidesAt(dep.x, dep.topY, dep.z)) continue; // or another Hollow Hall
+        if ((outside && g_regionOutsideHide) || halls::MapHidesAt(dep.x, dep.topY, dep.z, IsKnowledgeDeposit(d))) continue; // or another Hollow Hall
         if (pass == 0) {
             const int gx = static_cast<int>((sx - left) / cell), gy = static_cast<int>((sy - top) / cell);
             if (gx >= 0 && gy >= 0 && gx < gridW && gy < gridH) {
@@ -7199,14 +7435,14 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     HWND foreground = GetForegroundWindow();
     DWORD fgPid = 0;
     if (foreground) GetWindowThreadProcessId(foreground, &fgPid);
-    bool focused = (fgPid == GetCurrentProcessId());
+    bool focused = (fgPid == GetCurrentProcessId()) || inp::GameHasFocus();
 
     // The dungeon map: C (Recenter) goes where the game shows you on the overworld (the hall's entrance); centred on
     // where you are in the hall instead, for a few frames while the game's own move runs out
     {
         static bool s_cWasDown = false;
         static int s_hallRecenterFrames = 0;
-        const bool cDown = focused && !g_keySearchFocused && (GetAsyncKeyState('C') & 0x8000) != 0;
+        const bool cDown = focused && !g_keySearchFocused && BindingDown(g_keys.hallRecenter);
         if (cDown && !s_cWasDown && halls::MapActive() && !halls::g_mapOverworld) s_hallRecenterFrames = 6;
         s_cWasDown = cDown;
         float px = 0.0f, pz = 0.0f;
@@ -7261,9 +7497,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         SyncNativeFindDialogState();
     };
 
-    bool shiftDown = focused && ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
-    bool fDown = focused && ((GetAsyncKeyState('F') & 0x8000) != 0);
-    bool shiftFNow = shiftDown && fDown;
+    bool shiftFNow = focused && BindingDown(g_keys.findOpen);
     // A capital F typed into a pin's name is not Shift+F; neither is Tab typed there. The game's text input flag is
     // not set by every field (not by a new custom pin's name), so a dialog open on the map counts too: mapState +0xf8
     // is 0 with none, 3 for a marker's menu, 4 for naming a custom pin
@@ -7275,8 +7509,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     }
     g_shiftFWasDown = shiftFNow;
 
-    bool toggleKeyDown = focused && g_panelToggleVk && !g_findDialogOpen && !typingInGameField &&
-                         ((GetAsyncKeyState(g_panelToggleVk) & 0x8000) != 0);
+    bool toggleKeyDown = focused && !g_findDialogOpen && !typingInGameField && BindingDown(g_keys.panelToggle);
     if (toggleKeyDown && !g_toggleKeyWasDown) {
         g_panelCollapsed = !g_panelCollapsed;
     }
@@ -7289,8 +7522,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         static bool plusWasDown = false, minusWasDown = false;
         const bool keysFree = focused && !g_findDialogOpen && !typingInGameField;
         UpdateFilterHistory(client, mapState, keysFree);
-        const bool plusDown = keysFree && ((GetAsyncKeyState(VK_ADD) | GetAsyncKeyState(VK_PRIOR)) & 0x8000) != 0;
-        const bool minusDown = keysFree && ((GetAsyncKeyState(VK_SUBTRACT) | GetAsyncKeyState(VK_NEXT)) & 0x8000) != 0;
+        const bool plusDown = keysFree && BindingDown(g_keys.mapZoomIn);
+        const bool minusDown = keysFree && BindingDown(g_keys.mapZoomOut);
         const int dir = (plusDown && !plusWasDown) ? -1 : (minusDown && !minusWasDown) ? 1 : 0; // -1 closer
         plusWasDown = plusDown;
         minusWasDown = minusDown;
@@ -7436,6 +7669,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         DrawGraveHeightsOnMap(root.raw, rootRect, client, mapState);
         if (g_townPortalsEnabled) DrawTownPortalsOnMap(root.raw, rootRect, mapState, haveCursor, mx, my); // Town Portal's open portals
         DrawMapCursorPosition(root.raw, rootRect, mapState, haveCursor, mx, my, false);
+        DrawFilterNotice(root.raw, rootRect);
         // Hollow Halls Progression: a reached beacon's badge travels there
         if (halls::DrawMapBeacons(root.raw, rootRect, mapState, haveCursor, mx, my, clicked)) ClearMapViewClickLatch(mapState);
         DrawDungeonMapPlayers(root.raw, rootRect, client, mapState);
@@ -7457,7 +7691,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         }
         {
             // Alt + click a marker: its Map Key row off
-            const bool altDown = focused && (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+            const bool altDown = focused && inp::KeysHeld(g_keys.hideRowClick, KeyIsDown);
             uint8_t* view = *reinterpret_cast<uint8_t**>(mapState + 8);
             const bool overPanel = mx >= g_lastPanelX && mx <= g_lastPanelX + g_lastPanelW && my >= g_lastPanelY &&
                                    my <= g_lastPanelY + g_lastPanelH;
@@ -7472,10 +7706,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 HideRowTarget target;
                 if (zoom > 0.0f && HideRowTargetAt(client, static_cast<int32_t>((mx - ox) / zoom),
                         static_cast<int32_t>(worldH - (my - oy) / zoom), 16.0f / zoom, g_hoveredDepositRow, target)) {
-                    for (uint32_t h : target.hashes) {
-                        if (h != 0u) SetSingleFilterState(client, mapState, h, false);
-                    }
-                    if (g_log) g_log("Map: hid the row %08x (Alt+click)", target.hashes[0]);
+                    HideClickedRow(client, mapState, target, "Alt+click");
                     ClearMapViewClickLatch(mapState); // no menu, no waypoint
                     g_panelClickLatch = true;
                     g_findClosingFrames = std::max(g_findClosingFrames, 8);
@@ -7554,7 +7785,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 
         // Ctrl + left click on the World Map marks a chest looted, or clears the mark
         {
-            const bool ctrlDown = focused && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
+            const bool ctrlDown = focused && inp::KeysHeld(g_keys.chestClick, KeyIsDown);
             const bool clearClickNow = !g_findDialogOpen && !panelHovered && haveCursor && ctrlDown && leftDown;
             const bool clearClickEdge = clearClickNow && !g_worldMapChestClickWasDown;
             g_worldMapChestClickWasDown = clearClickNow;
@@ -7576,10 +7807,26 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         // A boss first: its icon is bigger than a chest's, so a click on it is meant for it
                         const float iconSize = std::max(12.0f, std::min(22.0f, 9.0f + zoom * 6.0f));
                         const float shiftM = iconSize * 0.7f / zoom; // as DrawOreDepositsOnMap draws them aside
-                        if (ToggleManualBossNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM) ||
-                            ToggleUniqueFoundNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM) ||
-                            ToggleLoreReadNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM, hitRadiusMeters) ||
-                            ToggleChestClearedNearWorldPos(clickWx, clickWz, hitRadiusMeters)) {
+                        // A marker under the cursor that can't be marked (a Shroud Root, an ore): its row off. The
+                        // wider search for chests and the like below would otherwise catch one beside it.
+                        HideRowTarget under;
+                        const bool hideRow = HideRowTargetAt(client, static_cast<int32_t>(clickWx), static_cast<int32_t>(clickWz),
+                                                             16.0f / zoom, g_hoveredDepositRow, under) &&
+                                             !RowCanBeMarked(under.hashes[0]);
+                        if (hideRow) {
+                            HideClickedRow(client, mapState, under, "Ctrl+click");
+                            ClearMapViewClickLatch(mapState);
+                            g_panelClickLatch = true;
+                            g_findClosingFrames = std::max(g_findClosingFrames, 8);
+                        }
+                        g_markClickOnWorldMap = true;
+                        const bool marked = !hideRow &&
+                            (ToggleManualBossNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM) ||
+                             ToggleUniqueFoundNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM) ||
+                             ToggleLoreReadNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM, hitRadiusMeters) ||
+                             ToggleChestClearedNearWorldPos(clickWx, clickWz, hitRadiusMeters));
+                        g_markClickOnWorldMap = false;
+                        if (marked) {
                             SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
                             ClearMapViewClickLatch(mapState);
                             g_findClosingFrames = std::max(g_findClosingFrames, 8);
@@ -7661,7 +7908,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     lay.showShortcut ? TextAlignH::Left : TextAlignH::Center, TextAlignV::Center);
                 if (lay.showShortcut) {
                     DrawLabelAbs(bx + 10.0f, by, btnFindW - 20.0f, btnFindH,
-                        "Shift+F", lit ? kTitle : 0xff6fa9c2u, lit ? 0.98f : 0.9f, TextAlignH::Right, TextAlignV::Center); // #c2a96f
+                        CurrentKeyText(g_keys.findOpen).c_str(), lit ? kTitle : 0xff6fa9c2u, lit ? 0.98f : 0.9f, TextAlignH::Right, TextAlignV::Center); // #c2a96f
                 }
             }
             if (clicked && hovFindBtn) {
@@ -7844,7 +8091,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             DrawOnOffBadgeAbs(anchor.raw, badgeRight, ry, kRegionLineH, on);
                             // A click turns it on or off; Ctrl + click shows only this region
                             if (clicked && hov) {
-                                const bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+                                const bool ctrl = inp::KeysHeld(g_keys.regionClick, KeyIsDown);
                                 setMask(ctrl ? (1u << r) : (mask ^ (1u << r)));
                             }
                         }
@@ -8331,7 +8578,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 }
             }
             // With a controller: a strip under the panel says how it gets in (View), and once in, how to move
-            if (g_origXInputGetState && !g_findDialogOpen && (padDrives || UsingGamepad())) {
+            // (only without the game's hint bar, which shows these with its own button icons: map_hints.inl)
+            if (g_origXInputGetState && !g_findDialogOpen && !MapHintBarWorks() && (padDrives || UsingGamepad())) {
                 const char* padHint = umm_lang::T(padDrives ? umm_lang::Str::PadKeyNav : umm_lang::Str::PadOpenKey);
                 constexpr float kPadHintH = 28.0f;
                 const float phX = panelX + 8.0f, phW = kPanelW - 16.0f, phY = panelY + totalH + 8.0f;
@@ -8356,6 +8604,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     }
     g_endLayer(layer);
 
+    if (!g_findDialogOpen) g_padSearchHide = 0;
     // Run the exact native FindDialog (TextDialog) window used by the example Find mod
     if (g_findDialogOpen && g_mapFindDialog) {
         auto keyPressedEdge = [&](int vk) -> bool {
@@ -8366,12 +8615,25 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             return edge;
         };
 
-        bool ctrlDown = focused && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
-        bool escEdge = keyPressedEdge(VK_ESCAPE);
+        // A key's edge or a controller press, for each of the search's keys
+        static inp::PadPresses s_padFind;
+        const inp::PadState padFind = inp::ReadPad();
+        const uint16_t padFindPressed = s_padFind.Update(padFind.buttons, GetTickCount64());
+        auto findEdge = [&](const inp::Binding& b, int which) {
+            static bool was[12] = {};
+            const bool down = focused && inp::KeysHeld(b, KeyIsDown);
+            const bool fresh = down && !was[which];
+            was[which] = down;
+            return fresh || (focused && inp::PadPressed(b, padFindPressed, padFind));
+        };
+        g_padSearchHide = static_cast<uint16_t>(inp::PadButtons(g_keys.findClose) | inp::PadButtons(g_keys.findUp) |
+                                                inp::PadButtons(g_keys.findDown) |
+                                                (g_findSelectedIndex >= 0 ? inp::PadButtons(g_keys.findConfirm) : 0));
+        bool escEdge = findEdge(g_keys.findClose, 0);
         // The search field types Tab as a space (a frame or so later); Tab picks from the list instead.
         static ULONGLONG s_tabTick = 0;
-        const bool tabEdge = keyPressedEdge(VK_TAB);
-        if (tabEdge) s_tabTick = GetTickCount64();
+        const bool nextEdge = findEdge(g_keys.findNext, 1), previousEdge = findEdge(g_keys.findPrevious, 2);
+        if (nextEdge || previousEdge) s_tabTick = GetTickCount64();
 
         SyncNativeFindDialogState();
         int dlgResult = RunNativeFindDialogFrame(g_mapFindDialog);
@@ -8421,7 +8683,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             }
 
             bool forceRebuild = false;
-            if (keyPressedEdge(VK_F2) || (ctrlDown && keyPressedEdge('F'))) {
+            if (findEdge(g_keys.findFilters, 3)) {
                 g_findRespectFilters = !g_findRespectFilters;
                 forceRebuild = true;
             }
@@ -8435,17 +8697,17 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             }
 
             int totalRows = static_cast<int>(g_findDisplayRows.size());
-            bool downEdge = keyPressedEdge(VK_DOWN);
-            bool upEdge = keyPressedEdge(VK_UP);
-            bool pgDnEdge = keyPressedEdge(VK_NEXT);
-            bool pgUpEdge = keyPressedEdge(VK_PRIOR);
+            bool downEdge = findEdge(g_keys.findDown, 4);
+            bool upEdge = findEdge(g_keys.findUp, 5);
+            bool pgDnEdge = findEdge(g_keys.findPageDown, 6);
+            bool pgUpEdge = findEdge(g_keys.findPageUp, 7);
 
             if (totalRows > 0) {
-                if (downEdge || (tabEdge && !shiftDown)) {
+                if (downEdge || nextEdge) {
                     g_findSelectedIndex = (g_findSelectedIndex < 0)
                         ? 0
                         : ((g_findSelectedIndex + 1) % totalRows);
-                } else if (upEdge || (tabEdge && shiftDown)) {
+                } else if (upEdge || previousEdge) {
                     g_findSelectedIndex = (g_findSelectedIndex < 0)
                         ? (totalRows - 1)
                         : ((g_findSelectedIndex - 1 + totalRows) % totalRows);
@@ -8569,7 +8831,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 }
             }
 
-            if (g_findDialogOpen && (keyPressedEdge(VK_RETURN) || dlgResult == 2)) {
+            if (g_findDialogOpen && (findEdge(g_keys.findConfirm, 8) || dlgResult == 2)) {
                 confirmFindSelection();
             }
 
@@ -8592,13 +8854,11 @@ bool BlockWorldMapInput(uint8_t* mapState) {
         HWND foreground = GetForegroundWindow();
         DWORD fgPid = 0;
         if (foreground) GetWindowThreadProcessId(foreground, &fgPid);
-        bool focused = (fgPid == GetCurrentProcessId());
+        bool focused = (fgPid == GetCurrentProcessId()) || inp::GameHasFocus();
         // A dialog open on the map (a marker's menu, a custom pin's name: mapState +0xf8 not 0) is the game's: Shift+F
         // there is typing, and clearing the click state below would close it
         const bool mapDialogOpen = mapState && *reinterpret_cast<uint32_t*>(mapState + 0xf8) != 0;
-        bool shiftFNow = focused && !mapDialogOpen &&
-                         ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) &&
-                         ((GetAsyncKeyState('F') & 0x8000) != 0);
+        bool shiftFNow = focused && !mapDialogOpen && BindingDown(g_keys.findOpen);
 
         if (g_waitReleaseAfterFindClose) {
             bool anyHeld = focused && (
@@ -8732,7 +8992,7 @@ void DrawMapFilterMenuHook(void* mapState) {
                 g_padKeyFocus = false;
                 for (auto& sw : g_padSwallow) sw = 0xFFFF;
             }
-            if (ReadPadPresses().pressed & XINPUT_GAMEPAD_BACK) g_padVanillaOffPending = true;
+            if (ReadPadPresses().pressed & inp::PadButtons(g_keys.padMapKey)) g_padVanillaOffPending = true;
         }
         if (lease && g_worldMapModded) {
             SafeDrawMapKeyOverlay(mapState);
@@ -8883,7 +9143,64 @@ std::string GetMinimapConfigPath() {
     return greeneye::DataPath("minimap_config.ini");
 }
 
+// [Keys] from the file; writeMissing (the first read) adds the ones it lacks, so they can be found there.
+void ReadMapKeys(bool writeMissing) {
+    const std::string cfg = GetMinimapConfigPath();
+    static char section[16384];
+    section[0] = 0;
+    GetPrivateProfileSectionA("Keys", section, sizeof(section), cfg.c_str());
+    auto lookup = [&](const char* name) -> const char* {
+        const size_t len = std::strlen(name);
+        for (const char* e = section; *e; e += std::strlen(e) + 1)
+            if (_strnicmp(e, name, len) == 0 && e[len] == '=') return e + len + 1;
+        return nullptr;
+    };
+    MapKeys fresh;
+    for (const MapKeySetting& s : kMapKeySettings) {
+        const inp::Binding fallback = inp::MakeBinding(s.defaultText);
+        const char* text = lookup(s.name);
+        fresh.*s.field = fallback;
+        if (!text) {
+            if (writeMissing) WritePrivateProfileStringA("Keys", s.name, s.defaultText, cfg.c_str());
+            continue;
+        }
+        std::string why;
+        if (!inp::ParseBinding(text, fallback, fresh.*s.field, &why) && g_log)
+            g_log("Settings: [Keys] %s: '%s' is not a key or button this mod knows; using %s", s.name, why.c_str(), s.defaultText);
+    }
+    // The key that marks a chest looted: E, or as the game's Interact was set; [Chests] from before [Keys].
+    char interact[128]{};
+    if (!GetPrivateProfileStringA("Chests", "InteractKey", "", interact, sizeof(interact), cfg.c_str()) && writeMissing) {
+        WritePrivateProfileStringA("Chests", "InteractKey", "E", cfg.c_str());
+        WritePrivateProfileStringA("Chests", "RespawnMinutes", "30", cfg.c_str());
+    }
+    const inp::Binding interactFallback = inp::MakeBinding("E");
+    if (!inp::ParseBinding(interact, interactFallback, fresh.interact)) fresh.interact = interactFallback;
+    g_keys = fresh;
+    // The panel key's code for the map's hint bar; a key it has no code for shows no hint
+    int vk = 0;
+    uint16_t hid = 0;
+    if (fresh.panelToggle.keyCount) ParseKeyName(inp::KeyToText(fresh.panelToggle.keys[0].vk).c_str(), vk, hid);
+    g_panelToggleVk = hid ? vk : 0;
+    g_panelToggleHid = hid;
+    g_padChords[0].Set(fresh.glow);
+    g_padChords[1].Set(fresh.findOpen);
+    g_padChords[2].Set(fresh.miniZoomIn);
+    g_padChords[3].Set(fresh.miniZoomOut);
+    g_padEnter.Set(fresh.padMapKey);
+}
+
 void LoadMinimapConfig() {
+    // A hand edit of [Keys] applies within two seconds. The file is only looked at that often, and read once.
+    {
+        static uint64_t keysCheckedAt = 0;
+        static inp::FileWatch keysWatch;
+        const uint64_t tick = GetTickCount64();
+        if (g_minimapConfigLoaded && tick - keysCheckedAt >= 2000) {
+            keysCheckedAt = tick;
+            if (keysWatch.Changed(GetMinimapConfigPath().c_str())) ReadMapKeys(false);
+        }
+    }
     // The text language: decided once Steam is up (every frame until then), then logged once.
     static bool languageLogged = false;
     if (!languageLogged) {
@@ -8972,47 +9289,7 @@ void LoadMinimapConfig() {
         ores[kFertilised] = ores[kFertilised - 1];
     }
     for (size_t o = 0; o < kOreCount; ++o) g_oreEnabled[o] = ores[o] == '1';
-    char interactKey[8]{};
-    GetPrivateProfileStringA("Chests", "InteractKey", "", interactKey, sizeof(interactKey), cfg.c_str());
-    if (!interactKey[0]) {
-        interactKey[0] = 'E';
-        interactKey[1] = 0;
-        WritePrivateProfileStringA("Chests", "InteractKey", interactKey, cfg.c_str());
-        WritePrivateProfileStringA("Chests", "RespawnMinutes", "30", cfg.c_str());
-    }
-    const char keyChar = static_cast<char>(std::toupper(static_cast<unsigned char>(interactKey[0])));
-    g_interactVk = (keyChar >= 'A' && keyChar <= 'Z') || (keyChar >= '0' && keyChar <= '9') ? keyChar : 'E';
-    char panelKey[16]{};
-    if (GetPrivateProfileStringA("Keys", "PanelToggle", "", panelKey, sizeof(panelKey), cfg.c_str()) == 0) {
-        strcpy_s(panelKey, "Tab");
-        WritePrivateProfileStringA("Keys", "PanelToggle", panelKey, cfg.c_str());
-    }
-    if (!ParseKeyName(panelKey, g_panelToggleVk, g_panelToggleHid)) {
-        if (g_log) g_log("Settings: [Keys] PanelToggle=%s is not a key this mod knows; using Tab", panelKey);
-        g_panelToggleVk = VK_TAB;
-        g_panelToggleHid = 0x2b;
-    }
-    char glowKey[16]{};
-    if (GetPrivateProfileStringA("Keys", "Glow", "", glowKey, sizeof(glowKey), cfg.c_str()) == 0) {
-        strcpy_s(glowKey, "G");
-        WritePrivateProfileStringA("Keys", "Glow", glowKey, cfg.c_str());
-    }
-    uint16_t glowHid = 0;
-    if (!ParseKeyName(glowKey, g_glowVk, glowHid)) {
-        if (g_log) g_log("Settings: [Keys] Glow=%s is not a key this mod knows; using G", glowKey);
-        g_glowVk = 'G';
-    }
-    char mouseKeys[48]{};
-    if (GetPrivateProfileStringA("Keys", "MinimapMouse", "", mouseKeys, sizeof(mouseKeys), cfg.c_str()) == 0) {
-        strcpy_s(mouseKeys, "Shift+Alt");
-        WritePrivateProfileStringA("Keys", "MinimapMouse", mouseKeys, cfg.c_str());
-    }
-    if (!ParseKeyCombo(mouseKeys, g_minimapMouseVks)) {
-        if (g_log) g_log("Settings: [Keys] MinimapMouse=%s is not keys this mod knows; using Shift+Alt", mouseKeys);
-        g_minimapMouseVks[0] = VK_SHIFT;
-        g_minimapMouseVks[1] = VK_MENU;
-        g_minimapMouseVks[2] = 0;
-    }
+    ReadMapKeys(true);
 
     // Any place it was moved to, the screen's edges too (it was dropped within 10 px of the left or top edge: a minimap
     // in the lower-left corner went back to its default place on every start; reported by Grezexx)
@@ -10037,6 +10314,11 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     // Control tray, centred under the frame and tucked behind its bottom rail, one size at any
     // frame size:  [gear | icon time  <frame pendant>  weather | - | +]
     const float frameCx = frameX + frameSize * 0.5f;
+    if (!g_filterNotice.empty() && g_filterNoticeOnHud) { // left of the minimap, or right where there is no room
+        const float noticeW = FilterNoticeWidth(rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
+        const float noticeX = frameX - noticeW - 10.0f >= rootRect[0] ? frameX - noticeW - 10.0f : frameX + frameSize + 10.0f;
+        DrawFilterNotice(anchor.raw, rootRect, true, noticeX, frameY + frameSize * 0.5f - 15.0f);
+    }
     const float compassCy = frameY + 30.5f * artUnit;
     const float trayY = frameY + trayTopRel;
     const float trayH = 31.0f * UT;
@@ -10084,8 +10366,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
 
     // Hotkeys: '[' (zoom out) and ']' (zoom in), or Numpad '-' / '+'
     if (appFocused && !g_findDialogOpen) {
-        bool zoomOutKey = ((GetAsyncKeyState(VK_OEM_4) & 0x8000) != 0) || ((GetAsyncKeyState(VK_SUBTRACT) & 0x8000) != 0);
-        bool zoomInKey  = ((GetAsyncKeyState(VK_OEM_6) & 0x8000) != 0) || ((GetAsyncKeyState(VK_ADD) & 0x8000) != 0);
+        bool zoomOutKey = BindingDown(g_keys.miniZoomOut);
+        bool zoomInKey  = BindingDown(g_keys.miniZoomIn);
         if (zoomOutKey && !g_minimapZoomOutKeyWasDown) {
             if (g_minimapZoomIdx > 0) {
                 --g_minimapZoomIdx;
@@ -10237,7 +10519,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         } else if (hoverWholeWidget) {
             // Ctrl + Left-Click on a chest icon inside the minimap viewport clears/restores it
             bool toggledChest = false;
-            if (!barOnly && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) && inRect(vx, vy, vw, vh) && pxPerMeterX > 0.01f) {
+            if (!barOnly && inp::KeysHeld(g_keys.chestClick, KeyIsDown) && inRect(vx, vy, vw, vh) && pxPerMeterX > 0.01f) {
                 float clickWx = playerX + (mouseX - vcx) / pxPerMeterX;
                 float clickWz = playerZ - (mouseY - vcy) / pxPerMeterY;
                 float maxRadiusM = std::max(12.0f, 14.0f / pxPerMeterX);
@@ -10247,6 +10529,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                     ToggleLoreReadNear(clickWx, clickWz, std::max(10.0f, 10.0f / pxPerMeterX), shiftM, maxRadiusM) ||
                     ToggleChestClearedNearWorldPos(clickWx, clickWz, maxRadiusM)) {
                     toggledChest = true;
+                    g_filterNoticeOnHud = true;
                 }
             }
             if (!toggledChest) {
@@ -11065,7 +11348,7 @@ void DrawHudMinimapOverlay() {
     HWND foreground = GetForegroundWindow();
     DWORD fgPid = 0;
     if (foreground) GetWindowThreadProcessId(foreground, &fgPid);
-    const bool appFocused = (fgPid == GetCurrentProcessId());
+    const bool appFocused = (fgPid == GetCurrentProcessId()) || inp::GameHasFocus();
 
     // Update chest loot detection and 30-game-minute respawn timer (even while inventory/loot UI is open)
     {
@@ -11237,8 +11520,7 @@ void PollModOffKey() {
     HWND fg = GetForegroundWindow();
     DWORD pid = 0;
     if (fg) GetWindowThreadProcessId(fg, &pid);
-    const bool down = pid == GetCurrentProcessId() && (GetAsyncKeyState(VK_F12) & 0x8000) != 0 &&
-                      (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 && (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    const bool down = (pid == GetCurrentProcessId() || inp::GameHasFocus()) && BindingDown(g_keys.modOff);
     if (down && !wasDown) SetModOff(!g_modOff);
     wasDown = down;
 }
@@ -11499,13 +11781,15 @@ void DrawMarkerPlateAndPop(void* widget, uint8_t* entry, const float* rect4, voi
     }
 }
 
-// Map Key > Region > Hide: the name the game shows over the marker under the cursor comes from its title text; a marker
-// outside the region has none (the game picks the hovered marker from its list each frame, drawn or not). The mod's own
-// calls (Find) go to the game's function itself (g_getMarkerTitleText is the original after the hook).
+// The name the game shows over the marker under the cursor comes from its title text; a marker the World Map doesn't
+// draw has none (the game picks the hovered marker from its list each frame, drawn or not): outside the region with
+// Map Key > Region > Hide, or in the Hollow Halls' corner of the overworld map, or in another hall. Only while the World
+// Map is up: the halls' rule is about that map. The mod's own calls (Find) go to the game's function itself
+// (g_getMarkerTitleText is the original after the hook).
 bool TitleHiddenByRegion(const void* m) {
-    if (!g_regionOutsideHide || !g_regionFiltering || !m) return false;
+    if (!m || GetTickCount64() - g_lastWorldMapFrameTick > 250ULL) return false;
     __try {
-        return MarkerOutsideFocusedRegion(static_cast<const uint8_t*>(m));
+        return MarkerHiddenOnMap(static_cast<const uint8_t*>(m));
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }
@@ -11831,6 +12115,7 @@ bool InstallMapKeyPanelHook(LogFn logger) {
 
     InstallNativeMapHints();
     InstallXInputHook();
+    greeneye::hints::Init(greeneye::Host());
     hall_pan::Install();
     vein_sight::InstallZoneHook();
     vein_surface::Install();

@@ -441,7 +441,7 @@ void UpdateKey(uint8_t* client, bool appFocused) {
     static bool wasDown = false;
     static uint64_t firstTick = 0;
 
-    const bool down = appFocused && g_glowVk && (GetAsyncKeyState(g_glowVk) & 0x8000) != 0;
+    const bool down = appFocused && BindingDown(g_keys.glow);
     const bool edge = down && !wasDown;
     wasDown = down;
     if (!edge || !client || client[0x1cd8] != 1) return;

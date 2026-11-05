@@ -219,6 +219,28 @@ extern "C" __declspec(dllexport) int MapNativeFilters(const char* action, const 
     auto* client = static_cast<uint8_t*>(uiClient);
     if (!client || (client[0x1cd8] != 1 && client[0x1cd8] != 5)) return -2;
     LoadMinimapConfig();
+    // A click's effect without the mouse, target "x,z,r": ctrlclicklore does what Ctrl + click does to the nearest lore
+    // note (the notes are this player's own, nothing goes to other players); altclick what Alt + click hides.
+    if (std::strcmp(action, "ctrlclicklore") == 0 || std::strcmp(action, "altclick") == 0) {
+        float x = 0.0f, z = 0.0f, r = 0.0f;
+        if (sscanf_s(target, "%f,%f,%f", &x, &z, &r) != 3) return -3;
+        bool done = false;
+        if (action[0] == 'c') {
+            done = ToggleLoreReadNear(x, z, r, 0.0f, 0.0f);
+        } else {
+            HideRowTarget row;
+            if (HideRowTargetAt(client, static_cast<int32_t>(x), static_cast<int32_t>(z), r, 0u, row)) {
+                const FilterSnapshot before = TakeFilterSnapshot(client);
+                for (uint32_t h : row.hashes) {
+                    if (h != 0u) SetSingleFilterState(client, nullptr, h, false);
+                }
+                AnnounceFilterChange(before, TakeFilterSnapshot(client));
+                done = true;
+            }
+        }
+        const int n = std::snprintf(out, outCap, "{\"done\":%s}", done ? "true" : "false");
+        return n > 0 && static_cast<uint32_t>(n) < outCap ? 1 : -4;
+    }
     if (std::strcmp(action, "markers") == 0) {
         g_dumpMarkersRequested = true; // in the world map's marker pass, where the quest lookups work
         const int n = std::snprintf(out, outCap, "{\"file\":\"markers_dump.txt\",\"requested\":true}");

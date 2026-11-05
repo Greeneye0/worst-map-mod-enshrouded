@@ -60,7 +60,7 @@ void DrawMapCursorPosition(void* widgetRaw, const float* rootRect, uint8_t* mapS
     // Copy: a click on the copy button, or a middle click anywhere on the map
     static bool leftWasDown = false, middleWasDown = false;
     const bool leftDown = overCopy && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-    const bool middleDown = haveCursor && !overPanel && (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+    const bool middleDown = haveCursor && !overPanel && inp::KeyOfHeld(g_keys.copyPosition, KeyIsDown);
     if ((leftDown && !leftWasDown) || (middleDown && !middleWasDown)) {
         char text[48]{};
         std::snprintf(text, sizeof(text), "X %d, Z %d", shownX, shownZ);

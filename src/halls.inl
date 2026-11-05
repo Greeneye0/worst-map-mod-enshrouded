@@ -106,19 +106,19 @@ bool Load() {
 // not carved rock, and stand well over the floor the scan found under them); -1 outside the dungeons
 // dungeonOnly: only a dungeon's own floors, not the unwalkable rock make_halls.py set apart (wall tops, ledges: you
 // can still stand on one, in the hall), and further up or down
-int NearestRun(float px, float py, float pz, bool dungeonOnly = false) {
+int NearestRun(float px, float py, float pz, bool dungeonOnly = false, int reachColumns = 8) {
     if (!(px < kCornerMaxX && pz > kCornerMinZ) || !Load()) return -1;
     const int zc = static_cast<int>(std::floor(pz)), xc = static_cast<int>(std::floor(px));
     int best = -1;
     // A dungeon's own floor up to 80 m off: high on rock over it (a wall top, a ledge, 40 m up in Veilwater) you're
     // still in that hall; the halls stacked over each other are hundreds of metres apart
     float bestD = dungeonOnly ? 80.0f : 30.0f;
-    for (int z = zc - 8; z <= zc + 8; ++z) {
+    for (int z = zc - reachColumns; z <= zc + reachColumns; ++z) {
         if (z < static_cast<int>(g_z0) || z >= static_cast<int>(g_z0 + g_rows)) continue;
         const uint32_t r = static_cast<uint32_t>(z) - g_z0;
         for (uint32_t i = g_rowStart[r]; i < g_rowStart[r + 1]; ++i) {
             const Run& run = g_runs[i];
-            if (xc + 8 < run.x0 || xc - 8 >= run.x0 + run.length) continue;
+            if (xc + reachColumns < run.x0 || xc - reachColumns >= run.x0 + run.length) continue;
             if (dungeonOnly && g_runDungeon[i] >= g_dungeonCount) continue;
             const float d = std::fabs(run.Y() - py);
             if (d <= bestD) {
@@ -579,10 +579,14 @@ bool MapHidesChest(float x, float y, float z) {
     const int run = NearestRun(x, y, z, true);
     return run < 0 || g_runDungeon[run] != g_mapDungeon || std::fabs(g_runs[run].Y() - y) > 6.0f;
 }
-bool MapHidesAt(float x, float y, float z) {
+// wide: a lore note, boss or unique item, which can lie a room's width from any floor (Tome of Agony, 11 m from the
+// Kindle Waste hall's floor, over another hall's): the floor nearest it is looked for further out. Only these few: it
+// is too slow for every ore in the rock.
+bool MapHidesAt(float x, float y, float z, bool wide = false) {
     if (MapHides(x, z)) return true;
     if (!MapActive()) return false;
-    const int run = NearestRun(x, y, z, true);
+    int run = NearestRun(x, y, z, true);
+    if (run < 0 && wide) run = NearestRun(x, y, z, true, 48);
     return run >= 0 && g_runDungeon[run] != g_mapDungeon;
 }
 
