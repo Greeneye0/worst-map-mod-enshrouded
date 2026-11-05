@@ -1,0 +1,6 @@
+- Picking a large group of hidden places in Find on the map, such as every Saffron patch, no longer freezes the game.
+- The map's logs and settings saves now really run in the background: the game no longer waits each frame for them to reach the disk. This may help the freezes HadToRegister reported.
+- New Bait row: Moth, in every language. Moths only come out at night, so its spots show where they can appear.
+Reported bugs fixed:
+- Moth bait missing from the Bait rows (reported by LordKeiran).
+- The game froze after picking many hidden places in Find on the map.

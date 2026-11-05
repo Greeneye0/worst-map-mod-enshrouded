@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.38
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.39
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -335,6 +335,18 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.39
+- Picking a large group of hidden places in Find on the map, such as every Saffron patch, no
+  longer freezes the game.
+- The map's logs and settings saves now really run in the background: the game no longer
+  waits each frame for them to reach the disk. This may help the freezes HadToRegister
+  reported.
+- New Bait row: Moth, in every language. Moths only come out at night, so its spots show
+  where they can appear.
+Reported bugs fixed:
+- Moth bait missing from the Bait rows (reported by LordKeiran).
+- The game froze after picking many hidden places in Find on the map.
+
 1.3.38
 - New Plants rows: Chanterelle, Raw Rice and Banana / Plantain, in every language.
 - A game patch that only moves the game's code should no longer need an update: the HD maps,

@@ -224,7 +224,8 @@ extern "C" __declspec(dllexport) int MapNativeFilters(const char* action, const 
         const int n = std::snprintf(out, outCap, "{\"file\":\"markers_dump.txt\",\"requested\":true}");
         return n > 0 && static_cast<uint32_t>(n) < outCap ? 1 : -4;
     }
-    if (std::strcmp(action, "find") == 0) { // needs the world map open; findresult answers next
+    if (std::strcmp(action, "find") == 0 || std::strcmp(action, "findhidden") == 0) { // needs the world map open; findresult answers next
+        g_devFindHidden = std::strcmp(action, "findhidden") == 0;
         g_devFindQuery = target;
         g_devFindResult = "{\"pending\":true}";
         g_devFindPending = true;

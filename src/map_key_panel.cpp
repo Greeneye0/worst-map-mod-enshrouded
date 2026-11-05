@@ -900,8 +900,9 @@ constexpr auto kPlantsRows = JoinRows(JoinRows(
     MakeResourceRows<kPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kPlantsCount>{}),
     MakeResourceRows<kNightPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kNightPlantsCount>{})),
     MakeResourceRows<kLatePlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kLatePlantsCount>{}));
-constexpr auto kBaitRows = MakeResourceRows<kBaitFirst, kBaitCategory, umm_lang::Str::CatBait>(
-    std::make_index_sequence<kBaitCount>{});
+constexpr auto kBaitRows = JoinRows(
+    MakeResourceRows<kBaitFirst, kBaitCategory, umm_lang::Str::CatBait>(std::make_index_sequence<kBaitCount>{}),
+    MakeResourceRows<kLateBaitFirst, kBaitCategory, umm_lang::Str::CatBait>(std::make_index_sequence<kLateBaitCount>{}));
 constexpr auto kTreesRows = MakeResourceRows<kTreesFirst, kTreesCategory, umm_lang::Str::CatTrees>(
     std::make_index_sequence<kTreesCount>{});
 constexpr auto kCreaturesRows = MakeResourceRows<kCreaturesFirst, kCreaturesCategory, umm_lang::Str::CatCreatures>(
@@ -915,7 +916,7 @@ static_assert(kSummonsCount == 1, "one Fell Summoning Stone row");
 static_assert(kCosmeticCount == 1, "one Cosmetics row");
 static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount +
                   kLoreCount + kBossesCount + kUniqueCount + kSummonsCount + kNightPlantsCount + kCreaturesCount +
-                  kCosmeticCount + kGroundCount + kLatePlantsCount == kOreCount,
+                  kCosmeticCount + kGroundCount + kLatePlantsCount + kLateBaitCount == kOreCount,
               "every row in one category");
 
 struct CategoryGroupSpec {
@@ -5156,12 +5157,14 @@ void FocusMapOnWorldPositions(uint8_t* client, uint8_t* mapState, const std::vec
 
     g_pulsingPlaces.clear();
     float minX = 1e9f, maxX = -1e9f, minZ = 1e9f, maxZ = -1e9f;
+    std::unordered_set<uint32_t> switchedOn; // once a row: its places all carry the state from before the pick
 
     for (size_t idx : matchIndices) {
         if (idx >= g_findMatchedPlaces.size()) continue;
         const auto& place = g_findMatchedPlaces[idx];
-        // If user searched with Respect Filters OFF and picked a filtered-out place, enable its filter so it shows up
-        if (!place.isFilterOn && client) {
+        // If user searched with Respect Filters OFF and picked a filtered-out place, enable its filter so it shows up.
+        // Each switch saves the config: once per place froze the game on 549 hidden Saffron patches.
+        if (!place.isFilterOn && client && switchedOn.insert(place.filterTypeHash).second) {
             SetSingleFilterState(client, mapState, place.filterTypeHash, true);
         }
         g_pulsingPlaces.push_back(PulsingPlace{place.wx, place.wz});
@@ -7078,12 +7081,13 @@ void KeepDungeonInView(uint8_t* mapState, const float* rootRect) {
 // MapNativeFilters "find": a search and its first result's pick (as Enter would), no dialog or focus.
 std::string g_devFindQuery, g_devFindResult = "{}";
 bool g_devFindPending = false;
+bool g_devFindHidden = false; // findhidden: filters off, as F2 in the dialog, so hidden places are picked too
 void RunDevFind(uint8_t* client, uint8_t* mapState) {
     if (!g_devFindPending) return;
     g_devFindPending = false;
     const std::string kept = g_findQuery;
     g_findQuery = g_devFindQuery;
-    g_findRespectFilters = true;
+    g_findRespectFilters = !g_devFindHidden;
     RebuildFindResults(client, mapState);
     const FindDisplayRow* pick = nullptr;
     for (const auto& row : g_findDisplayRows) {
@@ -7098,8 +7102,14 @@ void RunDevFind(uint8_t* client, uint8_t* mapState) {
         filterOnBefore = place.isFilterOn;
     }
     const size_t matches = g_findMatchedPlaces.size(), filtered = g_findFilteredOutCount;
+    const size_t pickedPlaces = pick ? pick->matchIndices.size() : 0;
+    LARGE_INTEGER pickFreq{}, pickStart{}, pickEnd{};
+    QueryPerformanceFrequency(&pickFreq);
+    QueryPerformanceCounter(&pickStart);
     if (pick) FocusMapOnWorldPositions(client, mapState, pick->matchIndices);
-    auto clean = [](std::string s) { for (char& c : s) if (c == '"' || c == '\\' || static_cast<unsigned char>(c) < 0x20) c = ' '; return s; };
+    QueryPerformanceCounter(&pickEnd);
+    const double pickMs = 1000.0 * static_cast<double>(pickEnd.QuadPart - pickStart.QuadPart) / static_cast<double>(pickFreq.QuadPart);
+    auto clean =[](std::string s) { for (char& c : s) if (c == '"' || c == '\\' || static_cast<unsigned char>(c) < 0x20) c = ' '; return s; };
     char buffer[512];
     std::snprintf(buffer, sizeof(buffer),
                   "{\"query\":\"%s\",\"matches\":%zu,\"filteredOut\":%zu,\"picked\":\"%s\",\"where\":\"%s\",\"filterOnBefore\":%s,\"goldChest\":%s,\"silverChest\":%s,\"woodChest\":%s}",
@@ -7107,6 +7117,13 @@ void RunDevFind(uint8_t* client, uint8_t* mapState) {
                   filterOnBefore ? "true" : "false", g_goldChestEnabled ? "true" : "false",
                   g_silverChestEnabled ? "true" : "false", g_woodChestEnabled ? "true" : "false");
     g_devFindResult = buffer;
+    if (!g_devFindResult.empty() && g_devFindResult.back() == '}') {
+        char extra[64];
+        std::snprintf(extra, sizeof(extra), ",\"pickedPlaces\":%zu,\"pickMs\":%.2f}", pickedPlaces, pickMs);
+        g_devFindResult.pop_back();
+        g_devFindResult += extra;
+    }
+    g_findRespectFilters = true;
     g_findQuery = kept;
     g_findMatchedPlaces.clear();
     g_findDisplayRows.clear();
@@ -8867,7 +8884,6 @@ std::string GetMinimapConfigPath() {
 }
 
 void LoadMinimapConfig() {
-    async_io::Flush(); // the writer's queue on disk before reading
     // The text language: decided once Steam is up (every frame until then), then logged once.
     static bool languageLogged = false;
     if (!languageLogged) {
@@ -8880,6 +8896,9 @@ void LoadMinimapConfig() {
     }
     if (g_minimapConfigLoaded) return;
     g_minimapConfigLoaded = true;
+    // The writer's queue on disk before reading. Here and not above: this function runs every frame, and a flush holds the
+    // game's thread until the queue is written, which froze the game and undid writing in the background.
+    async_io::Flush();
     std::string cfg = GetMinimapConfigPath();
     // Show the setting in the file: Language=auto follows the game, or a Steam code such as german
     char language[32]{};
