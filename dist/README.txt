@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.40
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.41
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -335,6 +335,12 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.41
+- New Plants rows, so the map and its Find box can find them: Date (palms showing fruit) and
+  Yucca Fruit, in every language.
+- The Find box's list can be hovered and clicked again, and Tab no longer types a space.
+  This came from Find 1.2.9: update Find to 1.2.10 as well.
+
 1.3.40
 - Every key the map uses can now be rebound, and the controller has more of them: [Keys] in
   minimap_config.ini holds them all, with buttons such as G, Pad:LB+A (chest outlines) and

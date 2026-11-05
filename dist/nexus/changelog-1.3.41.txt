@@ -1,0 +1,2 @@
+- New Plants rows, so the map and its Find box can find them: Date (palms showing fruit) and Yucca Fruit, in every language.
+- The Find box's list can be hovered and clicked again, and Tab no longer types a space. This came from Find 1.2.9: update Find to 1.2.10 as well.

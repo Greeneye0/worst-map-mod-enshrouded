@@ -762,7 +762,8 @@ const char* ResourceName(size_t index) {
     return (text && *text) ? text : kResourceNames[index][0];
 }
 
-// The rows after the Ground rows (ore_deposits.h, from kLatePlantsFirst; the Bait row last), in the game's own words: each item's
+// The rows after the Ground rows (ore_deposits.h, from kLatePlantsFirst: plants, the Moth bait row, then Date and Yucca Fruit), in
+// the game's own words: each item's
 // name, and for the banana plants the game's names of its two fruits.
 // clang-format off
 const Row kLatePlantNames[] = {
@@ -770,6 +771,8 @@ const Row kLatePlantNames[] = {
     {"Raw Rice", "Ungekochter Reis", "Riz cru", "Riso crudo", "Arroz crudo", "Arroz Cru", "Surowy ryż", "Сырой рис", "Сирий рис", "Pirinç", "生米", "생쌀", "生米", "生米", "ข้าวสาร"},
     {"Banana / Plantain", "Banane / Kochbanane", "Banane / Plantain", "Banana / Platano", "Plátano / Plátano macho", "Banana / Banana-da-terra", "Banan / Plantan", "Банан / Плантан", "Банан / Подорожник", "Muz / Yemeklik Muz", "バナナ / プランテン", "바나나 / 플랜테인", "香蕉 / 大蕉", "香蕉 / 大蕉", "กล้วย / กล้าย"},
     {"Moth", "Motte", "Papillon de nuit", "Falena", "Polilla", "Mariposa", "Ćma", "Мотылек", "Метелик", "Güve", "蛾", "나방", "飞蛾", "蛾", "ผีเสื้อกลางคืน"},
+    {"Date", "Dattel", "Datte", "Dattero", "Dátil", "Tâmara", "Daktyl", "Финик", "Фінік", "Hurma", "デーツ", "대추야자", "椰枣", "椰棗", "อินทผาลัม"},
+    {"Yucca Fruit", "Yucca-Frucht", "Fruit du yucca", "Frutto della yucca", "Yuca", "Macaxeira", "Owoc jukki", "Плод юкки", "Плід юкки", "Yuka Meyvesi", "ユッカの果実", "실난초 과일", "丝兰果", "絲蘭果", "ผลยัคคา"},
 };
 // clang-format on
 

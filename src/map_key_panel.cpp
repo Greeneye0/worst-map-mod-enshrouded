@@ -900,10 +900,11 @@ constexpr std::array<MarkerRowSpec, A + B> JoinRows(const std::array<MarkerRowSp
     for (size_t i = 0; i < B; ++i) out[A + i] = b[i];
     return out;
 }
-constexpr auto kPlantsRows = JoinRows(JoinRows(
+constexpr auto kPlantsRows = JoinRows(JoinRows(JoinRows(
     MakeResourceRows<kPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kPlantsCount>{}),
     MakeResourceRows<kNightPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kNightPlantsCount>{})),
-    MakeResourceRows<kLatePlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kLatePlantsCount>{}));
+    MakeResourceRows<kLatePlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kLatePlantsCount>{})),
+    MakeResourceRows<kLatePlants2First, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kLatePlants2Count>{}));
 constexpr auto kBaitRows = JoinRows(
     MakeResourceRows<kBaitFirst, kBaitCategory, umm_lang::Str::CatBait>(std::make_index_sequence<kBaitCount>{}),
     MakeResourceRows<kLateBaitFirst, kBaitCategory, umm_lang::Str::CatBait>(std::make_index_sequence<kLateBaitCount>{}));
@@ -920,7 +921,7 @@ static_assert(kSummonsCount == 1, "one Fell Summoning Stone row");
 static_assert(kCosmeticCount == 1, "one Cosmetics row");
 static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount +
                   kLoreCount + kBossesCount + kUniqueCount + kSummonsCount + kNightPlantsCount + kCreaturesCount +
-                  kCosmeticCount + kGroundCount + kLatePlantsCount + kLateBaitCount == kOreCount,
+                  kCosmeticCount + kGroundCount + kLatePlantsCount + kLateBaitCount + kLatePlants2Count == kOreCount,
               "every row in one category");
 
 struct CategoryGroupSpec {
@@ -4520,7 +4521,10 @@ bool EnsureFindDialogResolved() {
         if (!fbase || fsize < 0x10000) return false;
 
         uint8_t* fnCreate = ScanPattern(fbase, fsize, "48 89 5C 24 10 48 89 6C 24 18 56 57 41 54 41 56 41 57 48 83 EC 70 48 8B F2 48 8B F9");
-        uint8_t* fnReset = ScanPattern(fbase, fsize, "48 89 5C 24 10 57 48 81 EC 80 00 00 00 0F 29 74 24 70 48 8B D9 48 8D 81 98 07 00 00");
+        // From Find 1.2.10 by name (its bytes change with the compiler's inlining). Find 1.2.9 has neither this name nor the
+        // bytes: its dialog's fields moved, so it must not be used, and the map's own dialog stands in.
+        auto* fnReset = reinterpret_cast<uint8_t*>(GetProcAddress(mod, "FindMapDialogReset"));
+        if (!fnReset) fnReset = ScanPattern(fbase, fsize, "48 89 5C 24 10 57 48 81 EC 80 00 00 00 0F 29 74 24 70 48 8B D9 48 8D 81 98 07 00 00");
         uint8_t* fnGetQuery = ScanPattern(fbase, fsize, "48 8B 81 08 06 00 00 41 B8 3F 00 00 00 48 83 F8 40");
         if (!fnCreate || !fnReset || !fnGetQuery) return false;
 
