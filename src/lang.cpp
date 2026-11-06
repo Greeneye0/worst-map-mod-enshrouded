@@ -539,6 +539,10 @@ const Row kTable[] = {
     // MarkRespawned (the map's message for Ctrl + click): a beaten boss marked as back
     {"Respawned", "Wieder da", "Réapparu", "Ricomparso", "Reaparecido", "Reapareceu", "Odrodzony", "Возродился",
      "Відродився", "Yeniden doğdu", "復活済み", "다시 나타남", "已重生", "已重生", "เกิดใหม่แล้ว"},
+    // HintTeleport (the map's hint bar, with Embervale Teleport installed): hold this on a spot to teleport there
+    {"Teleport (hold)", "Teleport (halten)", "Téléporter (maintenir)", "Teletrasporto (tieni premuto)", "Teletransporte (mantener)",
+     "Teleportar (segurar)", "Teleport (przytrzymaj)", "Телепорт (удерживать)", "Телепорт (утримувати)", "Işınlan (basılı tut)",
+     "テレポート（長押し）", "순간이동 (길게 누르기)", "传送（长按）", "傳送（長按）", "เทเลพอร์ต (กดค้าง)"},
 };
 // clang-format on
 

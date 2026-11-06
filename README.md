@@ -61,15 +61,16 @@ with `Shift+`, `Ctrl+`, `Alt+`, then `Pad:` chords after a comma (`G, Pad:LB+A`)
 | `FindOnMap` | `Shift+F, Pad:LS+X` | open Find on the World Map |
 | `MapZoomIn`, `MapZoomOut` | `NumPlus, PageUp`; `NumMinus, PageDown` | zoom the World Map |
 | `MinimapZoomIn`, `MinimapZoomOut` | `], NumPlus, Pad:RS+Up`; `[, NumMinus, Pad:RS+Down` | zoom the minimap |
-| `FilterUndo`, `FilterRedo` | `Ctrl+Z`; `Ctrl+Y, Ctrl+Shift+Z` | undo and redo Map Key changes; a message names the filters changed and ON or OFF |
+| `FilterUndo`, `FilterRedo` | `Ctrl+Z, Pad:RS+Left`; `Ctrl+Y, Ctrl+Shift+Z, Pad:RS+Right` | undo and redo Map Key changes; a message names the filters changed and ON or OFF |
 | `HallRecenter` | `C, Pad:LS` | recentre on you in a dungeon map |
 | `ModOnOff` | `Ctrl+Shift+F12` | switch the mod off and on |
 | `ChestClick`, `HideRowClick`, `RegionOnlyClick` | `Ctrl`, `Alt`, `Ctrl` | held with a click: mark a chest, boss, lore note or unique item (`ChestClick` on any other marker hides its row, like `HideRowClick`), hide a marker's row, show one region; marks and hiding show a message of what changed |
 | `CopyPosition` | `Mouse3` | copy the map position |
+| `MarkChestPad`, `HideRowPad` | `Pad:RS+Up`, `Pad:RS+Down` | on the World Map: what `ChestClick` and `HideRowClick` do, at the middle of the view |
 | `MapKeyEnter`, `MapKeyBack`, `MapKeyClick` | `View`, `B`, `A` | the Map Key on a controller |
 | `MapKeyUp`, `MapKeyDown`, `MapKeyLeft`, `MapKeyRight` | D-pad | move through the Map Key |
 | `FindClose`, `FindConfirm` | `Esc, Pad:B`; `Enter, Pad:A` | in Find |
 | `FindNext`, `FindPrevious`, `FindUp`, `FindDown`, `FindPageUp`, `FindPageDown`, `FindFilters` | `Tab`, `Shift+Tab`, `Up, Pad:Up`, `Down, Pad:Down`, `PageUp`, `PageDown`, `F2, Ctrl+F` | in Find |
 
 `[Chests] InteractKey` is the key that marks a chest looted; on a controller it follows the game's Interact button.
-Clicks and drags on the map and minimap stay on the mouse.
+Other clicks and drags on the map and minimap stay on the mouse.

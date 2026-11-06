@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.41
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.42
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -47,6 +47,7 @@ On the right of the world map.
 - The rows in each category are sorted by name in your language.
 - The mouse wheel or the scroll bar scrolls the list.
 - Hide a marker's row from the map: Alt + left click the marker. Ctrl+Z undoes a filter change and Ctrl+Y redoes it.
+  On a controller see CONTROLLERS.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
   To use another key than Tab, set PanelToggle= under [Keys] in
@@ -296,6 +297,12 @@ Map Key with a controller: press View on the World Map to move the controller in
 Filters panel; the D-pad steps between its rows and buttons, A clicks, B goes back to the map.
 Xbox-style pads (XInput, Steam Input's too).
 
+On the World Map, RS is pressing the right stick in, and the left stick moves the view:
+- RS + D-pad Up: mark what is at the middle of the view looted, read or beaten (like Ctrl + click).
+- RS + D-pad Down: hide its row (like Alt + click).
+- RS + D-pad Left / Right: undo / redo a filter change.
+[Keys] in minimap_config.ini rebinds them: MarkChestPad, HideRowPad, FilterUndo, FilterRedo.
+
 The map tells gamepad from mouse, also for pads that are not XInput (Windows joysticks). If
 opening the map plays the Windows device connect / disconnect sound, or the game has trouble
 with a controller, a wheel or a virtual pad, turn the Windows joystick check off in
@@ -335,6 +342,17 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.42
+- Controller on the World Map: RS + D-pad Up marks what is at the middle of the view looted,
+  read or beaten, like Ctrl + click. RS + D-pad Down hides its row, like Alt + click. RS + D-pad
+  Left and Right undo and redo filter changes. RS is pressing the right stick in; the left stick
+  moves the view. MarkChestPad, HideRowPad, FilterUndo and FilterRedo under [Keys] rebind them.
+- Fixed: a World Map opened from the controller's menu showed none of the mod's tips at the
+  bottom.
+- With Embervale Teleport installed, the map's tips show its Teleport button, and follow a
+  rebind.
+- Should fix the Map Key missing controller presses at high frame rates. Reported by Ykses.
+
 1.3.41
 - New Plants rows, so the map and its Find box can find them: Date (palms showing fruit) and
   Yucca Fruit, in every language.

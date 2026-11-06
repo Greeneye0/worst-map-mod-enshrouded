@@ -1,0 +1,4 @@
+- Controller on the World Map: RS + D-pad Up marks what is at the middle of the view looted, read or beaten, like Ctrl + click. RS + D-pad Down hides its row, like Alt + click. RS + D-pad Left and Right undo and redo filter changes. RS is pressing the right stick in; the left stick moves the view. MarkChestPad, HideRowPad, FilterUndo and FilterRedo under [Keys] rebind them.
+- Fixed: a World Map opened from the controller's menu showed none of the mod's tips at the bottom.
+- With Embervale Teleport installed, the map's tips show its Teleport button, and follow a rebind.
+- Should fix the Map Key missing controller presses at high frame rates. Reported by Ykses.

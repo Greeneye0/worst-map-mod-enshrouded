@@ -659,6 +659,10 @@ bool g_vanillaMinimap = false;
 bool VanillaMinimapData() { return g_vanillaWorldMap && g_vanillaMinimap; }
 bool g_worldMapModded = true;
 uint64_t g_mapMenuDrawnTick = 0; // GetTickCount64 when the World Map last drew its filter menu (map_hints.inl)
+// The World Map is up: screen 5 from M, screen 4 when a controller opened the menu and its World tab is showing
+bool MapScreen(uint8_t screen) {
+    return screen == 5 || (screen == 4 && GetTickCount64() - g_mapMenuDrawnTick < 250);
+}
 uint8_t* g_lastMapState = nullptr; // the World Map's state, last seen by DrawMapKeyOverlay
 GetMarkerTypeFn g_origGetMarkerType = nullptr;
 uint8_t* g_worldMapInputHookTarget = nullptr;
@@ -1206,6 +1210,7 @@ namespace inp = greeneye::input;
 struct MapKeys {
     inp::Binding panelToggle, glow, minimapMouse, findOpen, mapZoomIn, mapZoomOut, miniZoomIn, miniZoomOut, undo, redo,
         hallRecenter, modOff, chestClick, hideRowClick, regionClick, copyPosition, padMapKey, padBack, padClick, padUp,
+        padMarkChest, padHideRow,
         padDown, padLeft, padRight, findClose, findConfirm, findNext, findPrevious, findUp, findDown, findPageUp,
         findPageDown, findFilters, interact;
 } g_keys;
@@ -1219,14 +1224,16 @@ constexpr MapKeySetting kMapKeySettings[] = {
     {"MapZoomOut", "NumMinus, PageDown", &MapKeys::mapZoomOut},
     {"MinimapZoomIn", "], NumPlus, Pad:RS+Up", &MapKeys::miniZoomIn},
     {"MinimapZoomOut", "[, NumMinus, Pad:RS+Down", &MapKeys::miniZoomOut},
-    {"FilterUndo", "Ctrl+Z", &MapKeys::undo},
-    {"FilterRedo", "Ctrl+Y, Ctrl+Shift+Z", &MapKeys::redo},
+    {"FilterUndo", "Ctrl+Z, Pad:RS+Left", &MapKeys::undo},
+    {"FilterRedo", "Ctrl+Y, Ctrl+Shift+Z, Pad:RS+Right", &MapKeys::redo},
     {"HallRecenter", "C, Pad:LS", &MapKeys::hallRecenter},
     {"ModOnOff", "Ctrl+Shift+F12", &MapKeys::modOff},
     {"ChestClick", "Ctrl", &MapKeys::chestClick},
     {"HideRowClick", "Alt", &MapKeys::hideRowClick},
     {"RegionOnlyClick", "Ctrl", &MapKeys::regionClick},
     {"CopyPosition", "Mouse3", &MapKeys::copyPosition},
+    {"MarkChestPad", "NoKeys, Pad:RS+Up", &MapKeys::padMarkChest},
+    {"HideRowPad", "NoKeys, Pad:RS+Down", &MapKeys::padHideRow},
     {"MapKeyEnter", "NoKeys, Pad:View", &MapKeys::padMapKey},
     {"MapKeyBack", "NoKeys, Pad:B", &MapKeys::padBack},
     {"MapKeyClick", "NoKeys, Pad:A", &MapKeys::padClick},
@@ -2212,7 +2219,9 @@ void LoadFilterHistory() {
     if (g_log) g_log("Map Key: filter history loaded (%zu to undo, %zu to redo)", g_filterUndo.size(), g_filterRedo.size());
 }
 
-// Once a frame with the map up: notes a change, and runs Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) when keysFree
+std::atomic<bool> g_padKeyFocus{false};
+
+// Once a frame with the map up: notes a change, and runs Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) or their buttons when keysFree
 void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
     constexpr size_t kMaxSteps = 50;
     static bool loaded = false;
@@ -2237,8 +2246,9 @@ void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
     if (changed || first) SaveFilterHistory();
 
     static bool undoWasDown = false, redoWasDown = false;
-    const bool undoDown = keysFree && inp::KeysHeld(g_keys.undo, KeyIsDown);
-    const bool redoDown = keysFree && inp::KeysHeld(g_keys.redo, KeyIsDown);
+    const inp::PadState pad = keysFree && !g_padKeyFocus ? inp::ReadPad() : inp::PadState{};
+    const bool undoDown = keysFree && (inp::KeysHeld(g_keys.undo, KeyIsDown) || inp::PadHeld(g_keys.undo, pad));
+    const bool redoDown = keysFree && (inp::KeysHeld(g_keys.redo, KeyIsDown) || inp::PadHeld(g_keys.redo, pad));
     const bool undo = undoDown && !undoWasDown;
     const bool redo = redoDown && !redoWasDown;
     undoWasDown = undoDown;
@@ -4041,7 +4051,6 @@ std::vector<std::string> PadStripLabels(const char* line) {
 // The Map Key with a controller: View moves the pad into the panel, the D-pad steps between its controls, A clicks the
 // one picked, B goes back to the map. The game reads Xbox-style pads (XInput, Steam Input's too) with XInputGetState,
 // hooked so that while the panel has the pad the game sees it idle, and View is the panel's on the World Map.
-std::atomic<bool> g_padKeyFocus{false};
 std::atomic<uint16_t> g_padSwallow[XUSER_MAX_COUNT]{}; // buttons still down when the panel let go: hidden until released
 XInputGetStateFn g_origXInputGetState = nullptr;      // the real XInputGetState once hooked
 uint8_t* g_xinputHookTarget = nullptr;
@@ -4060,6 +4069,7 @@ XInputGetStateFn g_origXInputGetStateEx = nullptr; // ordinal 100: the same, wit
 std::atomic<uint32_t> g_xinputCalls{0}, g_xinputExCalls{0};
 inp::SharedBinding g_padChords[4]; // glow, Find on the map, the minimap's zoom in and out
 inp::SharedBinding g_padEnter;     // the button that enters the Map Key
+inp::SharedBinding g_padMapChords[4]; // on the map only: mark a chest, hide a row, undo, redo
 std::atomic<uint16_t> g_padSearchHide{0};
 
 // Both read functions: while the panel has the pad the game gets it idle
@@ -4083,7 +4093,8 @@ DWORD PadFilterState(DWORD r, DWORD user, XINPUT_STATE* st) {
     }
     // The chords' buttons once their modifiers are held, and the open search's: hidden until they come up
     const inp::PadState pad{g.wButtons, g.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD, g.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD};
-    const uint16_t chords = static_cast<uint16_t>((onMap ? g_padSearchHide.load() : uint16_t(0)) | inp::PadHideMask(g_padChords[0].Get(), pad) |
+    const uint16_t chords = static_cast<uint16_t>((onMap ? g_padSearchHide.load() | inp::PadHideMask(g_padMapChords[0].Get(), pad) | inp::PadHideMask(g_padMapChords[1].Get(), pad) |
+                                                                    inp::PadHideMask(g_padMapChords[2].Get(), pad) | inp::PadHideMask(g_padMapChords[3].Get(), pad) : uint16_t(0)) | inp::PadHideMask(g_padChords[0].Get(), pad) |
                                                   inp::PadHideMask(g_padChords[1].Get(), pad) |
                                                   inp::PadHideMask(g_padChords[2].Get(), pad) |
                                                   inp::PadHideMask(g_padChords[3].Get(), pad));
@@ -4279,34 +4290,39 @@ void PadTargetSeen(float x, float y, float w, float h) {
     g_padTargetsNow.push_back({x, y, w, h});
 }
 
-struct PadInput { uint16_t pressed = 0; };
-// New presses on any connected pad (Steam Input can add a virtual pad beside the real one, in either slot), the D-pad
-// repeating while held; read past the hook
+struct PadInput {
+    uint16_t pressed = 0;
+    inp::PadState state; // what those presses were read from
+    int pads = 0;        // connected
+};
+// New presses on the connected pads taken together, the D-pad repeating while held; read past the hook. Together, so a
+// press that reaches two sources a moment apart (Steam Input's virtual pad beside the real one, the dev build's test
+// input) counts once: counted per source it is View into the Map Key and straight out again.
 PadInput ReadPadPresses() {
     PadInput in;
     const XInputGetStateFn get = RealXInputGetState();
     if (!get) return in;
-    static uint16_t prev[XUSER_MAX_COUNT]{};
+    static uint16_t prev = 0;
     static uint64_t repeatAt = 0;
     const uint64_t now = GetTickCount64();
     uint16_t down = 0;
     for (DWORD u = 0; u < XUSER_MAX_COUNT; ++u) {
         XINPUT_STATE st{};
-        if (get(u, &st) != ERROR_SUCCESS) { prev[u] = 0; continue; }
-        const uint16_t b = st.Gamepad.wButtons;
-        in.pressed |= b & static_cast<uint16_t>(~prev[u]);
-        down |= b;
-        prev[u] = b;
+        if (get(u, &st) != ERROR_SUCCESS) continue;
+        ++in.pads;
+        down |= st.Gamepad.wButtons;
+        in.state.lt |= st.Gamepad.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
+        in.state.rt |= st.Gamepad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
     }
 #ifdef GREENEYE_INPUT_TEST
     {
-        static uint16_t prevTest = 0;
-        const uint16_t b = inp::ReadPad().buttons;
-        in.pressed |= b & static_cast<uint16_t>(~prevTest);
-        down |= b;
-        prevTest = b;
+        down |= inp::ReadPad().buttons;
+        in.state.lt |= inp::ReadPad().lt;
+        in.state.rt |= inp::ReadPad().rt;
     }
 #endif
+    in.pressed = down & static_cast<uint16_t>(~prev);
+    prev = down;
     constexpr uint16_t kDpad = XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN | XINPUT_GAMEPAD_DPAD_LEFT |
                                XINPUT_GAMEPAD_DPAD_RIGHT;
     if (in.pressed & kDpad) repeatAt = now + 380;
@@ -4314,6 +4330,7 @@ PadInput ReadPadPresses() {
         in.pressed |= down & kDpad;
         repeatAt = now + 110;
     }
+    in.state.buttons = down;
     return in;
 }
 
@@ -4327,9 +4344,10 @@ bool PadKeyFrame(bool allowed, float& mx, float& my, bool& clicked, float& scrol
     // The rebindable buttons ([Keys] MapKey*) as the ones the code below moves by.
     PadInput in;
     {
-        const inp::PadState pad = inp::ReadPad();
+        // Held from the same read as the presses: inp::ReadPad is cached for the clock's tick (some 16 ms), so at a high
+        // frame rate it could still say up for a button just pressed, and the press was lost
         auto set = [&](const inp::Binding& b, uint16_t canonical) {
-            if (inp::PadPressed(b, raw.pressed, pad)) in.pressed |= canonical;
+            if (inp::PadPressed(b, raw.pressed, raw.state)) in.pressed |= canonical;
         };
         set(g_keys.padMapKey, XINPUT_GAMEPAD_BACK);
         set(g_keys.padBack, XINPUT_GAMEPAD_B);
@@ -4339,13 +4357,13 @@ bool PadKeyFrame(bool allowed, float& mx, float& my, bool& clicked, float& scrol
         set(g_keys.padLeft, XINPUT_GAMEPAD_DPAD_LEFT);
         set(g_keys.padRight, XINPUT_GAMEPAD_DPAD_RIGHT);
     }
-    auto leave = [&] {
+    auto leave = [&](const char* why) {
         g_padKeyFocus = false;
         for (auto& sw : g_padSwallow) sw = 0xFFFF; // what is still down stays the panel's until released
-        if (g_log) g_log("Controllers: left the Map Key");
+        if (g_log) g_log("Controllers: left the Map Key (%s)", why);
     };
     if (!allowed) {
-        if (g_padKeyFocus) leave();
+        if (g_padKeyFocus) leave("not available now");
         return false;
     }
     if (!g_padKeyFocus) {
@@ -4353,14 +4371,14 @@ bool PadKeyFrame(bool allowed, float& mx, float& my, bool& clicked, float& scrol
         g_padEnterPending = false;
         g_padKeyFocus = true;
         g_panelCollapsed = false;
-        if (g_log) g_log("Controllers: in the Map Key (View); the game's pad reads so far: %u XInputGetState, %u Ex%s",
-                         g_xinputCalls.load(), g_xinputExCalls.load(), g_origXInputGetStateEx ? "" : " (not hooked)");
+        if (g_log) g_log("Controllers: in the Map Key (View); the game's pad reads so far: %u XInputGetState, %u Ex%s; %d pads",
+                         g_xinputCalls.load(), g_xinputExCalls.load(), g_origXInputGetStateEx ? "" : " (not hooked)", raw.pads);
         g_padSelX = g_lastPanelX + 60.0f; // the first section's row
         g_padSelY = g_lastPanelY + 120.0f;
         g_padColX = 0.0f;
         g_padTargets.clear();
     } else if (in.pressed & (XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_BACK)) {
-        leave();
+        leave("button");
         return false;
     }
     // The controls, minus a row that holds a choice of several (Settings' segmented rows: their segments are the
@@ -7618,6 +7636,30 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             haveCursor = true;
             leftDown = clicked;
         }
+        // A controller has no pointer on the map: its mark and hide act on the middle of the view, which the left stick
+        // pans. For the frame of the press the cursor stands there, so the icons under it are found as for a click.
+        // Held and its edge, not PadPressed: that repeats on the D-pad, and a held button would keep toggling.
+        const inp::PadState padMapNow = inp::ReadPad();
+        const bool padMapFree = focused && !padDrives && !g_padKeyFocus && !g_findDialogOpen && !g_keySearchFocused &&
+                                *reinterpret_cast<uint32_t*>(mapState + 0xf8) == 0;
+        static bool s_padMarkWas = false, s_padHideWas = false;
+        const bool padMarkHeld = padMapFree && inp::PadHeld(g_keys.padMarkChest, padMapNow);
+        const bool padHideHeld = padMapFree && inp::PadHeld(g_keys.padHideRow, padMapNow);
+        const bool padMarkChest = padMarkHeld && !s_padMarkWas;
+        const bool padHideRow = padHideHeld && !s_padHideWas;
+        s_padMarkWas = padMarkHeld;
+        s_padHideWas = padHideHeld;
+        if (padMarkChest || padHideRow) {
+            if (uint8_t* view = *reinterpret_cast<uint8_t**>(mapState + 8)) {
+                const float zoom = *reinterpret_cast<float*>(view + 0x10);
+                mx = *reinterpret_cast<float*>(view + 0x1f0) + *reinterpret_cast<float*>(view + 0x18c) -
+                     *reinterpret_cast<float*>(view + 0x1f8) + *reinterpret_cast<float*>(view + 0x30) * zoom;
+                my = *reinterpret_cast<float*>(view + 0x1f4) + *reinterpret_cast<float*>(view + 0x190) -
+                     *reinterpret_cast<float*>(view + 0x1fc) + *reinterpret_cast<float*>(view + 0x34) * zoom;
+                haveCursor = true;
+                if (g_log) g_log("Map: controller at the middle of the view, %.0f, %.0f on screen (root %.0f x %.0f)", mx, my, rootW, rootH);
+            }
+        }
 
         auto isHovered = [&](float absX, float absY, float rw, float rh) -> bool {
             PadTargetSeen(absX, absY, rw, rh);
@@ -7699,7 +7741,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             uint8_t* view = *reinterpret_cast<uint8_t**>(mapState + 8);
             const bool overPanel = mx >= g_lastPanelX && mx <= g_lastPanelX + g_lastPanelW && my >= g_lastPanelY &&
                                    my <= g_lastPanelY + g_lastPanelH;
-            if (clicked && altDown && haveCursor && !overPanel && !g_findDialogOpen && view) {
+            if (((clicked && altDown) || padHideRow) && haveCursor && !overPanel && !g_findDialogOpen && view) {
                 const float zoom = *reinterpret_cast<float*>(view + 0x10);
                 float worldH = *reinterpret_cast<float*>(view + 0x3c);
                 if (worldH <= 100.0f) worldH = 10240.0f;
@@ -7710,7 +7752,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 HideRowTarget target;
                 if (zoom > 0.0f && HideRowTargetAt(client, static_cast<int32_t>((mx - ox) / zoom),
                         static_cast<int32_t>(worldH - (my - oy) / zoom), 16.0f / zoom, g_hoveredDepositRow, target)) {
-                    HideClickedRow(client, mapState, target, "Alt+click");
+                    HideClickedRow(client, mapState, target, padHideRow ? "controller" : "Alt+click");
                     ClearMapViewClickLatch(mapState); // no menu, no waypoint
                     g_panelClickLatch = true;
                     g_findClosingFrames = std::max(g_findClosingFrames, 8);
@@ -7791,7 +7833,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         {
             const bool ctrlDown = focused && inp::KeysHeld(g_keys.chestClick, KeyIsDown);
             const bool clearClickNow = !g_findDialogOpen && !panelHovered && haveCursor && ctrlDown && leftDown;
-            const bool clearClickEdge = clearClickNow && !g_worldMapChestClickWasDown;
+            const bool clearClickEdge = (clearClickNow && !g_worldMapChestClickWasDown) || (padMarkChest && haveCursor && !panelHovered);
             g_worldMapChestClickWasDown = clearClickNow;
             if (clearClickEdge) {
                 if (uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8)) {
@@ -9192,6 +9234,10 @@ void ReadMapKeys(bool writeMissing) {
     g_padChords[2].Set(fresh.miniZoomIn);
     g_padChords[3].Set(fresh.miniZoomOut);
     g_padEnter.Set(fresh.padMapKey);
+    g_padMapChords[0].Set(fresh.padMarkChest);
+    g_padMapChords[1].Set(fresh.padHideRow);
+    g_padMapChords[2].Set(fresh.undo);
+    g_padMapChords[3].Set(fresh.redo);
 }
 
 void LoadMinimapConfig() {
@@ -11368,11 +11414,11 @@ void DrawHudMinimapOverlay() {
     // 1 = Playing (normal HUD), 5 = World Map, 2 = Pause/System Menu, 9 = Inventory/Journal
     // Hide minimap when World Map (5) or System Menu (2) or Main Menu (0) is open, or when hidden in Settings.
     uint8_t screen = client[0x1cd8];
-    if (screen != 5) {
+    if (!MapScreen(screen)) {
         g_worldMapWasOpen = false;
         g_screenBeforeMap = screen;
     }
-    if (screen == 0 || screen == 2 || screen == 5 || (!g_minimapVisible && !g_minimapInfoBar && !g_minimapSettingsOpen)) {
+    if (screen == 0 || screen == 2 || MapScreen(screen) || (!g_minimapVisible && !g_minimapInfoBar && !g_minimapSettingsOpen)) {
         g_minimapDraggingMove = false;
         g_minimapDraggingResize = false;
         g_minimapSettingsOpen = false;
@@ -11847,7 +11893,7 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
     auto* client = static_cast<uint8_t*>(uiClient);
     if (!client) return -2;
     LoadMinimapConfig();
-    const bool worldMap = client[0x1cd8] == 5;
+    const bool worldMap = MapScreen(client[0x1cd8]);
     const bool hud = client[0x1cd8] == 1;
     const bool status = std::strcmp(action, "status") == 0;
     if (!status && !worldMap && !hud) return -2;

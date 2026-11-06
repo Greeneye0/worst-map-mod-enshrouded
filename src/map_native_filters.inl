@@ -217,7 +217,7 @@ extern "C" __declspec(dllexport) int MapNativeFilters(const char* action, const 
     if (std::strcmp(action, "hdstatus") == 0 || std::strcmp(action, "hdtest") == 0)
         return hdpool::Control(action, target, out, outCap);
     auto* client = static_cast<uint8_t*>(uiClient);
-    if (!client || (client[0x1cd8] != 1 && client[0x1cd8] != 5)) return -2;
+    if (!client || (client[0x1cd8] != 1 && !MapScreen(client[0x1cd8]))) return -2;
     LoadMinimapConfig();
     // A click's effect without the mouse, target "x,z,r": ctrlclicklore does what Ctrl + click does to the nearest lore
     // note (the notes are this player's own, nothing goes to other players); altclick what Alt + click hides.

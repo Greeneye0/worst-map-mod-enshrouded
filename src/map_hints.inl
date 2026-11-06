@@ -14,8 +14,43 @@ uint8_t* MapHintRecord(uint8_t action) {
     return ui ? ui + 0xf27c + action * kMapBindingSize : nullptr;
 }
 
+// Embervale Teleport's Travel binding if that mod is installed, read from its own ini as it does (padCount and keyCount 0
+// otherwise), so the tip follows a rebind within two seconds.
+const inp::Binding& EmbervaleTravelBinding() {
+    static inp::Binding travel;
+    static inp::FileWatch iniWatch;
+    static uint64_t checkedAt = 0;
+    static bool installed = false;
+    const std::string dir = greeneye::DataPath("..\\map-teleport\\");
+    const std::string ini = dir + "map-teleport.ini";
+    const uint64_t now = GetTickCount64();
+    if (!checkedAt || now - checkedAt >= 2000) {
+        checkedAt = now;
+        const bool was = installed;
+        installed = GetFileAttributesA((dir + "map-teleport.dll").c_str()) != INVALID_FILE_ATTRIBUTES &&
+                    GetFileAttributesA((dir + "mod.json").c_str()) != INVALID_FILE_ATTRIBUTES;
+        if (!installed) travel = inp::Binding{};
+        if (installed && !was) iniWatch = inp::FileWatch{};
+    }
+    if (installed && iniWatch.Changed(ini.c_str())) {
+        // As Embervale: LT+RT unless [Controller] Button picks another (Y was its old default, Off none)
+        inp::Binding fallback = inp::MakeBinding("Shift+Mouse1, Pad:LT+RT");
+        char button[32]{};
+        GetPrivateProfileStringA("Controller", "Button", "Y", button, sizeof(button), ini.c_str());
+        if (_stricmp(button, "Y") != 0) {
+            inp::Binding picked;
+            if (_stricmp(button, "Off") == 0) fallback.padCount = 0;
+            else if (inp::ParseBinding(std::string("Pad:") + button, fallback, picked)) fallback = picked;
+        }
+        char text[128]{};
+        GetPrivateProfileStringA("Keys", "Travel", "", text, sizeof(text), ini.c_str());
+        if (!inp::ParseBinding(text, fallback, travel)) travel = fallback;
+    }
+    return travel;
+}
+
 // Kinds: 0 mark a chest (click), 1 Find, 2 the panel, 3 copy the position, 4 hide a row (click), 5 undo, 6 redo;
-// while the controller steers the Map Key, 7 move, 8 select, 9 back.
+// while the controller steers the Map Key, 7 move, 8 select, 9 back; 10 Embervale Teleport's hold.
 // What each shows: its current keys, and its controller button if it has one.
 inp::Binding MapHintBinding(int kind) {
     inp::Binding b;
@@ -28,8 +63,16 @@ inp::Binding MapHintBinding(int kind) {
         }
     };
     switch (kind) {
-    case 0: withClick(g_keys.chestClick); break;
-    case 4: withClick(g_keys.hideRowClick); break;
+    case 0:
+        withClick(g_keys.chestClick);
+        b.pads[0] = g_keys.padMarkChest.pads[0];
+        b.padCount = g_keys.padMarkChest.padCount ? 1 : 0;
+        break;
+    case 4:
+        withClick(g_keys.hideRowClick);
+        b.pads[0] = g_keys.padHideRow.pads[0];
+        b.padCount = g_keys.padHideRow.padCount ? 1 : 0;
+        break;
     case 1: b = g_keys.findOpen; break;
     case 2:
         b = g_keys.panelToggle;
@@ -41,12 +84,13 @@ inp::Binding MapHintBinding(int kind) {
     case 7: b = g_keys.padDown; break;
     case 8: b = g_keys.padClick; break;
     case 9: b = g_keys.padBack; break;
+    case 10: b = EmbervaleTravelBinding(); break;
     }
     return b;
 }
 // The map's hints for the device the game is showing: Find, the panel and the rest with a binding on it.
 // Undo and redo while there is a change to take back; the copy with Settings > Advanced > Position on
-int MapHintKinds(int out[8]) {
+int MapHintKinds(int out[9]) {
     int n = 0;
     const bool pad = greeneye::hints::PadInUse() || g_padKeyFocus;
     auto add = [&](int kind) {
@@ -64,15 +108,16 @@ int MapHintKinds(int out[8]) {
     if (!g_filterUndo.empty()) add(5);
     if (!g_filterRedo.empty()) add(6);
     add(2);
+    add(10);
     if (g_minimapShowPosition) add(3);
     return n;
 }
 int MapHintCount() {
-    int kinds[8];
+    int kinds[9];
     return MapHintKinds(kinds);
 }
 int MapHintKind(int i) {
-    int kinds[8];
+    int kinds[9];
     return i < MapHintKinds(kinds) ? kinds[i] : 3;
 }
 
@@ -110,7 +155,7 @@ const char* MapKeyNavLabel(int i) {
 }
 
 void DrawCombinedMapHints(MapHintSpan* span, void* options) {
-    alignas(16) uint8_t entries[24 * kMapHintSize]{}; // the game's (up to 16) and ours (up to 7)
+    alignas(16) uint8_t entries[24 * kMapHintSize]{}; // the game's (up to 16) and ours (up to 8)
     const uint8_t* model = nullptr;
     for (uint64_t i = 0; i < span->count; ++i) {
         const uint8_t* e = span->data + i * kMapHintSize;
@@ -125,7 +170,8 @@ void DrawCombinedMapHints(MapHintSpan* span, void* options) {
         uint8_t* e = entries + i * kMapHintSize;
         std::memcpy(e, model, kMapHintSize);
         const int kind = MapHintKind(i);
-        UiText text = MakeUiText(kind >= 7 ? MapKeyNavLabel(kind - 7) : umm_lang::T(labels[kind]));
+        UiText text = MakeUiText(kind == 10 ? umm_lang::T(umm_lang::Str::HintTeleport)
+                                 : kind >= 7 ? MapKeyNavLabel(kind - 7) : umm_lang::T(labels[kind]));
         std::memcpy(e + 0x20, &text, sizeof(text));
         e[0x1b] = 1;
     }
@@ -146,7 +192,7 @@ bool WorldMapTabShowing() {
 void MapHintsHook(MapHintSpan* span, void* options) {
     greeneye::Lease lease;
     auto* client = lease && g_worldMapModded ? GetUiClient() : nullptr;
-    if (client && client[0x1cd8] == 5 && WorldMapTabShowing() && !g_findDialogOpen && span && span->data && span->count &&
+    if (client && MapScreen(client[0x1cd8]) && WorldMapTabShowing() && !g_findDialogOpen && span && span->data && span->count &&
         span->count <= 16 && g_originalMapHint)
         DrawCombinedMapHints(span, options);
     else g_originalMapHints(span, options);
