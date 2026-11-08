@@ -175,7 +175,19 @@ void DrawRegionNamesOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapSt
 
 namespace halls {
 bool MapHides(float x, float z); // halls.inl: another dungeon's marker while the map shows a Hollow Hall
-bool MapHidesChest(float x, float y, float z);
+bool MapHidesChest(size_t chest);
+}
+
+// A marker in another Hollow Hall than the one the map shows. The mod's chest markers go by their hall: gold and silver
+// chests in another hall can be right over or under this one's floors.
+bool MarkerInOtherHall(const uint8_t* m) {
+    const uint32_t uid = *reinterpret_cast<const uint32_t*>(m);
+    if ((uid & 0xFFFF0000u) == kChestMarkerUidPrefix) {
+        const size_t chest = (uid & 0xFFFFu) - 1u;
+        if (chest < kTotalChestCount) return halls::MapHidesChest(chest);
+    }
+    return halls::MapHides(static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)),
+                           static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24)));
 }
 
 // One of the game's World Map markers outside the focused region, or in another Hollow Hall than the one the map
@@ -184,7 +196,7 @@ bool MarkerOutsideFocusedRegion(const uint8_t* m) {
     if (!m) return false;
     const float mx = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14));
     const float mz = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24));
-    if (halls::MapHides(mx, mz)) return true; // the dungeon map shows that dungeon only, your pins too
+    if (MarkerInOtherHall(m)) return true; // the dungeon map shows that dungeon only, your pins too
     if (!g_regionFiltering) return false;
     const uint32_t typeHash = *reinterpret_cast<const uint32_t*>(m + 0x30);
     const uint32_t origHash = GetMarkerOrigTypeHash(m);
@@ -198,8 +210,7 @@ bool MarkerOutsideFocusedRegion(const uint8_t* m) {
 // Not drawn at all: outside the focused region with Hide, or in another Hollow Hall
 bool MarkerHiddenOnMap(const uint8_t* m) {
     if (!MarkerOutsideFocusedRegion(m)) return false;
-    return g_regionOutsideHide || halls::MapHides(static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)),
-                                                  static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24)));
+    return g_regionOutsideHide || MarkerInOtherHall(m);
 }
 
 // The shown regions' borders on the World Map: gold beads evenly spaced on screen (one draw each: the game's UI

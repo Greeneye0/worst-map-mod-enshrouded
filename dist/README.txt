@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.42
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.43
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -342,6 +342,19 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.43
+- Each Hollow Halls chest now belongs to one hall, so a hall's World Map and minimap no
+  longer show chests from a neighbouring hall. Seven gold and silver chests on ledges and in
+  secret rooms now show on their own hall's map.
+- On the overworld, wooden chests and resource icons now thin out only as you zoom, no
+  longer as you pan.
+- With Town Portals 1.0.13, players show on the minimap in the colour they picked with its
+  PortalColor setting.
+Reported bugs fixed:
+- Chests from other Hollow Halls showed on a hall's map.
+- Some chests on a hall's map appeared and disappeared as you panned. Hall maps now draw
+  every chest.
+
 1.3.42
 - Controller on the World Map: RS + D-pad Up marks what is at the middle of the view looted,
   read or beaten, like Ctrl + click. RS + D-pad Down hides its row, like Alt + click. RS + D-pad

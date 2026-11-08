@@ -41,6 +41,7 @@
 #include "player_markers.h"
 #include "filter_notice.h"
 #include "chest_spawns.h"
+#include "chest_halls.h"
 #include "chest_loot_ids.h"
 #include "ore_deposits.h"
 #include <iterator>
@@ -3092,7 +3093,7 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
 // in the Hollow Halls' corner of the overworld map, or in another hall. The minimap's clicks aren't under these rules.
 namespace halls {
 bool MapHides(float x, float z);
-bool MapHidesChest(float x, float y, float z);
+bool MapHidesChest(size_t chest);
 bool MapHidesAt(float x, float y, float z, bool wide);
 }
 bool RegionHidesAt(float x, float z); // regions.inl
@@ -3102,11 +3103,8 @@ bool MarkClickSkipsChest(size_t c) {
     if (!g_markClickOnWorldMap) return false;
     const ChestSpawn& sp = kChestSpawns[c];
     const float x = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
-    const float y = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f;
     const float z = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
-    if (RegionHidesAt(x, z)) return true;
-    // Wooden chests and spoils are the mod's own icons, on a floor of the hall; gold and silver are the game's markers
-    return IsWoodChest(c) || c >= kEndChestFirst ? halls::MapHidesChest(x, y, z) : halls::MapHides(x, z);
+    return RegionHidesAt(x, z) || halls::MapHidesChest(c);
 }
 
 bool MarkClickSkipsSpot(float x, float y, float z) {
@@ -6069,8 +6067,7 @@ void DrawRefilledChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* cl
         if (sx < left || sx > right || sy < top + 114.0f || sy > bottom) continue;
         if (exploredOnly && !IsPositionExploredByCharacter(client, sp.px1, sp.pz1)) continue;
         // Its icon's rules: Region > Hide, and the Hollow Halls' corner (or another hall on a dungeon map)
-        const float y = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f;
-        if (RegionHidesAt(x, z) || halls::MapHidesChest(x, y, z)) continue;
+        if (RegionHidesAt(x, z) || halls::MapHidesChest(c)) continue;
         const float a = OutsideFocusedRegion(x, z) ? 0.3f : 1.0f; // Region > Dim, as the icon
         const float cx = sx + kIconHalf - kCheck * 0.7f, cy = sy + kIconHalf - kCheck * 0.7f;
         DrawAssetRectAbs(widgetRaw, kCirclePrimitive, cx - 1.0f, cy - 1.0f, kCheck + 2.0f, kCheck + 2.0f, 0xFF0A0E10u, 0.85f * a);
@@ -6227,6 +6224,12 @@ void DrawSpoilsHover(size_t c, float x, float y) {
 
 uint32_t g_hoveredDepositRow = 0u; // the row of the mod's icon under the cursor (a lore note, an ore, ...), or 0
 
+// The map's one-icon-per-cell thinning: a cell of the grid laid over the screen, from an icon's place on the map in
+// pixels and the screen edge's. The cells stay put on the map, so panning doesn't change which icons share one.
+int MapThinCell(float mapPx, float edgePx, float cell) {
+    return static_cast<int>(std::floor(mapPx / cell)) - static_cast<int>(std::floor(edgePx / cell));
+}
+
 void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState,
                           bool haveCursor, float mx, float my, int maxIcons) {
     g_hoveredDepositRow = 0u;
@@ -6258,8 +6261,8 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     // (shared with the forests). The deposits are stored ore by ore; they are visited in a scattered order (i * 7919 mod N, a permutation
     // since 7919 is prime and does not divide N) so the cap and the shared cells thin every ore alike.
     const float cell = std::max(8.0f, size * 0.9f);
-    const int gridW = std::max(1, static_cast<int>((right - left) / cell) + 1);
-    const int gridH = std::max(1, static_cast<int>((bottom - top) / cell) + 1);
+    const int gridW = std::max(1, static_cast<int>((right - left) / cell) + 2);
+    const int gridH = std::max(1, static_cast<int>((bottom - top) / cell) + 2);
     static std::vector<uint8_t> taken;
     taken.assign(static_cast<size_t>(gridW) * gridH, 0);
     const bool backing = size > 14.0f;
@@ -6288,7 +6291,8 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         const bool outside = OutsideFocusedRegion(dep.x, dep.z); // Map Key > Region
         if ((outside && g_regionOutsideHide) || halls::MapHidesAt(dep.x, dep.topY, dep.z, IsKnowledgeDeposit(d))) continue; // or another Hollow Hall
         if (pass == 0) {
-            const int gx = static_cast<int>((sx - left) / cell), gy = static_cast<int>((sy - top) / cell);
+            const int gx = MapThinCell(dep.x * zoom, left - originX, cell);
+            const int gy = MapThinCell((mapWorldH - dep.z) * zoom, top - originY, cell);
             if (gx >= 0 && gy >= 0 && gx < gridW && gy < gridH) {
                 uint8_t& t = taken[static_cast<size_t>(gy) * gridW + gx];
                 if (t) continue;
@@ -6360,7 +6364,8 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
 // Wooden chests on the World Map, drawn by the mod: the game's two marker arrays the gold and silver chests go into
 // hold 1024 each and are nearly full with them. One icon per screen cell (where they would overlap anyway), as the
 // resources; looted ones hidden or greyed like the others, with the check mark once looted here; a name on hover.
-// On the dungeon map the gold and silver chests too: its floor plan is drawn over the game's own markers.
+// On the dungeon map the gold and silver chests too: its floor plan is drawn over the game's own markers. A hall has
+// few enough chests to draw them all, so none is thinned there.
 void DrawWoodChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState, bool haveCursor,
                          float mx, float my) {
     if (!widgetRaw || !client || !mapState) return;
@@ -6384,8 +6389,8 @@ void DrawWoodChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client
     constexpr float kMapBannerBottom = 114.0f;
     const float size = std::max(11.0f, std::min(19.0f, 8.0f + zoom * 5.0f)), half = size * 0.5f;
     const float cell = std::max(8.0f, size * 0.9f);
-    const int gridW = std::max(1, static_cast<int>((right - left) / cell) + 1);
-    const int gridH = std::max(1, static_cast<int>((bottom - top) / cell) + 1);
+    const int gridW = std::max(1, static_cast<int>((right - left) / cell) + 2);
+    const int gridH = std::max(1, static_cast<int>((bottom - top) / cell) + 2);
     static std::vector<uint8_t> taken;
     taken.assign(static_cast<size_t>(gridW) * gridH, 0);
     const bool backing = size > 13.0f;
@@ -6407,10 +6412,10 @@ void DrawWoodChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client
                                 !IsPositionExploredByCharacter(client, sp.px1, sp.pz1);
         if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) continue;
         const bool outside = OutsideFocusedRegion(x, z); // Map Key > Region
-        const float y = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f;
-        if ((outside && g_regionOutsideHide) || halls::MapHidesChest(x, y, z)) continue;
-        const int gx = static_cast<int>((sx - left) / cell), gy = static_cast<int>((sy - top) / cell);
-        if (gx >= 0 && gy >= 0 && gx < gridW && gy < gridH) {
+        if ((outside && g_regionOutsideHide) || halls::MapHidesChest(c)) continue;
+        const int gx = MapThinCell(x * zoom, left - originX, cell);
+        const int gy = MapThinCell((mapWorldH - z) * zoom, top - originY, cell);
+        if (!dungeonMap && gx >= 0 && gy >= 0 && gx < gridW && gy < gridH) {
             uint8_t& t = taken[static_cast<size_t>(gy) * gridW + gx];
             if (t) continue;
             t = 1;
@@ -10885,6 +10890,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) {
                     continue;
                 }
+                if (halls::MinimapHidesChest(c, playerX, playerY, playerZ)) continue; // another Hollow Hall's
 
                 const bool chestUnexplored = (g_pinRevealMode != PinRevealMode::RevealAll) &&
                                              !IsPositionExploredByCharacter(client, sp.px1, sp.pz1);

@@ -1,7 +1,13 @@
 #pragma once
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <cwchar>
 #include <vector>
 
 namespace minimap_players {
@@ -31,7 +37,8 @@ inline uint32_t Color(unsigned slot) {
 // players can tell each other apart by colour. The server hands out player ids in join order
 // (the first player is 1), so the first player in the server is yellow, the second blue, and
 // so on; past 16 players, hues from Color(). ABGR. Town Portal colours portals with the same
-// palette (TownPortal src/portal_colors.h); keep the two in step.
+// palette (TownPortal src/portal_colors.h); keep the two in step. A player can prefer another
+// palette colour there (ColorFor below).
 inline constexpr uint32_t kJoinPalette[16] = {
     0xFF28D2FFu /* yellow */,
     0xFFFF7828u /* blue */,
@@ -50,7 +57,29 @@ inline constexpr uint32_t kJoinPalette[16] = {
     0xFF288282u /* olive */,
     0xFF321E8Cu /* maroon */};
 inline unsigned SlotFor(uint32_t id) { return (id * 2654435761u) % 64; }
+// Town Portal's preferred colours (TownPortal src/portal_colors.h, PortalColor in its ini): the
+// palette colour it granted a player in place of their join colour, shared in
+// "Local\GreeneyePortalColours-<process id>" = {u32 'GPC1', u8 slot + 1 per player id 0..64}.
+// Looked for every 3 s until Town Portal has made it; null without Town Portal.
+inline const uint8_t* PortalColours() {
+    static const uint8_t* view = nullptr;
+    static uint64_t retryAt = 0;
+    if (view) return view;
+    const uint64_t now = GetTickCount64();
+    if (now < retryAt) return nullptr;
+    retryAt = now + 3000;
+    wchar_t name[64];
+    swprintf_s(name, L"Local\\GreeneyePortalColours-%lu", GetCurrentProcessId());
+    if (HANDLE map = OpenFileMappingW(FILE_MAP_READ, FALSE, name)) {
+        view = static_cast<const uint8_t*>(MapViewOfFile(map, FILE_MAP_READ, 0, 0, 128));
+        if (view && std::memcmp(view, "GPC1", 4) != 0) view = nullptr;
+    }
+    return view;
+}
 inline uint32_t ColorFor(uint32_t id) {
+    if (id >= 1 && id <= 64)
+        if (const uint8_t* granted = PortalColours(); granted && granted[4 + id] >= 1 && granted[4 + id] <= 16)
+            return kJoinPalette[granted[4 + id] - 1];
     if (id >= 1 && id <= 16) return kJoinPalette[id - 1];
     return Color(SlotFor(id));
 }
@@ -65,6 +94,7 @@ public:
     }
     Marker& Update(uint32_t id, float x, float z) {
         for (auto& m : entries) if (m.id == id) {
+            m.color = ColorFor(id); // a preferred colour (Town Portal) can change it
             const float dx = x - m.x, dz = z - m.z;
             const float lengthSq = dx * dx + dz * dz;
             // Movement heading is available for remote players; keep it while stationary.

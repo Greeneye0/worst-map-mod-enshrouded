@@ -571,13 +571,32 @@ bool MapHides(float x, float z) {
     return !corner || !NearDungeon(x, z, g_mapDungeon);
 }
 
-// With its height: also a place of another hall stacked over or under this one (the floor nearest it is that hall's)
-// A chest on the dungeon map: only on (or by) one of this dungeon's floors, not in the rock around it
-bool MapHidesChest(float x, float y, float z) {
-    if (MapHides(x, z)) return true;
-    if (!MapActive()) return false;
-    const int run = NearestRun(x, y, z, true);
-    return run < 0 || g_runDungeon[run] != g_mapDungeon || std::fabs(g_runs[run].Y() - y) > 6.0f;
+// A chest by its hall (chest_halls.h), not by where it is on the map: the halls are stacked over each other
+constexpr float kNoHallChestHeight = 30.0f; // a chest of no hall (1, far from them all) shows only this near your height
+
+bool MapHidesChest(size_t chest) {
+    const ChestSpawn& sp = kChestSpawns[chest];
+    const float x = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f;
+    const float z = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f;
+    if (!MapActive()) return InCorner(x, z);
+    const uint8_t hall = kChestHall[chest];
+    if (hall == kChestNotInHalls) return true;
+    if (hall != kChestNoHall) return hall != g_mapDungeon;
+    const float y = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f;
+    return !NearDungeon(x, z, g_mapDungeon) || std::fabs(y - g_mapPy) > kNoHallChestHeight;
+}
+
+// On the minimap: only the hall you're in has its chests there (py: your height)
+bool MinimapHidesChest(size_t chest, float px, float py, float pz) {
+    const uint8_t hall = kChestHall[chest];
+    if (hall == kChestNotInHalls) return false;
+    if (!InCorner(px, pz)) return true;
+    if (hall == kChestNoHall) {
+        const ChestSpawn& sp = kChestSpawns[chest];
+        const float y = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f;
+        return std::fabs(y - py) > kNoHallChestHeight;
+    }
+    return g_curDungeon >= 0 && hall != g_curDungeon;
 }
 // wide: a lore note, boss or unique item, which can lie a room's width from any floor (Tome of Agony, 11 m from the
 // Kindle Waste hall's floor, over another hall's): the floor nearest it is looked for further out. Only these few: it
