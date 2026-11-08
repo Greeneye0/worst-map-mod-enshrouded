@@ -351,7 +351,7 @@ CHANGES
 - With Town Portals 1.0.13, players show on the minimap in the colour they picked with its
   PortalColor setting.
 Reported bugs fixed:
-- Chests from other Hollow Halls showed on a hall's map.
+- Chests from other Hollow Halls showed on a hall's map (reported by Lomack02).
 - Some chests on a hall's map appeared and disappeared as you panned. Hall maps now draw
   every chest.
 
