@@ -1,0 +1,4 @@
+- With Completed Places on Hide, a completed place you've put a waypoint on stays on the map, so you can click it to clear the waypoint.
+Reported bugs fixed:
+- A waypoint on a read obelisk or another completed place couldn't be cleared while Completed Places was on Hide: only an empty diamond showed.
+- Chest outlines (G twice) also lit things standing at a chest or lore note, such as the scaffold under a chest, and drew a large flat shape around it. Only the chest or note lights up now.

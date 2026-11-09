@@ -1376,6 +1376,20 @@ uint8_t* GetHintCountPtr() {
     return (ui && *reinterpret_cast<void**>(ui)) ? (ui + kHintListOffset + kHintCountOffset) : nullptr;
 }
 
+// The waypoint set on a place: the UI state keeps a copy of that marker's slot (0xA0) here, uid at +0 and position
+// at +0x10, both 0 when no waypoint is set (found 2026-11-09 by setting and clearing one on a read obelisk)
+constexpr size_t kWaypointSlotOffset = 0x14020;
+
+bool IsWaypointMarker(const uint8_t* m) {
+    auto* g = static_cast<uint8_t*>(GetUiG());
+    auto* ui = g ? *reinterpret_cast<uint8_t**>(g + 0xd0) : nullptr;
+    if (!m || !ui || !*reinterpret_cast<void**>(ui)) return false;
+    const uint8_t* wp = ui + kWaypointSlotOffset;
+    const uint64_t uid = *reinterpret_cast<const uint64_t*>(wp);
+    return uid != 0 && uid == *reinterpret_cast<const uint64_t*>(m) &&
+           *reinterpret_cast<const uint64_t*>(wp + 0x10) == *reinterpret_cast<const uint64_t*>(m + 0x10);
+}
+
 uint64_t PackXY(float x, float y) {
     uint64_t v = 0;
     float xy[2] = {x, y};
@@ -3842,9 +3856,11 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                         noteRumor(m);
                     }
                 } else if (!revealedForPinMode || !poiFilterOn || GameNeverShowsPlace(savedId08) ||
-                           (g_hideCompletedPlaces && (m[0x34] == 3 || IsVisitedSanctumMarker(m, origHash)))) {
+                           (g_hideCompletedPlaces && (m[0x34] == 3 || IsVisitedSanctumMarker(m, origHash)) &&
+                            !IsWaypointMarker(m))) {
                     // (state 3: the game's completed place, drawn with a check mark; hidden with Completed Places: Hide,
-                    // like a sanctum you have been to)
+                    // like a sanctum you have been to, unless your waypoint is on it: hidden, it can't be clicked to
+                    // clear the waypoint, which stays an empty diamond)
                     applyMarkerVisibility(m, origHash, savedId08, false, false, false);
                 } else {
                     applyMarkerVisibility(m, origHash, savedId08, true, false, allowSubpinId);
@@ -10764,7 +10780,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 if (rumorHere) {
                     normHash = 0x8ba7c122u;
                 } else {
-                    if (!vanillaData && g_hideCompletedPlaces && (markerState == 3u || visitedSanctum) && origHash != 0xafce0c5fu) continue; // Completed Places: Hide
+                    if (!vanillaData && g_hideCompletedPlaces && (markerState == 3u || visitedSanctum) && origHash != 0xafce0c5fu &&
+                        !IsWaypointMarker(m)) continue; // Completed Places: Hide (not the place your waypoint is on)
                     if (!IsFilterEnabled(filterEntries, filterCount, normHash)) {
                         if (placeQuestHash != 0u && IsFilterEnabled(filterEntries, filterCount, placeQuestHash)) normHash = placeQuestHash;
                         else continue;

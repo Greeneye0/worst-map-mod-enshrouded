@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.43
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.44
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -342,6 +342,16 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.44
+- With Completed Places on Hide, a completed place you've put a waypoint on stays on the
+  map, so you can click it to clear the waypoint.
+Reported bugs fixed:
+- A waypoint on a read obelisk or another completed place couldn't be cleared while
+  Completed Places was on Hide: only an empty diamond showed.
+- Chest outlines (G twice) also lit things standing at a chest or lore note, such as the
+  scaffold under a chest, and drew a large flat shape around it. Only the chest or note
+  lights up now.
+
 1.3.43
 - Each Hollow Halls chest now belongs to one hall, so a hall's World Map and minimap no
   longer show chests from a neighbouring hall. Seven gold and silver chests on ledges and in

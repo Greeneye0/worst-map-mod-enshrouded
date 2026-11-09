@@ -42,6 +42,8 @@ struct Target {
     float position[3];
     uint64_t until;
     uint32_t colour;
+    uint32_t group; // which chest / note it stands at
+    float size;     // its model's size once a render pass has seen it (0: not yet)
 };
 struct Applied {
     void* renderer;
@@ -154,6 +156,23 @@ bool SamePlace(void* registry, uint32_t entity, const float* position) {
     return true;
 }
 
+// A model's largest extent in metres (its mesh's quantization box, asset + 0x40, times the instance's scale); a large
+// number where it can't be read.
+float ModelSize(const uint8_t* instance) {
+    auto* resource = Read<uint8_t*>(instance, 0x108);
+    auto* asset = resource ? Read<uint8_t*>(resource, 0x38) : nullptr;
+    if (!asset) return 1e9f;
+    float box[3], scale[3];
+    std::memcpy(box, asset + 0x40, sizeof(box));
+    std::memcpy(scale, instance + 0x38 + offsetof(chest_silhouette::Spatial, scale), sizeof(scale));
+    float size = 0.0f;
+    for (int j = 0; j < 3; ++j) {
+        if (!std::isfinite(box[j]) || !std::isfinite(scale[j])) return 1e9f;
+        size = std::max(size, std::fabs(box[j] * scale[j]));
+    }
+    return size > 0.0f ? size : 1e9f;
+}
+
 // At the end of a render system's iteration, on its own thread.
 void Apply(void* iter, void* view, const System& system) {
     auto* state = Read<uint8_t*>(iter);
@@ -189,15 +208,34 @@ void Apply(void* iter, void* view, const System& system) {
                 }
             }
         }
+        // One model per chest / note: the smallest of the models standing there (a chest is smaller than the scaffold
+        // plank under it, a note than its table; lit too, they drew a big flat silhouette around the chest)
+        uint32_t groups[kMax];
+        float sizes[kMax];
         for (unsigned i = 0; active && registry && i < g_count; ++i) {
             const Target& t = g_targets[i];
             if (t.until <= now) continue;
             const auto* model = static_cast<const uint32_t*>(Data(registry, type, t.entity));
-            if (!model || !*model || !SamePlace(registry, t.entity, t.position) || !g_instance(renderer, *model, true)) continue;
-            if (std::find(handles, handles + count, *model) == handles + count) {
-                colours[count] = t.colour;
-                handles[count++] = *model;
+            uint8_t* instance = model && *model && SamePlace(registry, t.entity, t.position) ? g_instance(renderer, *model, true) : nullptr;
+            if (!instance) continue;
+            if (std::find(handles, handles + count, *model) != handles + count) continue;
+            const float size = ModelSize(instance);
+            g_targets[i].size = size;
+            // a smaller model at the same chest, seen in this pass or the other render system's
+            bool smaller = false;
+            for (unsigned k = 0; k < g_count && !smaller; ++k) {
+                smaller = k != i && g_targets[k].group == t.group && g_targets[k].size > 0.0f &&
+                          (g_targets[k].size < size || (g_targets[k].size == size && k < i));
             }
+            if (smaller) continue;
+            unsigned j = 0;
+            while (j < count && groups[j] != t.group) ++j;
+            if (j < count && sizes[j] <= size) continue;
+            colours[j] = t.colour;
+            handles[j] = *model;
+            groups[j] = t.group;
+            sizes[j] = size;
+            if (j == count) ++count;
         }
         for (unsigned i = 0; i < g_appliedCount;) {
             const Applied& a = g_applied[i];
@@ -311,7 +349,8 @@ bool TryDetectTypes(uint8_t* reg) {
     }
 }
 
-// Targets: the client registry's entities standing where the chests stand.
+// Targets: the client registry's entities standing where the chests stand, each tagged with its chest; Apply lights
+// one model per chest.
 void FillTargets(uint8_t* reg, const NearChest* chests, size_t chestCount, uint64_t until) {
     AcquireSRWLockExclusive(&g_lock);
     __try {
@@ -331,7 +370,7 @@ void FillTargets(uint8_t* reg, const NearChest* chests, size_t chestCount, uint6
                 // notes / bosses: whole metres; a quest's pin stands by its item or in its place
                 const float tol = n.chest < kTotalChestCount ? 0.6f : n.questRow ? 1.5f : 1.2f;
                 if (std::fabs(p[0] - n.x) < tol && std::fabs(p[2] - n.z) < tol && std::fabs(p[1] - n.y) < tol + 0.6f) {
-                    g_targets[g_count++] = {ids[i], {p[0], p[1], p[2]}, until, n.colour};
+                    g_targets[g_count++] = {ids[i], {p[0], p[1], p[2]}, until, n.colour, static_cast<uint32_t>(c), 0.0f};
                     break;
                 }
             }
