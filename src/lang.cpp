@@ -543,6 +543,54 @@ const Row kTable[] = {
     {"Teleport (hold)", "Teleport (halten)", "Téléporter (maintenir)", "Teletrasporto (tieni premuto)", "Teletransporte (mantener)",
      "Teleportar (segurar)", "Teleport (przytrzymaj)", "Телепорт (удерживать)", "Телепорт (утримувати)", "Işınlan (basılı tut)",
      "テレポート（長押し）", "순간이동 (길게 누르기)", "传送（长按）", "傳送（長按）", "เทเลพอร์ต (กดค้าง)"},
+    // Floor (a vault's or spire's map and minimap: "Floor 2 / 3", the floors the teleporters break it into; the game
+    // has no word of its own for one)
+    {"Floor", "Etage", "Étage", "Piano", "Piso", "Andar", "Piętro", "Этаж", "Поверх", "Kat", "階", "층", "层", "層", "ชั้น"},
+    // TeleportPair (a vault's or spire's map legend): two pads with the same letter take you to each other
+    {"Teleporter pair", "Teleporterpaar", "Paire de téléporteurs", "Coppia di teletrasporti", "Par de teletransportadores",
+     "Par de teletransportadores", "Para teleporterów", "Пара телепортов", "Пара телепортів", "Işınlayıcı çifti",
+     "テレポーターの対", "순간이동기 쌍", "传送器对", "傳送器對", "แท่นเทเลพอร์ตคู่"},
+    // OneWayTeleport (the legend): a pad that takes you somewhere with no way back by it (a spire's top, a vault's exit)
+    {"One-way teleporter", "Einweg-Teleporter", "Téléporteur à sens unique", "Teletrasporto a senso unico",
+     "Teletransportador de un solo sentido", "Teletransportador de mão única", "Teleporter jednokierunkowy",
+     "Односторонний телепорт", "Односторонній телепорт", "Tek yönlü ışınlayıcı", "一方通行のテレポーター",
+     "일방통행 순간이동기", "单向传送器", "單向傳送器", "แท่นเทเลพอร์ตทางเดียว"},
+    // SpikeTrap, FireTrap, ElectricTrap, TrapRail (the legend: a vault's or spire's traps, drawn on its floors)
+    {"Spike trap", "Stachelfalle", "Piège à pointes", "Trappola a punte", "Trampa de pinchos", "Armadilha de espinhos",
+     "Pułapka z kolcami", "Ловушка с шипами", "Пастка з шипами", "Dikenli tuzak", "トゲの罠", "가시 함정", "尖刺陷阱",
+     "尖刺陷阱", "กับดักหนาม"},
+    {"Fireball trap", "Feuerballfalle", "Piège à boules de feu", "Trappola a palle di fuoco", "Trampa de bolas de fuego",
+     "Armadilha de bolas de fogo", "Pułapka z kulami ognia", "Ловушка с огненными шарами", "Пастка з вогняними кулями",
+     "Ateş topu tuzağı", "火の玉の罠", "화염구 함정", "火球陷阱", "火球陷阱", "กับดักลูกไฟ"},
+    {"Electric trap", "Elektrofalle", "Piège électrique", "Trappola elettrica", "Trampa eléctrica", "Armadilha elétrica",
+     "Pułapka elektryczna", "Электрическая ловушка", "Електрична пастка", "Elektrik tuzağı", "電撃の罠", "전기 함정",
+     "电击陷阱", "電擊陷阱", "กับดักไฟฟ้า"},
+    {"Trap rail", "Fallenschiene", "Rail de piège", "Binario della trappola", "Riel de trampa", "Trilho de armadilha",
+     "Szyna pułapki", "Рельс ловушки", "Рейка пастки", "Tuzak rayı", "罠のレール", "함정 레일", "陷阱轨道", "陷阱軌道",
+     "รางกับดัก"},
+    // LockedDoor, ClosedDoor, OpenDoor (the legend: a door's live state; a locked one waits for a switch)
+    {"Locked door", "Verschlossene Tür", "Porte verrouillée", "Porta chiusa a chiave", "Puerta cerrada con llave",
+     "Porta trancada", "Zamknięte drzwi", "Запертая дверь", "Замкнені двері", "Kilitli kapı", "施錠された扉", "잠긴 문",
+     "锁住的门", "鎖住的門", "ประตูที่ล็อก"},
+    {"Closed door", "Geschlossene Tür", "Porte fermée", "Porta chiusa", "Puerta cerrada", "Porta fechada", "Drzwi do otwarcia",
+     "Закрытая дверь", "Зачинені двері", "Kapalı kapı", "閉じた扉", "닫힌 문", "关闭的门", "關閉的門", "ประตูที่ปิด"},
+    {"Unlocked door", "Entriegelte Tür", "Porte déverrouillée", "Porta sbloccata", "Puerta desbloqueada", "Porta destrancada",
+     "Odblokowane drzwi", "Отпертая дверь", "Відімкнені двері", "Kilidi açık kapı", "解錠された扉", "잠금 해제된 문",
+     "已解锁的门", "已解鎖的門", "ประตูที่ปลดล็อก"},
+    // PressurePlate, ButtonLever, ShootSwitch (the legend: the three kinds of switch: stand on it, press it, shoot it)
+    {"Pressure plate", "Druckplatte", "Plaque de pression", "Piastra a pressione", "Placa de presión", "Placa de pressão",
+     "Płyta naciskowa", "Нажимная плита", "Натискна плита", "Basınç plakası", "感圧板", "압력판", "压力板", "壓力板",
+     "แผ่นกดเหยียบ"},
+    {"Button or lever", "Knopf oder Hebel", "Bouton ou levier", "Pulsante o leva", "Botón o palanca", "Botão ou alavanca",
+     "Przycisk lub dźwignia", "Кнопка или рычаг", "Кнопка або важіль", "Düğme veya kol", "ボタン／レバー", "버튼 또는 레버",
+     "按钮或拉杆", "按鈕或拉桿", "ปุ่มหรือคันโยก"},
+    {"Shootable switch", "Schießschalter", "Interrupteur à tirer", "Interruttore da colpire", "Interruptor de disparo",
+     "Interruptor de tiro", "Przełącznik do strzelania", "Переключатель-мишень", "Перемикач-мішень", "Vurulabilir anahtar",
+     "射撃スイッチ", "사격 스위치", "射击开关", "射擊開關", "สวิตช์ยิง"},
+    // MagicBarrier (the legend)
+    {"Magic barrier", "Magische Barriere", "Barrière magique", "Barriera magica", "Barrera mágica", "Barreira mágica",
+     "Magiczna bariera", "Магический барьер", "Магічний бар'єр", "Büyülü bariyer", "魔法の障壁", "마법 장벽", "魔法屏障",
+     "魔法屏障", "กำแพงเวทมนตร์"},
 };
 // clang-format on
 

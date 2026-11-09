@@ -44,6 +44,7 @@ struct Target {
     uint32_t colour;
     uint32_t group; // which chest / note it stands at
     float size;     // its model's size once a render pass has seen it (0: not yet)
+    float dist = 0.0f;  // a note's / boss's: how far it stands from the note's spot (m, across); chests: 0
 };
 struct Applied {
     void* renderer;
@@ -211,7 +212,7 @@ void Apply(void* iter, void* view, const System& system) {
         // One model per chest / note: the smallest of the models standing there (a chest is smaller than the scaffold
         // plank under it, a note than its table; lit too, they drew a big flat silhouette around the chest)
         uint32_t groups[kMax];
-        float sizes[kMax];
+        float sizes[kMax], dists[kMax];
         for (unsigned i = 0; active && registry && i < g_count; ++i) {
             const Target& t = g_targets[i];
             if (t.until <= now) continue;
@@ -221,20 +222,26 @@ void Apply(void* iter, void* view, const System& system) {
             if (std::find(handles, handles + count, *model) != handles + count) continue;
             const float size = ModelSize(instance);
             g_targets[i].size = size;
-            // a smaller model at the same chest, seen in this pass or the other render system's
+            // a better model at the same chest / note, seen in this pass or the other render system's: at a chest the
+            // smaller; at a note the one closer to its spot (by more than 0.25 m), then the smaller (a note on its table)
+            auto better = [&](const Target& o, float oSize, const Target& me, float mySize, bool earlier) {
+                if (std::fabs(o.dist - me.dist) > 0.25f) return o.dist < me.dist;
+                return oSize < mySize || (oSize == mySize && earlier);
+            };
             bool smaller = false;
             for (unsigned k = 0; k < g_count && !smaller; ++k) {
                 smaller = k != i && g_targets[k].group == t.group && g_targets[k].size > 0.0f &&
-                          (g_targets[k].size < size || (g_targets[k].size == size && k < i));
+                          better(g_targets[k], g_targets[k].size, t, size, k < i);
             }
             if (smaller) continue;
             unsigned j = 0;
             while (j < count && groups[j] != t.group) ++j;
-            if (j < count && sizes[j] <= size) continue;
+            if (j < count && (std::fabs(dists[j] - t.dist) > 0.25f ? dists[j] < t.dist : sizes[j] <= size)) continue;
             colours[j] = t.colour;
             handles[j] = *model;
             groups[j] = t.group;
             sizes[j] = size;
+            dists[j] = t.dist;
             if (j == count) ++count;
         }
         for (unsigned i = 0; i < g_appliedCount;) {
@@ -370,7 +377,10 @@ void FillTargets(uint8_t* reg, const NearChest* chests, size_t chestCount, uint6
                 // notes / bosses: whole metres; a quest's pin stands by its item or in its place
                 const float tol = n.chest < kTotalChestCount ? 0.6f : n.questRow ? 1.5f : 1.2f;
                 if (std::fabs(p[0] - n.x) < tol && std::fabs(p[2] - n.z) < tol && std::fabs(p[1] - n.y) < tol + 0.6f) {
-                    g_targets[g_count++] = {ids[i], {p[0], p[1], p[2]}, until, n.colour, static_cast<uint32_t>(c), 0.0f};
+                    // a note's: the one standing closest to its spot wins, not the smallest (a bowl beside a book
+                    // was smaller, and lit; 2026-11-09)
+                    const float dist = n.chest < kTotalChestCount ? 0.0f : std::hypot(p[0] - n.x, p[2] - n.z);
+                    g_targets[g_count++] = {ids[i], {p[0], p[1], p[2]}, until, n.colour, static_cast<uint32_t>(c), 0.0f, dist};
                     break;
                 }
             }

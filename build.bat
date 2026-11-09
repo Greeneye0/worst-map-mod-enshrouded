@@ -37,6 +37,9 @@ copy /y data\veins.bin bin\loader\veins.bin >nul
 copy /y data\ground.bin bin\loader\ground.bin >nul
 copy /y data\halls.bin bin\loader\halls.bin >nul
 if errorlevel 1 exit /b 1
+rem The vaults' and spires' traps, doors and switches (tools\resources\make_traps.py)
+copy /y data\traps.bin bin\loader\traps.bin >nul
+if errorlevel 1 exit /b 1
 rem The Hollow Halls' floor textures for the HD dungeon maps (tools\resources\make_halls_hd.py textures)
 if not exist bin\loader\hd mkdir bin\loader\hd
 copy /y data\hd\* bin\loader\hd\ >nul

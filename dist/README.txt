@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.44
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.45
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -263,6 +263,10 @@ hall in view, in a frame of its own. Its Return Beacons are numbered in the orde
 them; the end room's chests are Dungeon Spoils (hover one for its name and the Ectoplasm it
 takes to open). Overworld Map at the top switches to the world, centred on
 the hall's entrance, and back; C centres the hall on you.
+Ancient Vaults and Spires get the same maps, a floor at a time: teleporters split them into
+floors, and - Floor n / m + on the map (or Ctrl+Up/Down) picks one. Traps show live
+(fireballs and sparks moving, spikes glowing as they come out, plates their switch turned
+off), doors show locked, closed or open, and hovering a teleport pad shows its floor.
 On the minimap, footprints show where you've walked in the last 10 minutes or 100 m. Outside, the world
 map shows nothing of the Hollow Halls in the corner of the world they're carved in.
 
@@ -342,6 +346,30 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.45
+- Ancient Vaults and Ancient Spires get dungeon maps like the Hollow Halls: the World Map
+  and minimap show the floor you're on, with its walls, teleport pads, exits, chests and
+  lore notes. Teleporters split a vault or spire into floors: - Floor n / m + on the map
+  picks one (Ctrl+Up/Down, or LT+Up/Down on a controller), and the map opens on the floor
+  you stand on.
+- Their traps are drawn live: fireballs and spark beams move on the map in time with the
+  game, spike plates glow red as their spikes come out, and plates turned off by their
+  switch show as off. Doors show whether they're locked, closed or open, and barred windows
+  that can't be broken show as walls. Hover a teleport pad to see which floor it takes you
+  to, up or down.
+- On the dungeon maps the player arrow points the way your character faces, not the camera,
+  and is a dotted outline when you're on another floor than the one shown. Footprints now
+  look like left and right feet, so you can see which way you walked.
+- Find on the map is off on a dungeon's own map; Shift+F still searches the skill tree.
+- Bosses: the Heavy Ancient Construct's four spots are marked, and a killed boss now counts
+  only for its own spot, so spots close together (such as Engine Chambers' S.P.D.R.
+  Construct above a camp) track their kills separately.
+Reported bugs fixed:
+- Inside a vault or spire the minimap showed a fast travel icon.
+- G G could light a bowl beside a lore note instead of the note.
+- A chest's height arrow on the minimap flickered when the chest was near the height where
+  the arrow shows.
+
 1.3.44
 - With Completed Places on Hide, a completed place you've put a waypoint on stays on the
   map, so you can click it to clear the waypoint.

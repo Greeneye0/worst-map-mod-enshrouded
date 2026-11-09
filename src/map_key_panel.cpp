@@ -1213,7 +1213,7 @@ struct MapKeys {
         hallRecenter, modOff, chestClick, hideRowClick, regionClick, copyPosition, padMapKey, padBack, padClick, padUp,
         padMarkChest, padHideRow,
         padDown, padLeft, padRight, findClose, findConfirm, findNext, findPrevious, findUp, findDown, findPageUp,
-        findPageDown, findFilters, interact;
+        findPageDown, findFilters, interact, floorUp, floorDown;
 } g_keys;
 struct MapKeySetting { const char* name; const char* defaultText; inp::Binding MapKeys::* field; };
 constexpr MapKeySetting kMapKeySettings[] = {
@@ -1251,6 +1251,9 @@ constexpr MapKeySetting kMapKeySettings[] = {
     {"FindPageUp", "PageUp", &MapKeys::findPageUp},
     {"FindPageDown", "PageDown", &MapKeys::findPageDown},
     {"FindFilters", "F2, Ctrl+F", &MapKeys::findFilters},
+    // A vault's or spire's map: the floor shown, one up / down (PageUp / PageDown zoom, RS + the D-pad are taken)
+    {"FloorUp", "Ctrl+Up, Pad:LT+Up", &MapKeys::floorUp},
+    {"FloorDown", "Ctrl+Down, Pad:LT+Down", &MapKeys::floorDown},
 };
 bool KeyIsDown(int vk) { return inp::KeyDown(vk); }
 // A binding as text on the panel: the controller's chord when the game is showing controller tips.
@@ -6095,13 +6098,16 @@ void DrawRefilledChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* cl
 // Up: green, centred on (ax, ay) pointing up. Down: orange, pointing down.
 void DrawHeightCaretAbs(void* widgetRaw, float ax, float ay, bool up, float alpha, float k) {
     const uint32_t col = up ? 0xFF7CE08Cu : 0xFF4C9CF0u;
+    // On whole pixels: 1 px rows, whole-pixel widths, the caret snapped to the pixel grid. Rows of 0.6 px at
+    // fractional positions rounded differently each frame as the minimap moved under you: it shimmered (2026-11-09)
+    ax = std::round(ax);
+    ay = std::round(ay);
     auto drawCaret = [&](float halfBase, float height, uint32_t c, float a) {
-        constexpr int kRows = 6;
-        const float rowH = height / kRows;
-        for (int row = 0; row < kRows; ++row) {
-            const float w = 2.0f * halfBase * (row + 1) / kRows; // narrow at the point
-            const float y = up ? ay - height * 0.5f + row * rowH : ay + height * 0.5f - (row + 1) * rowH;
-            DrawSolidRectAbs(widgetRaw, ax - w * 0.5f, y, w, rowH + 0.25f, c, a);
+        const int rows = std::max(3, static_cast<int>(std::lround(height)));
+        for (int row = 0; row < rows; ++row) {
+            const float w = std::max(1.0f, 2.0f * std::round(halfBase * (row + 1) / rows)); // narrow at the point
+            const float y = up ? ay - std::floor(rows * 0.5f) + row : ay + std::ceil(rows * 0.5f) - (row + 1);
+            DrawSolidRectAbs(widgetRaw, ax - w * 0.5f, y, w, 1.0f, c, a);
         }
     };
     drawCaret(5.6f * k, 5.4f * k, 0xFF0A0E10u, 0.9f * alpha); // the dark edge
@@ -6125,6 +6131,18 @@ int8_t GraveHeightDir(const uint8_t* m, bool haveY, float playerY) {
     const float dy = gy - playerY;
     if (!std::isfinite(dy) || std::abs(dy) >= 2000.0f) return 0;
     return dy >= 4.0f ? 1 : dy <= -4.0f ? -1 : 0;
+}
+
+// A minimap marker's height caret (+1 above you, -1 below, 0 neither) with a dead zone: on at `on` m, off again
+// only under `on` - 0.5 m. Rooms and floors step in whole 4 m blocks: at 4 m a chest exactly 4 m under your walkway
+// (Veilwater spire, 2026-11-09) blinked with every stair step. key: the marker (chest index, or 0x10000 + deposit)
+int8_t HeightCaret(uint32_t key, float dy, float on) {
+    static std::unordered_map<uint32_t, int8_t> last;
+    int8_t& l = last[key];
+    const float off = on - 0.5f;
+    const int8_t d = dy >= on ? 1 : dy <= -on ? -1 : (l == 1 && dy >= off) ? 1 : (l == -1 && dy <= -off) ? -1 : 0;
+    l = d;
+    return d;
 }
 
 // The height caret on each player grave on the world map, at the grave icon's top right (up) or bottom right (down)
@@ -7488,6 +7506,14 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         const bool cDown = focused && !g_keySearchFocused && BindingDown(g_keys.hallRecenter);
         if (cDown && !s_cWasDown && halls::MapActive() && !halls::g_mapOverworld) s_hallRecenterFrames = 6;
         s_cWasDown = cDown;
+        // A vault's or spire's map: the floor shown, one up / down
+        static bool s_upWas = false, s_downWas = false;
+        const bool upDown = focused && !g_keySearchFocused && !g_findDialogOpen && BindingDown(g_keys.floorUp);
+        const bool downDown = focused && !g_keySearchFocused && !g_findDialogOpen && BindingDown(g_keys.floorDown);
+        if (upDown && !s_upWas) halls::StepFloor(+1);
+        if (downDown && !s_downWas) halls::StepFloor(-1);
+        s_upWas = upDown;
+        s_downWas = downDown;
         float px = 0.0f, pz = 0.0f;
         if (s_hallRecenterFrames > 0) {
             --s_hallRecenterFrames;
@@ -7540,7 +7566,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         SyncNativeFindDialogState();
     };
 
-    bool shiftFNow = focused && BindingDown(g_keys.findOpen);
+    // Find searches the overworld's places: not on a dungeon's own map (its Overworld view, yes). Only this World Map
+    // frame's Shift+F is skipped; the skill tree's Shift+F is Find's own, on its own screen (2026-11-09)
+    const bool findHere = !(halls::MapActive() && !halls::g_mapOverworld);
+    bool shiftFNow = focused && findHere && BindingDown(g_keys.findOpen);
     // A capital F typed into a pin's name is not Shift+F; neither is Tab typed there. The game's text input flag is
     // not set by every field (not by a new custom pin's name), so a dialog open on the map counts too: mapState +0xf8
     // is 0 with none, 3 for a marker's menu, 4 for naming a custom pin
@@ -7755,6 +7784,28 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 halls::g_mapOverworld = !halls::g_mapOverworld;
                 g_worldMapOpenCenterFrames = 2;
             }
+            // A vault's or spire's floors: [-] Floor 2 / 3 [+] under the button (or Ctrl + Up / Down, LT + Up / Down)
+            const int floors = halls::FloorCount(halls::g_mapDungeon);
+            if (halls::MapActive() && floors > 1 && halls::g_mapFloor >= 0) {
+                char text[64];
+                std::snprintf(text, sizeof(text), "%s %d / %d", umm_lang::T(umm_lang::Str::Floor), halls::g_mapFloor + 1, floors);
+                const float lw = umm_lang::TextWidth(text) * 1.6f + 24.0f, sb = 34.0f, gap = 6.0f;
+                const float rowW = sb + gap + lw + gap + sb, rx = rootRect[0] + rootW * 0.5f - rowW * 0.5f, ry = by + bh + 8.0f;
+                const bool canDown = halls::g_mapFloor > 0, canUp = halls::g_mapFloor < floors - 1;
+                auto stepButton = [&](float x, const char* sign, bool enabled, int dir) {
+                    const bool h = enabled && isHovered(x, ry, sb, sb);
+                    DrawKeyButtonAbs(root.raw, x, ry, sb, sb, h, false);
+                    DrawLabelAbs(x, ry, sb, sb, sign, h ? key_style::kActiveText : key_style::kText, enabled ? (h ? 1.0f : 0.92f) : 0.35f,
+                                 TextAlignH::Center, TextAlignV::Center);
+                    if (isHovered(x, ry, sb, sb)) ClearMapViewClickLatch(mapState);
+                    if (clicked && h) halls::StepFloor(dir);
+                };
+                stepButton(rx, "-", canDown, -1);
+                DrawKeyButtonAbs(root.raw, rx + sb + gap, ry, lw, sb, false, false);
+                DrawLabelAbs(rx + sb + gap, ry, lw, sb, text, key_style::kText, 0.95f, TextAlignH::Center, TextAlignV::Center);
+                if (isHovered(rx + sb + gap, ry, lw, sb)) ClearMapViewClickLatch(mapState);
+                stepButton(rx + sb + gap + lw + gap, "+", canUp, +1);
+            }
         }
         {
             // Alt + click a marker: its Map Key row off
@@ -7965,17 +8016,18 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             DrawLabelAbs(panelX + 12.0f, panelY, btnFindX - 16.0f, kTitleBarH,
                 umm_lang::T(umm_lang::Str::MapKeyTitle), kTitle, 1.0f, TextAlignH::Left, TextAlignV::Center);
 
-            bool hovFindBtn = !g_findDialogOpen && isHovered(panelX + btnFindX, panelY + btnFindY, btnFindW, btnFindH);
+            bool hovFindBtn = findHere && !g_findDialogOpen && isHovered(panelX + btnFindX, panelY + btnFindY, btnFindW, btnFindH);
             DrawKeyButtonAbs(anchor.raw, panelX + btnFindX, panelY + btnFindY, btnFindW, btnFindH, hovFindBtn, g_findDialogOpen);
             {
                 const bool lit = g_findDialogOpen || hovFindBtn;
                 const float bx = panelX + btnFindX, by = panelY + btnFindY;
                 DrawLabelAbs(bx + 10.0f, by, btnFindW - 20.0f, btnFindH,
-                    umm_lang::T(umm_lang::Str::Find), lit ? kActiveText : kText, 0.96f,
+                    umm_lang::T(umm_lang::Str::Find), lit ? kActiveText : kText, findHere ? 0.96f : 0.35f, // greyed on a dungeon's map
                     lay.showShortcut ? TextAlignH::Left : TextAlignH::Center, TextAlignV::Center);
                 if (lay.showShortcut) {
                     DrawLabelAbs(bx + 10.0f, by, btnFindW - 20.0f, btnFindH,
-                        CurrentKeyText(g_keys.findOpen).c_str(), lit ? kTitle : 0xff6fa9c2u, lit ? 0.98f : 0.9f, TextAlignH::Right, TextAlignV::Center); // #c2a96f
+                        CurrentKeyText(g_keys.findOpen).c_str(), lit ? kTitle : 0xff6fa9c2u, !findHere ? 0.3f : lit ? 0.98f : 0.9f,
+                        TextAlignH::Right, TextAlignV::Center); // #c2a96f
                 }
             }
             if (clicked && hovFindBtn) {
@@ -8925,7 +8977,8 @@ bool BlockWorldMapInput(uint8_t* mapState) {
         // A dialog open on the map (a marker's menu, a custom pin's name: mapState +0xf8 not 0) is the game's: Shift+F
         // there is typing, and clearing the click state below would close it
         const bool mapDialogOpen = mapState && *reinterpret_cast<uint32_t*>(mapState + 0xf8) != 0;
-        bool shiftFNow = focused && !mapDialogOpen && BindingDown(g_keys.findOpen);
+        const bool findHere = !(halls::MapActive() && !halls::g_mapOverworld); // not on a dungeon's own map
+        bool shiftFNow = focused && !mapDialogOpen && findHere && BindingDown(g_keys.findOpen);
 
         if (g_waitReleaseAfterFindClose) {
             bool anyHeld = focused && (
@@ -9091,6 +9144,12 @@ constexpr MinimapZoomSpec kMinimapZoomLevels[] = {
     {4.00f,  60.0f, "4.0x"},
 };
 constexpr int kMinimapZoomCount = static_cast<int>(sizeof(kMinimapZoomLevels) / sizeof(kMinimapZoomLevels[0]));
+// In an Ancient Spire (some 70 m across) the minimap has its own scale: its widest is the overworld's closest, and it
+// zooms in further (requested 2026-11-09). Kept apart from the overworld's zoom, saved as SpireZoomIdx.
+constexpr float kSpireZoomRadii[] = {60.0f, 45.0f, 32.0f, 22.0f, 15.0f};
+constexpr int kSpireZoomCount = static_cast<int>(sizeof(kSpireZoomRadii) / sizeof(kSpireZoomRadii[0]));
+int g_minimapSpireZoomIdx = 1;
+bool g_minimapInSpire = false; // last frame's (the minimap's zoom is read before this frame's check)
 
 bool g_minimapConfigLoaded = false;
 bool g_minimapCustomPos = false;
@@ -9099,6 +9158,9 @@ float g_minimapPosY = 0.0f;
 float g_minimapSize = 236.0f;
 constexpr float kMinimapMaxSize = 900.0f;
 int g_minimapZoomIdx = 2; // Default 1.0x (275m radius)
+int& MinimapZoom() { return g_minimapInSpire ? g_minimapSpireZoomIdx : g_minimapZoomIdx; }
+int MinimapZoomCount() { return g_minimapInSpire ? kSpireZoomCount : kMinimapZoomCount; }
+float MinimapRadius() { return g_minimapInSpire ? kSpireZoomRadii[g_minimapSpireZoomIdx] : kMinimapZoomLevels[g_minimapZoomIdx].radiusMeters; }
 
 bool g_minimapDraggingMove = false;
 bool g_minimapDraggingResize = false;
@@ -9371,6 +9433,7 @@ void LoadMinimapConfig() {
     }
     g_minimapSize = std::max(150.0f, std::min(kMinimapMaxSize, static_cast<float>(sizePx)));
     g_minimapZoomIdx = std::max(0, std::min(kMinimapZoomCount - 1, zoomIdx));
+    g_minimapSpireZoomIdx = std::max(0, std::min(kSpireZoomCount - 1, static_cast<int>(GetPrivateProfileIntA("MinimapV2", "SpireZoomIdx", 1, cfg.c_str()))));
     g_otherPlayersEnabled = (otherPlayers != 0);
     g_townPortalsEnabled = (townPortals != 0);
     g_goldChestEnabled = GetPrivateProfileIntA("MinimapV2", "GoldChests", 1, cfg.c_str()) != 0;
@@ -9542,6 +9605,8 @@ void SaveMinimapConfig() {
     async_io::IniWrite("MinimapV2", "Size", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_minimapZoomIdx);
     async_io::IniWrite("MinimapV2", "ZoomIdx", buf, cfg.c_str());
+    std::snprintf(buf, sizeof(buf), "%d", g_minimapSpireZoomIdx);
+    async_io::IniWrite("MinimapV2", "SpireZoomIdx", buf, cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%d", g_otherPlayersEnabled ? 1 : 0);
     async_io::IniWrite("MinimapV2", "OtherPlayers", buf, cfg.c_str());
     async_io::IniWrite("MinimapV2", "TownPortals", g_townPortalsEnabled ? "1" : "0", cfg.c_str());
@@ -9774,6 +9839,14 @@ void GetHudPlayerFacingDirs(uint8_t* client, float playerX, float playerZ,
         }
     }
 
+    // The way the character really faces (its own transform's rotation), when it can be read: the guess above followed
+    // the camera when standing still ("the arrow points the way the camera faces, sometimes": 2026-11-09)
+    float realX = 0.0f, realZ = 0.0f;
+    if (halls::PlayerFacing(playerX, playerZ, realX, realZ)) {
+        faceDirX = realX;
+        faceDirZ = realZ;
+    }
+
     s_lastPlayerX = playerX;
     s_lastPlayerZ = playerZ;
     s_hasLastPos = true;
@@ -9855,7 +9928,36 @@ void DrawDungeonMapPlayers(void* widget, const float* rootRect, uint8_t* client,
     const float sx = originX + px * zoom, sy = originY + (mapWorldH - pz) * zoom;
     if (sy < top) return;
     const uint32_t ownColor = minimap_players::ColorFor(localPlayerId);
-    DrawPlayerTriangle(widget, sx, sy, faceDirX, faceDirZ, kScale, ownColor, ownColor, 1.0f);
+    if (halls::PlayerOnShownFloor(client)) {
+        DrawPlayerTriangle(widget, sx, sy, faceDirX, faceDirZ, kScale, ownColor, ownColor, 1.0f);
+        return;
+    }
+    // On another floor than the one shown: a dotted outline of the arrow (where you are, not on this floor)
+    const float fx = faceDirX, fy = -faceDirZ, qx = -fy, qy = fx;
+    // (a bit bigger than the solid arrow so the dashes read: dashes of 4 px, gaps of 3, along the outline, on a faint
+    // dark band so the shape is still one arrow)
+    constexpr float kOutline = 1.7f;
+    const float tipD = 8.0f * kOutline, baseD = -5.5f * kOutline, halfW = 5.2f * kOutline;
+    const float corners[3][2] = {{sx + fx * tipD, sy + fy * tipD},
+                                 {sx + fx * baseD + qx * halfW, sy + fy * baseD + qy * halfW},
+                                 {sx + fx * baseD - qx * halfW, sy + fy * baseD - qy * halfW}};
+    for (int pass = 0; pass < 2; ++pass) {
+        const float dot = pass == 0 ? 4.6f : 2.6f;
+        const uint32_t col = pass == 0 ? 0xFF0A0E10u : ownColor;
+        float run = 0.0f; // distance along the outline, for the dash pattern
+        for (int e = 0; e < 3; ++e) {
+            const float* a = corners[e];
+            const float* b = corners[(e + 1) % 3];
+            const float len = std::hypot(b[0] - a[0], b[1] - a[1]);
+            for (float m = 0.0f; m < len; m += 1.0f, run += 1.0f) {
+                const bool dash = std::fmod(run, 7.0f) < 4.0f;
+                if (pass == 1 && !dash) continue;
+                const float x = a[0] + (b[0] - a[0]) * m / len, y = a[1] + (b[1] - a[1]) * m / len;
+                DrawAssetRectAbs(widget, kCirclePrimitive, x - dot * 0.5f, y - dot * 0.5f, dot, dot, col,
+                                 pass == 0 ? 0.45f : 1.0f);
+            }
+        }
+    }
 }
 
 // Queries Enshrouded's WeatherSystem (client + 0x466fe8) and WeatherVolumeManager for active
@@ -10440,14 +10542,14 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         bool zoomOutKey = BindingDown(g_keys.miniZoomOut);
         bool zoomInKey  = BindingDown(g_keys.miniZoomIn);
         if (zoomOutKey && !g_minimapZoomOutKeyWasDown) {
-            if (g_minimapZoomIdx > 0) {
-                --g_minimapZoomIdx;
+            if (MinimapZoom() > 0) {
+                --MinimapZoom();
                 SaveMinimapConfig();
             }
         }
         if (zoomInKey && !g_minimapZoomInKeyWasDown) {
-            if (g_minimapZoomIdx + 1 < kMinimapZoomCount) {
-                ++g_minimapZoomIdx;
+            if (MinimapZoom() + 1 < MinimapZoomCount()) {
+                ++MinimapZoom();
                 SaveMinimapConfig();
             }
         }
@@ -10467,11 +10569,11 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     // Handle mouse wheel zoom while Shift+Alt is held
     LONG wheelDelta = InterlockedExchange(&g_minimapWheelDelta, 0);
     if (shiftAltHeld && wheelDelta != 0) {
-        if (wheelDelta > 0 && g_minimapZoomIdx + 1 < kMinimapZoomCount) {
-            ++g_minimapZoomIdx;
+        if (wheelDelta > 0 && MinimapZoom() + 1 < MinimapZoomCount()) {
+            ++MinimapZoom();
             SaveMinimapConfig();
-        } else if (wheelDelta < 0 && g_minimapZoomIdx > 0) {
-            --g_minimapZoomIdx;
+        } else if (wheelDelta < 0 && MinimapZoom() > 0) {
+            --MinimapZoom();
             SaveMinimapConfig();
         }
     }
@@ -10503,7 +10605,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         }
     }
 
-    const float radiusMeters = kMinimapZoomLevels[g_minimapZoomIdx].radiusMeters;
+    const float radiusMeters = MinimapRadius();
     const float pxPerMeterX = (vw * 0.5f) / radiusMeters;
     const float pxPerMeterY = (vh * 0.5f) / radiusMeters;
 
@@ -10560,13 +10662,13 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
 
     if (leftPressed && !hoverSettingsCard) {
         if (hoverMinus) {
-            if (g_minimapZoomIdx > 0) {
-                --g_minimapZoomIdx;
+            if (MinimapZoom() > 0) {
+                --MinimapZoom();
                 SaveMinimapConfig();
             }
         } else if (hoverPlus) {
-            if (g_minimapZoomIdx + 1 < kMinimapZoomCount) {
-                ++g_minimapZoomIdx;
+            if (MinimapZoom() + 1 < MinimapZoomCount()) {
+                ++MinimapZoom();
                 SaveMinimapConfig();
             }
         } else if (hoverGear) {
@@ -10679,9 +10781,21 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         UMM_LAP_START;
         // In a Hollow Hall the dungeon's floor plan and your footprints, by level (halls.inl); elsewhere the terrain
         float hallY = 0.0f;
+        bool mmInVault = false; // in an Ancient Vault or Spire: its fast travel point isn't drawn (a one-way pad there)
         if (halls::Update(client, playerX, playerZ, g_lootSection, hallY)) {
+            g_minimapInSpire = halls::InSpire(playerX, hallY, playerZ);
+            mmInVault = halls::VaultAt(playerX, hallY, playerZ) >= 0;
             halls::Draw(mmCanvas.raw, vx, vy, vw, vh, vcx, vcy, playerX, hallY, playerZ, pxPerMeterX, pxPerMeterY);
-        } else if (g_minimapShowTerrain) {
+            // In a vault or spire: the floor you're on, top left ("Floor 2 / 3")
+            int floor = 0, floors = 0;
+            if (halls::MinimapFloor(playerX, hallY, playerZ, floor, floors)) {
+                char text[64];
+                std::snprintf(text, sizeof(text), "%s %d / %d", umm_lang::T(umm_lang::Str::Floor), floor + 1, floors);
+                const float tw = umm_lang::TextWidth(text) * 1.25f + 16.0f, th = 24.0f;
+                DrawSolidRectAbs(mmCanvas.raw, vx + 6.0f, vy + 6.0f, tw, th, 0xFF0A0C0Bu, 0.7f);
+                DrawLabelAbs(vx + 6.0f, vy + 6.0f, tw, th, text, 0xFFE8E4DCu, 0.95f, TextAlignH::Center, TextAlignV::Center);
+            }
+        } else if ((g_minimapInSpire = false), g_minimapShowTerrain) {
             DrawMinimapTerrain(client, mmCanvas.raw, vx, vy, vw, vh, vcx, vcy, playerX, playerZ, pxPerMeterX, pxPerMeterY);
         }
         g_endWidget(mmCanvas.raw);
@@ -10777,6 +10891,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                                        !hideClearedOnBigMap && GameShowsMarker(m[0x35]) &&
                                        IsFilterEnabled(filterEntries, filterCount, 0x8ba7c122u) && g_isLoreRumorMarkerId &&
                                        savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) && LoreRumorFound(client, savedId08) != 1;
+                // Inside a vault or spire: no fast travel point or spire marker (the spire's top one sits on its one-way
+                // teleport pad, which the dungeon view shows; 2026-11-09)
+                if (mmInVault && (origHash == 0x1095684eu || origHash == kLockedFastTravelTypeHash || origHash == 0xa17072beu ||
+                                  origHash == 0x98b2d65du || normHash == 0x1095684eu || normHash == 0xa17072beu)) continue;
                 if (rumorHere) {
                     normHash = 0x8ba7c122u;
                 } else {
@@ -10880,7 +10998,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             const void* silverIconRef = g_silverChestEnabled ? GetIconRefForType(client, kSilverChestTypeHash) : nullptr;
             const void* woodIconRef = g_woodChestEnabled ? GetIconRefForType(client, kWoodChestTypeHash) : nullptr;
             // Nearby chests get an arrow saying whether they're above or below you (cellars, towers, cliffs).
-            constexpr float kChestHeightNearMeters = 75.0f, kChestHeightMinMeters = 4.0f;
+            constexpr float kChestHeightNearMeters = 75.0f, kChestHeightMinMeters = 3.5f; // (HeightCaret)
             float playerY = 0.0f;
             bool havePlayerY = false;
             if (uint8_t* clientWorld = GetClientWorld(client)) {
@@ -10945,8 +11063,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 int8_t heightDir = 0;
                 if (havePlayerY && dxMeters * dxMeters + dzMeters * dzMeters <= kChestHeightNearMeters * kChestHeightNearMeters) {
                     const float dy = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f - playerY;
-                    if (dy >= kChestHeightMinMeters) heightDir = 1;
-                    else if (dy <= -kChestHeightMinMeters) heightDir = -1;
+                    heightDir = HeightCaret(static_cast<uint32_t>(c), dy, kChestHeightMinMeters);
                 }
 
                 drawList.push_back(MinimapMarkerDraw{sx, sy, iconSize, iconRef, tint, alpha, 3, isPulsing,
@@ -10972,6 +11089,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 const float dxMeters = dep.x - playerX;
                 const float dzMeters = dep.z - playerZ;
                 if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) continue;
+                // in a vault or spire: only your floor's (as its chests)
+                if (knowHavePlayerY && halls::MinimapOtherFloor(dep.x, dep.topY, dep.z, playerX, knowPlayerY, playerZ)) continue;
                 const bool unexplored = (g_pinRevealMode != PinRevealMode::RevealAll) &&
                                         !IsPositionExploredByCharacter(client, dep.x, dep.z);
                 if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) continue;
@@ -10989,8 +11108,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                                          kOreCategory[dep.ore] == kMaterialsCategory;
                 if (heightCaret && knowHavePlayerY && dxMeters * dxMeters + dzMeters * dzMeters <= 75.0f * 75.0f) {
                     const float dy = static_cast<float>(dep.topY) - knowPlayerY;
-                    if (dy >= 4.0f) heightDir = 1;
-                    else if (dy <= -4.0f) heightDir = -1;
+                    heightDir = HeightCaret(0x10000u + static_cast<uint32_t>(d), dy, 3.5f);
                 }
                 // Return Beacons and the other world rows layer with their pins; deposits stay under everything
                 drawList.push_back(MinimapMarkerDraw{sx, sy, 13.0f * btnScale, DepositIcon(d),
@@ -11317,8 +11435,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             DrawAssetRectAbs(anchor.raw, kSoftGlowPrimitive, cx - r, trayContentCy - r, r * 2.0f, r * 2.0f, kTrayText, alpha);
         };
         if (hoverGear || g_minimapSettingsOpen) trayGlow(trayX + 14.4f * UT, 15.0f * TS, hoverGear ? 0.45f : 0.3f);
-        if (hoverMinus && g_minimapZoomIdx > 0) trayGlow(trayRight - 31.5f * UT, 13.0f * TS, 0.4f);
-        if (hoverPlus && g_minimapZoomIdx + 1 < kMinimapZoomCount) trayGlow(trayRight - 14.5f * UT, 13.0f * TS, 0.4f);
+        if (hoverMinus && MinimapZoom() > 0) trayGlow(trayRight - 31.5f * UT, 13.0f * TS, 0.4f);
+        if (hoverPlus && MinimapZoom() + 1 < MinimapZoomCount()) trayGlow(trayRight - 14.5f * UT, 13.0f * TS, 0.4f);
 
         // Centre divider, under the frame's bottom diamond
         DrawSolidRectAbs(anchor.raw, frameCx - 0.5f, trayContentCy - 8.0f * TS, 1.0f, 16.0f * TS, 0xFF62A8C4u, 0.75f);
@@ -11339,10 +11457,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         DrawLabelAbs(rightX0, trayContentCy - 12.0f * TS, rightX1 - rightX0, 24.0f * TS, statusText,
                      kTrayText, 0.97f, TextAlignH::Center, TextAlignV::Center, nullptr, TS);
         DrawLabelAbs(minusBtnX, trayContentCy - 12.0f * TS, zoomBtnW, 24.0f * TS, "-",
-                     (g_minimapZoomIdx > 0) ? kTrayText : kTrayMuted, 0.98f, TextAlignH::Center, TextAlignV::Center,
+                     (MinimapZoom() > 0) ? kTrayText : kTrayMuted, 0.98f, TextAlignH::Center, TextAlignV::Center,
                      nullptr, TS);
         DrawLabelAbs(plusBtnX, trayContentCy - 12.0f * TS, zoomBtnW, 24.0f * TS, "+",
-                     (g_minimapZoomIdx + 1 < kMinimapZoomCount) ? kTrayText : kTrayMuted, 0.98f, TextAlignH::Center,
+                     (MinimapZoom() + 1 < MinimapZoomCount()) ? kTrayText : kTrayMuted, 0.98f, TextAlignH::Center,
                      TextAlignV::Center, nullptr, TS);
     }
 

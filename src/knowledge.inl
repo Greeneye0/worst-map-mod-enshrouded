@@ -522,7 +522,7 @@ bool DetectTypes(uint8_t* reg, RegistryTypes& t, float px, float pz) {
 }
 
 struct LiveBoss {
-    float x, z;
+    float x, y, z;
 };
 
 bool ScanInner(std::vector<LiveBoss>& out, float px, float pz) {
@@ -538,7 +538,7 @@ bool ScanInner(std::vector<LiveBoss>& out, float px, float pz) {
             const uint8_t* c = EcsComponent(rec, t.music, &size);
             float p[3];
             if (IsBossMusic(c, size) && EcsPosition(rec, t.position, p) && PlausibleWorldPos(p) && out.size() < 64)
-                out.push_back({p[0], p[2]});
+                out.push_back({p[0], p[1], p[2]});
         });
     }
     return any;
@@ -592,6 +592,26 @@ void Update(uint8_t* client) {
         }
         return;
     }
+    // Each live boss is one spot's: of the spots within 100 m of it on the map (a boss roams its arena; a flying one may be
+    // far over it), the nearest counting height. Two spots close together on the map, such as Engine Chambers' Ancient
+    // S.P.D.R. Construct at 1116 m and the BigFoot camp under it at 923 m, would otherwise each count the other's boss as
+    // theirs and never see their own killed.
+    std::vector<int> owner(live.size(), -1);
+    for (size_t b = 0; b < live.size(); ++b) {
+        float best = 1e30f;
+        for (size_t s = 0; s < kKnowledgeSpotCount; ++s) {
+            const size_t d = kKnowledgeFirstDeposit + s;
+            if (!IsBossSpot(d)) continue;
+            const OreDeposit& dep = kOreDeposits[d];
+            const float bx = live[b].x - dep.x, by = live[b].y - dep.topY, bz = live[b].z - dep.z;
+            if (bx * bx + bz * bz > 100.0f * 100.0f) continue;
+            const float d2 = bx * bx + by * by + bz * bz;
+            if (d2 < best) {
+                best = d2;
+                owner[b] = static_cast<int>(s);
+            }
+        }
+    }
     for (size_t s = 0; s < kKnowledgeSpotCount; ++s) {
         const size_t d = kKnowledgeFirstDeposit + s;
         if (!IsBossSpot(d)) continue;
@@ -602,10 +622,7 @@ void Update(uint8_t* client) {
             continue;
         }
         bool alive = false;
-        for (const auto& b : live) {
-            const float bx = b.x - dep.x, bz = b.z - dep.z;
-            alive = alive || bx * bx + bz * bz <= 100.0f * 100.0f;
-        }
+        for (size_t b = 0; b < live.size(); ++b) alive = alive || owner[b] == static_cast<int>(s);
         const auto spot = static_cast<uint16_t>(s);
         if (alive) {
             if (!seenAlive[s] && BossDeadNow(d)) {

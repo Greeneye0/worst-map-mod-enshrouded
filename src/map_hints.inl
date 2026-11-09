@@ -104,7 +104,7 @@ int MapHintKinds(int out[9]) {
     }
     add(0);
     add(4);
-    add(1);
+    if (!(halls::MapActive() && !halls::g_mapOverworld)) add(1); // Find: not on a dungeon's own map
     if (!g_filterUndo.empty()) add(5);
     if (!g_filterRedo.empty()) add(6);
     add(2);

@@ -1,0 +1,9 @@
+- Ancient Vaults and Ancient Spires get dungeon maps like the Hollow Halls: the World Map and minimap show the floor you're on, with its walls, teleport pads, exits, chests and lore notes. Teleporters split a vault or spire into floors: - Floor n / m + on the map picks one (Ctrl+Up/Down, or LT+Up/Down on a controller), and the map opens on the floor you stand on.
+- Their traps are drawn live: fireballs and spark beams move on the map in time with the game, spike plates glow red as their spikes come out, and plates turned off by their switch show as off. Doors show whether they're locked, closed or open, and barred windows that can't be broken show as walls. Hover a teleport pad to see which floor it takes you to, up or down.
+- On the dungeon maps the player arrow points the way your character faces, not the camera, and is a dotted outline when you're on another floor than the one shown. Footprints now look like left and right feet, so you can see which way you walked.
+- Find on the map is off on a dungeon's own map; Shift+F still searches the skill tree.
+- Bosses: the Heavy Ancient Construct's four spots are marked, and a killed boss now counts only for its own spot, so spots close together (such as Engine Chambers' S.P.D.R. Construct above a camp) track their kills separately.
+Reported bugs fixed:
+- Inside a vault or spire the minimap showed a fast travel icon.
+- G G could light a bowl beside a lore note instead of the note.
+- A chest's height arrow on the minimap flickered when the chest was near the height where the arrow shows.
