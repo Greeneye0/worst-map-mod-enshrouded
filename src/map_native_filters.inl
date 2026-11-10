@@ -241,6 +241,41 @@ extern "C" __declspec(dllexport) int MapNativeFilters(const char* action, const 
         const int n = std::snprintf(out, outCap, "{\"done\":%s}", done ? "true" : "false");
         return n > 0 && static_cast<uint32_t>(n) < outCap ? 1 : -4;
     }
+    // Filter presets: target "apply:N", "save:N", "name:N:text" (empty text: the default's name) or "status"; N is 1-5
+    if (std::strcmp(action, "preset") == 0) {
+        LoadFilterPresets();
+        int p = -1;
+        if (std::strncmp(target, "apply:", 6) == 0) {
+            p = std::atoi(target + 6) - 1;
+            if (p < 0 || p >= kPresetCount) return -3;
+            ApplyFilterPreset(client, nullptr, p);
+        } else if (std::strncmp(target, "save:", 5) == 0) {
+            p = std::atoi(target + 5) - 1;
+            if (p < 0 || p >= kPresetCount) return -3;
+            StoreFilterPreset(client, p);
+        } else if (std::strncmp(target, "name:", 5) == 0) {
+            p = std::atoi(target + 5) - 1;
+            const char* colon = std::strchr(target + 5, ':');
+            if (p < 0 || p >= kPresetCount || !colon) return -3;
+            g_presets[p].name = colon + 1;
+            SaveFilterPreset(p);
+        } else if (std::strncmp(target, "clear:", 6) == 0) { // back to the built-in default
+            p = std::atoi(target + 6) - 1;
+            if (p < 0 || p >= kPresetCount) return -3;
+            g_presets[p] = FilterPreset{};
+            SaveFilterPreset(p);
+        } else if (std::strcmp(target, "status") != 0) {
+            return -3;
+        }
+        std::string json = "{\"match\":" + std::to_string(MatchingFilterPreset(client) + 1) + ",\"slots\":[";
+        for (int i = 0; i < kPresetCount; ++i) {
+            json += (i ? "," : "") + std::string("{\"name\":\"") + PresetName(i) + "\",\"saved\":" +
+                    std::to_string(g_presets[i].states.size()) + "}";
+        }
+        json += "],\"notice\":\"" + g_filterNotice + "\"}";
+        const int n = std::snprintf(out, outCap, "%s", json.c_str());
+        return n > 0 && static_cast<uint32_t>(n) < outCap ? 1 : -4;
+    }
     if (std::strcmp(action, "markers") == 0) {
         g_dumpMarkersRequested = true; // in the world map's marker pass, where the quest lookups work
         const int n = std::snprintf(out, outCap, "{\"file\":\"markers_dump.txt\",\"requested\":true}");

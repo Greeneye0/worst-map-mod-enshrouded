@@ -1001,6 +1001,18 @@ LRESULT CALLBACK MapKeyWheelMsgProc(int code, WPARAM wParam, LPARAM lParam) {
                 msg->message = WM_NULL;
             }
         }
+        // Alt+1..5 apply a filter preset: the number must not reach the game too (its 1 is People & Places)
+        if (msg->message == WM_INPUT && (GetAsyncKeyState(VK_MENU) & 0x8000) &&
+            GetTickCount64() - g_mapKeyLastFrameTick < 250) {
+            RAWINPUT ri{};
+            UINT size = sizeof(ri);
+            if (GetRawInputData(reinterpret_cast<HRAWINPUT>(msg->lParam), RID_INPUT, &ri, &size, sizeof(RAWINPUTHEADER)) !=
+                    static_cast<UINT>(-1) &&
+                ri.header.dwType == RIM_TYPEKEYBOARD && !(ri.data.keyboard.Flags & RI_KEY_BREAK) &&
+                ri.data.keyboard.VKey >= '1' && ri.data.keyboard.VKey <= '5') {
+                msg->message = WM_NULL;
+            }
+        }
         // Esc while typing clears the box, and must not reach the game (it would close the map): taken as a key
         if ((msg->message == WM_KEYDOWN || msg->message == WM_KEYUP) && msg->wParam == VK_ESCAPE && g_keySearchFocused &&
             GetTickCount64() - g_mapKeyLastFrameTick < 250) {
@@ -1213,7 +1225,12 @@ struct MapKeys {
         hallRecenter, modOff, chestClick, hideRowClick, regionClick, copyPosition, padMapKey, padBack, padClick, padUp,
         padMarkChest, padHideRow,
         padDown, padLeft, padRight, findClose, findConfirm, findNext, findPrevious, findUp, findDown, findPageUp,
-        findPageDown, findFilters, interact, floorUp, floorDown;
+        findPageDown, findFilters, interact, floorUp, floorDown, preset1, preset2, preset3, preset4, preset5,
+        presetNext, presetPrev;
+    const inp::Binding& Preset(int p) const {
+        const inp::Binding* all[5] = {&preset1, &preset2, &preset3, &preset4, &preset5};
+        return *all[p];
+    }
 } g_keys;
 struct MapKeySetting { const char* name; const char* defaultText; inp::Binding MapKeys::* field; };
 constexpr MapKeySetting kMapKeySettings[] = {
@@ -1254,6 +1271,14 @@ constexpr MapKeySetting kMapKeySettings[] = {
     // A vault's or spire's map: the floor shown, one up / down (PageUp / PageDown zoom, RS + the D-pad are taken)
     {"FloorUp", "Ctrl+Up, Pad:LT+Up", &MapKeys::floorUp},
     {"FloorDown", "Ctrl+Down, Pad:LT+Down", &MapKeys::floorDown},
+    // Filter presets on the World Map: apply slot 1..5, or the next / previous one on a controller
+    {"Preset1", "Alt+1", &MapKeys::preset1},
+    {"Preset2", "Alt+2", &MapKeys::preset2},
+    {"Preset3", "Alt+3", &MapKeys::preset3},
+    {"Preset4", "Alt+4", &MapKeys::preset4},
+    {"Preset5", "Alt+5", &MapKeys::preset5},
+    {"PresetNext", "NoKeys, Pad:LT+Right", &MapKeys::presetNext},
+    {"PresetPrevious", "NoKeys, Pad:LT+Left", &MapKeys::presetPrev},
 };
 bool KeyIsDown(int vk) { return inp::KeyDown(vk); }
 // A binding as text on the panel: the controller's chord when the game is showing controller tips.
@@ -2284,6 +2309,226 @@ void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
                      g_filterUndo.size(), g_filterRedo.size());
 }
 
+// ---- Filter presets: five slots on the Map Key under Show All / Hide All. A click applies one (one undo step, locked
+// rows included), Ctrl + click saves the filters shown into it, a right click renames it; Alt+1..5 on the map,
+// LT + Left / Right on a controller. A slot nobody saved is a built-in default, worked out from the rows each time.
+// Saved in [Presets] of minimap_config.ini by type hash: a row the preset doesn't know keeps its state.
+std::string GetMinimapConfigPath();
+constexpr int kPresetCount = 5;
+struct PresetSettings {
+    bool has = false; // saved with the preset (a built-in one leaves the settings as they are)
+    int fog = 0, pins = 0, markerScale = 2, looted = 0, levelTint = 50;
+    bool hideCompleted = false, regionFilter = false, regionHide = false, regionNames = true, levelAreas = false;
+    uint32_t regionMask = 0xffffffffu;
+    bool operator==(const PresetSettings& o) const {
+        return has == o.has && fog == o.fog && pins == o.pins && markerScale == o.markerScale && looted == o.looted &&
+               levelTint == o.levelTint && hideCompleted == o.hideCompleted && regionFilter == o.regionFilter &&
+               regionHide == o.regionHide && regionNames == o.regionNames && levelAreas == o.levelAreas &&
+               regionMask == o.regionMask;
+    }
+};
+PresetSettings CurrentPresetSettings();                              // defined with the settings card
+void ApplyPresetSettings(uint8_t* client, const PresetSettings& s); // the same
+struct FilterPreset {
+    std::string name;                         // empty: the default's name in the current language
+    std::unordered_map<uint32_t, bool> states; // empty: the built-in default
+    PresetSettings settings;
+};
+FilterPreset g_presets[kPresetCount];
+bool g_presetsLoaded = false;
+int g_presetRename = -1;      // the slot being renamed, -1 none
+std::string g_presetRenameText;
+int g_presetLastApplied = -1; // for the controller's next / previous
+constexpr umm_lang::Str kPresetDefaultNames[kPresetCount] = {umm_lang::Str::PresetChests, umm_lang::Str::PresetMining,
+                                                            umm_lang::Str::PresetExploring, umm_lang::Str::PresetBosses,
+                                                            umm_lang::Str::PresetPlants};
+
+const char* PresetName(int p) {
+    return g_presets[p].name.empty() ? umm_lang::T(kPresetDefaultNames[p]) : g_presets[p].name.c_str();
+}
+
+std::string FillName(umm_lang::Str fmt, const char* name) {
+    std::string s = umm_lang::T(fmt);
+    const size_t at = s.find("%s");
+    if (at != std::string::npos) s.replace(at, 2, name);
+    return s;
+}
+
+// The Map Key category of row i of a FilterSnapshot (TakeFilterSnapshot's order)
+uint8_t SnapshotRowCategory(uint8_t* client, size_t i) {
+    if (i < 3 || i == 5) return 3; // gold, silver, wooden chests, Dungeon Spoils
+    if (i == 3) return 0;          // other players
+    if (i == 4) return 1;          // Town Portals
+    if (i < 6 + kOreCount) return kOreCategory[i - 6];
+    auto* entries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
+    return FilterCategory(entries[i - 6 - kOreCount]);
+}
+
+// The built-in defaults. Every one keeps other players, Town Portals, custom pins and the main quest on.
+bool DefaultPresetOn(int p, uint32_t hash, uint8_t cat) {
+    auto ore = [](size_t o) { return kOreTypeHashBase + static_cast<uint32_t>(o); };
+    if (hash == kOtherPlayerTypeHash || hash == kTownPortalTypeHash || cat == 4 || hash == 0xa7cadc08u) return true;
+    switch (p) {
+    case 0: // Chests: every chest, the end-room spoils, and the unique items and collectibles found in them
+        return hash == kGoldChestTypeHash || hash == kSilverChestTypeHash || hash == kWoodChestTypeHash ||
+               hash == kSpoilsTypeHash || hash == ore(kUniqueFirst) || hash == ore(kUniqueFirst + 1) ||
+               hash == ore(kUniqueFirst + 2) || hash == ore(kCosmeticFirst);
+    case 1: return cat == kMiningCategory || cat == kMaterialsCategory;
+    case 2: return cat == 0 || cat == 1 || cat == 2 || cat == 3; // places, quests and lore, chests
+    case 3: return hash == ore(kBossesFirst) || cat == kCreaturesCategory;
+    case 4: return cat == kPlantsCategory || cat == kBaitCategory;
+    }
+    return false;
+}
+
+// The filters slot p would give, from the filters now. Locked rows too: a preset is a whole choice (Show All and Hide
+// All skip them; a lock then keeps what the preset set, RestoreFilterSnapshot saves the locked states)
+FilterSnapshot PresetTarget(uint8_t* client, int p, const FilterSnapshot& now) {
+    FilterSnapshot t = now;
+    const auto& saved = g_presets[p].states;
+    for (size_t i = 0; i < t.states.size(); ++i) {
+        auto& [hash, on] = t.states[i];
+        const uint8_t cat = SnapshotRowCategory(client, i);
+        if (saved.empty()) {
+            on = DefaultPresetOn(p, hash, cat);
+        } else {
+            const auto it = saved.find(hash);
+            if (it != saved.end()) on = it->second;
+        }
+    }
+    return t;
+}
+
+void LoadFilterPresets() {
+    if (g_presetsLoaded) return;
+    g_presetsLoaded = true;
+    async_io::Flush();
+    const std::string cfg = GetMinimapConfigPath();
+    std::vector<char> buf(32768);
+    for (int p = 0; p < kPresetCount; ++p) {
+        char key[24];
+        std::snprintf(key, sizeof(key), "Preset%dName", p + 1);
+        char name[128]{};
+        GetPrivateProfileStringA("Presets", key, "", name, sizeof(name), cfg.c_str());
+        g_presets[p].name = name;
+        std::snprintf(key, sizeof(key), "Preset%d", p + 1);
+        buf[0] = 0;
+        GetPrivateProfileStringA("Presets", key, "", buf.data(), static_cast<DWORD>(buf.size()), cfg.c_str());
+        std::snprintf(key, sizeof(key), "Preset%dSettings", p + 1);
+        char set[160]{};
+        GetPrivateProfileStringA("Presets", key, "", set, sizeof(set), cfg.c_str());
+        PresetSettings& st = g_presets[p].settings;
+        st = PresetSettings{};
+        int v[11]{};
+        unsigned mask = 0;
+        // fog,pins,markerScale,looted,hideCompleted,regionFilter,regionMask(hex),regionHide,regionNames,levelAreas,tint
+        if (sscanf_s(set, "%d,%d,%d,%d,%d,%d,%x,%d,%d,%d,%d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &mask, &v[7],
+                     &v[8], &v[9], &v[10]) == 11) {
+            st.has = true;
+            st.fog = v[0];
+            st.pins = v[1];
+            st.markerScale = std::max(0, std::min(kMarkerScaleCount - 1, v[2]));
+            st.looted = v[3] ? 1 : 0;
+            st.hideCompleted = v[4] != 0;
+            st.regionFilter = v[5] != 0;
+            st.regionMask = mask;
+            st.regionHide = v[7] != 0;
+            st.regionNames = v[8] != 0;
+            st.levelAreas = v[9] != 0;
+            st.levelTint = v[10];
+        }
+        g_presets[p].states.clear();
+        // hhhhhhhh1,hhhhhhhh0,...: a type hash and ON (1) / OFF (0)
+        for (const char* s = buf.data(); *s;) {
+            char* end = nullptr;
+            const unsigned long long v = std::strtoull(s, &end, 16);
+            if (end == s || end - s != 9) break;
+            g_presets[p].states[static_cast<uint32_t>(v >> 4)] = (v & 0xf) != 0;
+            s = *end == ',' ? end + 1 : end;
+        }
+    }
+}
+
+void SaveFilterPreset(int p) {
+    const std::string cfg = GetMinimapConfigPath();
+    char key[24];
+    std::snprintf(key, sizeof(key), "Preset%dName", p + 1);
+    async_io::IniWrite("Presets", key, g_presets[p].name.empty() ? nullptr : g_presets[p].name.c_str(), cfg.c_str());
+    std::string out;
+    out.reserve(g_presets[p].states.size() * 10);
+    std::vector<std::pair<uint32_t, bool>> rows(g_presets[p].states.begin(), g_presets[p].states.end());
+    std::sort(rows.begin(), rows.end());
+    char item[16];
+    for (const auto& [hash, on] : rows) {
+        std::snprintf(item, sizeof(item), "%s%08x%d", out.empty() ? "" : ",", hash, on ? 1 : 0);
+        out += item;
+    }
+    std::snprintf(key, sizeof(key), "Preset%d", p + 1);
+    async_io::IniWrite("Presets", key, out.empty() ? nullptr : out.c_str(), cfg.c_str());
+    const PresetSettings& s = g_presets[p].settings;
+    char set[160];
+    std::snprintf(set, sizeof(set), "%d,%d,%d,%d,%d,%d,%x,%d,%d,%d,%d", s.fog, s.pins, s.markerScale, s.looted,
+                  s.hideCompleted ? 1 : 0, s.regionFilter ? 1 : 0, s.regionMask, s.regionHide ? 1 : 0,
+                  s.regionNames ? 1 : 0, s.levelAreas ? 1 : 0, s.levelTint);
+    std::snprintf(key, sizeof(key), "Preset%dSettings", p + 1);
+    async_io::IniWrite("Presets", key, s.has ? set : nullptr, cfg.c_str());
+}
+
+void ApplyFilterPreset(uint8_t* client, uint8_t* mapState, int p) {
+    if (!client || p < 0 || p >= kPresetCount) return;
+    LoadFilterPresets();
+    const FilterSnapshot now = TakeFilterSnapshot(client);
+    ApplyPresetSettings(client, g_presets[p].settings);
+    RestoreFilterSnapshot(client, mapState, PresetTarget(client, p, now));
+    g_presetLastApplied = p;
+    ShowMapNotice(FillName(umm_lang::Str::PresetApplied, PresetName(p)));
+}
+
+void StoreFilterPreset(uint8_t* client, int p) {
+    if (!client || p < 0 || p >= kPresetCount) return;
+    LoadFilterPresets();
+    g_presets[p].states.clear();
+    for (const auto& [hash, on] : TakeFilterSnapshot(client).states) g_presets[p].states[hash] = on;
+    g_presets[p].settings = CurrentPresetSettings();
+    SaveFilterPreset(p);
+    g_presetLastApplied = p;
+    ShowMapNotice(FillName(umm_lang::Str::PresetSaved, PresetName(p)));
+}
+
+// Which slot gives the filters shown now (-1 none): the slot drawn lit
+int MatchingFilterPreset(uint8_t* client) {
+    LoadFilterPresets();
+    const FilterSnapshot now = TakeFilterSnapshot(client);
+    const PresetSettings settings = CurrentPresetSettings();
+    auto matches = [&](int p) {
+        const PresetSettings& s = g_presets[p].settings;
+        return (!s.has || s == settings) && PresetTarget(client, p, now) == now;
+    };
+    if (g_presetLastApplied >= 0 && matches(g_presetLastApplied)) return g_presetLastApplied;
+    for (int p = 0; p < kPresetCount; ++p) {
+        if (matches(p)) return p;
+    }
+    return -1;
+}
+
+// Alt+1..5 and the controller's next / previous, once a frame with the map up
+void UpdatePresetKeys(uint8_t* client, uint8_t* mapState, bool keysFree) {
+    static bool was[kPresetCount + 2]{};
+    for (int i = 0; i < kPresetCount + 2; ++i) {
+        const inp::Binding& b = i < kPresetCount ? g_keys.Preset(i) : (i == kPresetCount ? g_keys.presetNext : g_keys.presetPrev);
+        const bool down = keysFree && BindingDown(b);
+        const bool edge = down && !was[i];
+        was[i] = down;
+        if (!edge) continue;
+        if (i < kPresetCount) ApplyFilterPreset(client, mapState, i);
+        else {
+            const int step = i == kPresetCount ? 1 : kPresetCount - 1;
+            const int from = g_presetLastApplied >= 0 ? g_presetLastApplied : (i == kPresetCount ? kPresetCount - 1 : 0);
+            ApplyFilterPreset(client, mapState, (from + step) % kPresetCount);
+        }
+    }
+}
+
 // After a load, a reload or a world change: the locked rows back to their saved ON / OFF.
 void ApplyLockedStates(uint8_t* client) {
     if (!client) return;
@@ -2632,17 +2877,52 @@ void SaveLootedChests() {
     SaveBuiltWater(path);
 }
 
+// How many of a saved world's altars stand here now (within 4 m: a marker can move by a metre or two)
+size_t SavedAltarsHere(const std::vector<std::pair<int32_t, int32_t>>& saved, const std::vector<std::pair<int32_t, int32_t>>& now) {
+    size_t n = 0;
+    for (const auto& p : saved) {
+        for (const auto& q : now) {
+            if (std::abs(p.first - q.first) <= 4 && std::abs(p.second - q.second) <= 4) {
+                ++n;
+                break;
+            }
+        }
+    }
+    return n;
+}
+
 // Finds this world's saved record (or starts one) and merges its looted chests into the current state.
+// A record is this world when at least half its altars stand here, or three of them do (a base moved since). One altar
+// in a common spot isn't enough: a new world's first altar is often put where an old world's was, near the start,
+// and then the new world got the old one's looted chests (reported by FWSWBN). The record most of whose altars are
+// here wins.
 void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
     async_io::Flush(); // the writer's queue on disk before reading
     const std::string path = GetLootedChestsPath();
     std::vector<char> names(64 * 1024);
     DWORD len = GetPrivateProfileSectionNamesA(names.data(), static_cast<DWORD>(names.size()), path.c_str());
+    std::string best;
+    double bestScore = 0.0;
     for (const char* name = names.data(); len && *name; name += std::strlen(name) + 1) {
         std::vector<char> text(64 * 1024);
         GetPrivateProfileStringA(name, "Altars", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+        const auto saved = ParseAltars(text.data());
+        const size_t here = SavedAltarsHere(saved, altars);
+        if (here == 0 || (here * 2 < saved.size() && here < 3)) {
+            if (here && g_log) g_log("Looted chests: %s shares %zu of its %zu altars only; not this world", name, here, saved.size());
+            continue;
+        }
+        const double score = static_cast<double>(here) / static_cast<double>(saved.size()) + 0.001 * static_cast<double>(here);
+        if (score > bestScore) {
+            bestScore = score;
+            best = name;
+        }
+    }
+    if (!best.empty()) {
+        const char* name = best.c_str();
+        std::vector<char> text(64 * 1024);
+        GetPrivateProfileStringA(name, "Altars", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
         auto saved = ParseAltars(text.data());
-        if (!AltarsShared(saved, altars)) continue;
         g_lootSection = name;
         g_lootAltars = saved;
         LoadBuiltWater(name, path);
@@ -2677,7 +2957,6 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
             t += used;
             if (*t == ';') ++t;
         }
-        break;
     }
     if (g_lootSection.empty()) {
         char name[32];
@@ -3285,8 +3564,15 @@ void RemoveChestsFromUiArrays(uint8_t* client) {
     }
 }
 
+namespace halls { bool ExploredInHall(float x, float z, bool& inCorner); } // halls.inl
+
 bool IsPositionExploredByCharacter(uint8_t* client, int32_t wx, int32_t wz) {
     if (!client) return true;
+    // The Hollow Halls are carved in the world's north-west corner, where the game's fog never clears: a hall counts
+    // as explored once you're in it, so its chests and notes show there as the island's do where you've been
+    bool inCorner = false;
+    const bool hallExplored = halls::ExploredInHall(static_cast<float>(wx), static_cast<float>(wz), inCorner);
+    if (inCorner) return hallExplored;
     // GameClient is at (client - 0x1f0), so GameClient + 0x47d4e0 == client + 0x47d2f0 holds clientWorld;
     // [clientWorld + 0x3da8] == client, and fow is pointed to by [clientWorld + 0x3dc0].
     uint8_t* clientWorld = GetClientWorld(client);
@@ -6542,6 +6828,50 @@ void ApplyCustomMarkerScale() {
     g_woodChestMarkerType.iconDisplaySize = 19.0f;
 }
 
+// The map settings a filter preset carries with its filters (the World Map's look, not the HUD's): Fog, Pins,
+// Custom Marker Size, Looted / Read / Beaten, Completed Places, Region Filter with its regions and Dim / Hide, Region
+// Names, Level Areas and its tint
+PresetSettings CurrentPresetSettings() {
+    PresetSettings s;
+    s.has = true;
+    s.fog = static_cast<int>(g_fogRevealMode);
+    s.pins = static_cast<int>(g_pinRevealMode);
+    s.markerScale = g_customMarkerScaleIdx;
+    s.looted = g_lootedChestMode;
+    s.hideCompleted = g_hideCompletedPlaces;
+    s.regionFilter = g_regionFilterEnabled;
+    s.regionMask = g_regionMask & kAllRegionsMask;
+    s.regionHide = g_regionOutsideHide;
+    s.regionNames = g_regionNames;
+    s.levelAreas = g_levelAreas;
+    s.levelTint = g_levelTintPct;
+    return s;
+}
+
+void ApplyPresetSettings(uint8_t* client, const PresetSettings& s) {
+    if (!s.has) return; // a built-in preset: filters only
+    const FogRevealMode fog = static_cast<FogRevealMode>(std::max(0, std::min(2, s.fog)));
+    if (fog != g_fogRevealMode) ApplyFogRevealMode(fog);
+    const auto pins = static_cast<PinRevealMode>(std::max(0, std::min(2, s.pins)));
+    const int looted = s.looted ? 1 : 0;
+    if (pins != g_pinRevealMode || looted != g_lootedChestMode) g_chestLootDirty = true;
+    g_pinRevealMode = pins;
+    g_lootedChestMode = looted;
+    if (s.markerScale != g_customMarkerScaleIdx) {
+        g_customMarkerScaleIdx = s.markerScale;
+        ApplyCustomMarkerScale();
+    }
+    g_hideCompletedPlaces = s.hideCompleted;
+    g_regionFilterEnabled = s.regionFilter;
+    g_regionMask = s.regionMask & kAllRegionsMask;
+    g_regionOutsideHide = s.regionHide;
+    UpdateFocusedRegion(client);
+    g_regionNames = s.regionNames;
+    g_levelAreas = s.levelAreas;
+    g_levelTintPct = std::max(10, std::min(80, s.levelTint / 10 * 10));
+    SaveMinimapConfig();
+}
+
 // Draws a crisp vector gear/cog icon at (cx, cy) using engine primitives so it never relies on missing font glyphs.
 void DrawGearIconAbs(void* widgetRaw, float cx, float cy, float r, uint32_t col, float alpha, uint32_t holeCol = 0xFF14181Bu) {
     const float toothW = std::max(2.0f, std::round(r * 0.36f));
@@ -7594,6 +7924,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         static bool plusWasDown = false, minusWasDown = false;
         const bool keysFree = focused && !g_findDialogOpen && !typingInGameField;
         UpdateFilterHistory(client, mapState, keysFree);
+        UpdatePresetKeys(client, mapState, keysFree && !g_keySearchFocused);
         const bool plusDown = keysFree && BindingDown(g_keys.mapZoomIn);
         const bool minusDown = keysFree && BindingDown(g_keys.mapZoomOut);
         const int dir = (plusDown && !plusWasDown) ? -1 : (minusDown && !minusWasDown) ? 1 : 0; // -1 closer
@@ -7838,7 +8169,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         const float kCatRowH = umm_lang::TallScript() ? 24.0f : 23.0f;
         constexpr float kPinRowH = 28.0f;
         constexpr float kScrollBarRoom = 10.0f;
-        constexpr float kActionRowH = 30.0f; // SHOW ALL / HIDE ALL, under the title bar (does not scroll)
+        // SHOW ALL / HIDE ALL, under the title bar, and the filter presets' strip under them (neither scrolls)
+        constexpr float kActionRowH = 30.0f + 30.0f;
+        constexpr float kPresetRowY = 30.0f; // the strip, from the top of the action rows
         // Regions: [+/-] [ the regions shown ] [Dim | Hide], and unfolded a drawer with a row per region, under it (does
         // not scroll), with Settings > Advanced > Region Filter on
         constexpr float kRegionLineH = 21.0f;
@@ -8064,7 +8397,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 float hintY = 0.0f;
                 // SHOW ALL / HIDE ALL
                 {
-                    const float btnY = kTitleBarH + 4.0f, btnH = kActionRowH - 4.0f;
+                    const float btnY = kTitleBarH + 4.0f, btnH = kPresetRowY - 4.0f;
                     const float btnW = (kPanelW - 22.0f) * 0.5f;
                     const float xs[2] = {8.0f, 14.0f + btnW};
                     const umm_lang::Str labels[2] = {umm_lang::Str::ShowAll, umm_lang::Str::HideAll};
@@ -8112,6 +8445,105 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     if ((hovBtn[0] || hovBtn[1]) && s_allPress < 0) {
                         hintText = umm_lang::T(umm_lang::Str::HoldForLocked);
                         hintY = panelY + btnY + btnH + 5.0f;
+                    }
+                }
+
+                // PRESETS: [1][2][3][4][5] and a name: the hovered slot's, else the one the filters match. Click applies,
+                // Ctrl + click saves the filters shown into it, a right click renames it (typed in place of the name)
+                {
+                    LoadFilterPresets();
+                    const float rowY = panelY + kTitleBarH + 4.0f + kPresetRowY, btnH = kPresetRowY - 4.0f;
+                    const float slotW = 26.0f, gap = 4.0f;
+                    const float nameX = panelX + 8.0f + kPresetCount * (slotW + gap) + 2.0f;
+                    const float nameW = panelX + kPanelW - 8.0f - nameX;
+                    static bool s_rightWas = false;
+                    const bool rightClick = rightDown && !s_rightWas;
+                    s_rightWas = rightDown;
+                    const bool ctrl = inp::KeysHeld(g_keys.chestClick, KeyIsDown);
+                    auto endRename = [&](bool keep) {
+                        if (g_presetRename < 0) return;
+                        if (keep) {
+                            std::string t = g_presetRenameText;
+                            while (!t.empty() && t.back() == ' ') t.pop_back();
+                            while (!t.empty() && t.front() == ' ') t.erase(t.begin());
+                            // the default's own name stays the default (it follows the language)
+                            g_presets[g_presetRename].name = t == umm_lang::T(kPresetDefaultNames[g_presetRename]) ? "" : t;
+                            SaveFilterPreset(g_presetRename);
+                        }
+                        g_presetRename = -1;
+                        g_keySearchFocused = false;
+                        ClearTextInputFlag();
+                    };
+                    if (g_presetRename >= 0 && !g_keySearchFocused) g_presetRename = -1; // the map closed meanwhile
+                    if (g_presetRename >= 0 && (clicked || rightClick) && !isHovered(nameX, rowY, nameW, btnH)) endRename(true);
+                    if (g_presetRename >= 0) {
+                        SetTextInputFlag();
+                        std::wstring typed;
+                        {
+                            std::lock_guard<std::mutex> lock(g_keySearchMutex);
+                            typed.swap(g_keySearchTyped);
+                        }
+                        for (wchar_t ch : typed) {
+                            if (g_presetRename < 0) break;
+                            if (ch == 0x1b) {
+                                endRename(false);
+                                g_findClosingFrames = std::max(g_findClosingFrames, 15);
+                            } else if (ch == 0x0d) {
+                                endRename(true);
+                            } else if (ch == 0x08 || ch == 0x7f) {
+                                auto& s = g_presetRenameText;
+                                while (!s.empty() && (static_cast<unsigned char>(s.back()) & 0xc0) == 0x80) s.pop_back();
+                                if (!s.empty()) s.pop_back();
+                            } else if (ch >= 0x20) {
+                                char u[8]{};
+                                const int n = WideCharToMultiByte(CP_UTF8, 0, &ch, 1, u, sizeof(u), nullptr, nullptr);
+                                if (n > 0 && g_presetRenameText.size() + n <= 32) g_presetRenameText.append(u, n);
+                            }
+                        }
+                    }
+                    const int match = MatchingFilterPreset(client);
+                    int hovSlot = -1;
+                    for (int p = 0; p < kPresetCount; ++p) {
+                        const float bx = panelX + 8.0f + p * (slotW + gap);
+                        const bool hov = !g_findDialogOpen && isHovered(bx, rowY, slotW, btnH);
+                        if (hov) hovSlot = p;
+                        DrawKeyButtonAbs(anchor.raw, bx, rowY, slotW, btnH, hov, match == p || g_presetRename == p);
+                        const char digit[2] = {static_cast<char>('1' + p), 0};
+                        DrawLabelAbs(bx, rowY, slotW, btnH, digit, (hov || match == p) ? kActiveText : kText,
+                                     (hov || match == p) ? 1.0f : 0.9f, TextAlignH::Center, TextAlignV::Center);
+                        if (!hov || g_presetRename >= 0) continue;
+                        if (clicked) {
+                            if (ctrl) StoreFilterPreset(client, p);
+                            else {
+                                ApplyFilterPreset(client, mapState, p);
+                                SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
+                            }
+                        } else if (rightClick) {
+                            g_presetRename = p;
+                            g_presetRenameText = PresetName(p);
+                            g_keySearchFocused = true; // the search box's typing: keys go to the name, not the game
+                            std::lock_guard<std::mutex> lock(g_keySearchMutex);
+                            g_keySearchTyped.clear();
+                        }
+                    }
+                    if (g_presetRename >= 0) {
+                        DrawFramedBoxAbs(anchor.raw, nameX, rowY, nameW, btnH, kHoverFill, 0.95f, kGold, 0.95f);
+                        const bool caretOn = (GetTickCount64() / 530) % 2 == 0;
+                        const std::string shown = g_presetRenameText + (caretOn ? "_" : "");
+                        DrawLabelAbs(nameX + 6.0f, rowY, nameW - 12.0f, btnH, shown.c_str(), kActiveText, 1.0f,
+                                     TextAlignH::Left, TextAlignV::Center, nullptr, kFilterRowFontScale);
+                        hintText = umm_lang::T(umm_lang::Str::PresetRenameHint);
+                        hintY = rowY + btnH + 5.0f;
+                    } else {
+                        const int shownSlot = hovSlot >= 0 ? hovSlot : match;
+                        DrawLabelAbs(nameX + 4.0f, rowY, nameW - 8.0f, btnH,
+                                     shownSlot >= 0 ? PresetName(shownSlot) : umm_lang::T(umm_lang::Str::Presets),
+                                     shownSlot >= 0 ? (hovSlot >= 0 ? kActiveText : kGold) : kTextMuted, 0.95f,
+                                     TextAlignH::Left, TextAlignV::Center, nullptr, kFilterRowFontScale);
+                        if (hovSlot >= 0) {
+                            hintText = umm_lang::T(umm_lang::Str::PresetTip);
+                            hintY = rowY + btnH + 5.0f;
+                        }
                     }
                 }
 
@@ -8231,7 +8663,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     const float bw = kPanelW - 16.0f, bh = kSearchRowH - 4.0f;
                     const bool hovBox = !g_findDialogOpen && isHovered(bx, by, bw, bh);
                     const bool hovClear = KeySearching() && !g_findDialogOpen && isHovered(bx + bw - bh, by, bh, bh);
-                    if (clicked) {
+                    if (clicked && g_presetRename < 0) { // (a preset's name being typed has the focus)
                         if (hovClear) {
                             g_keySearch.clear();
                             g_mapKeyScroll = 0.0f;
@@ -8245,7 +8677,8 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         }
                     }
                     if (g_findDialogOpen && g_keySearchFocused) g_keySearchFocused = false;
-                    if (g_keySearchFocused) {
+                    const bool ownFocus = g_keySearchFocused && g_presetRename < 0;
+                    if (ownFocus) {
                         SetTextInputFlag();
                         std::wstring typed;
                         {
@@ -8297,19 +8730,19 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         if (!g_keySearchFocused) ClearTextInputFlag();
                         if (g_keySearch != before) g_mapKeyScroll = 0.0f;
                     }
-                    DrawFramedBoxAbs(anchor.raw, bx, by, bw, bh, g_keySearchFocused ? kHoverFill : kPanelFill, 0.95f,
-                                     (g_keySearchFocused || hovBox) ? kGold : kButtonFrame, g_keySearchFocused ? 0.95f : 0.8f);
+                    DrawFramedBoxAbs(anchor.raw, bx, by, bw, bh, ownFocus ? kHoverFill : kPanelFill, 0.95f,
+                                     (ownFocus || hovBox) ? kGold : kButtonFrame, ownFocus ? 0.95f : 0.8f);
                     // A small magnifier: a ring and its handle
                     const float mcx = bx + 13.0f, mcy = by + bh * 0.5f - 1.5f;
                     DrawAssetRectAbs(anchor.raw, kCircleOutlinePrimitive, mcx - 5.0f, mcy - 5.0f, 10.0f, 10.0f,
-                                     g_keySearchFocused ? kGold : kTextMuted, 0.95f, 1.6f);
+                                     ownFocus ? kGold : kTextMuted, 0.95f, 1.6f);
                     for (int i = 0; i < 4; ++i) {
                         DrawSolidRectAbs(anchor.raw, mcx + 3.0f + i, mcy + 3.0f + i, 2.0f, 2.0f,
-                                         g_keySearchFocused ? kGold : kTextMuted, 0.95f);
+                                         ownFocus ? kGold : kTextMuted, 0.95f);
                     }
                     const float tx = bx + 26.0f, tw = bw - 26.0f - bh;
                     // The caret is an "_" after the text, so it sits where the text ends whatever the font (the game's text drops "|")
-                    const bool caretOn = g_keySearchFocused && (now / 530) % 2 == 0;
+                    const bool caretOn = ownFocus && (now / 530) % 2 == 0;
                     if (KeySearching() || caretOn) {
                         const std::string shown = g_keySearch + (caretOn ? "_" : "");
                         DrawLabelAbs(tx, by, tw, bh, shown.c_str(), kActiveText, 1.0f, TextAlignH::Left,
@@ -8322,7 +8755,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             DrawSolidRectAbs(anchor.raw, cx + i - 1.0f, cy + i - 1.0f, 2.0f, 2.0f, hovClear ? kActiveText : kTextMuted, 0.95f);
                             DrawSolidRectAbs(anchor.raw, cx + i - 1.0f, cy - i - 1.0f, 2.0f, 2.0f, hovClear ? kActiveText : kTextMuted, 0.95f);
                         }
-                    } else if (!g_keySearchFocused) {
+                    } else if (!ownFocus) {
                         DrawLabelAbs(tx, by, tw, bh, umm_lang::T(umm_lang::Str::SearchList), kOffText, 0.9f,
                                      TextAlignH::Left, TextAlignV::Center, nullptr, kFilterRowFontScale);
                     }
@@ -8677,23 +9110,34 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     // A tooltip strip, the panel's full width so every language fits: opaque, gold-framed, on a soft
                     // shadow, the text centred. It shrinks if a translation is long (TextWidth runs ~15% short of
                     // the drawn text, hence the 1.15).
-                    const char* hint = hintText;
+                    // A "\n" in the text starts another line (the presets' tip); each line fits on its own
+                    std::vector<std::string> lines;
+                    for (const char* s = hintText;;) {
+                        const char* nl = std::strchr(s, '\n');
+                        lines.emplace_back(s, nl ? static_cast<size_t>(nl - s) : std::strlen(s));
+                        if (!nl) break;
+                        s = nl + 1;
+                    }
                     const float holdHintY = hintY;
-                    constexpr float kHintH = 32.0f;
+                    constexpr float kLineH = 26.0f;
+                    const float kHintH = 32.0f + kLineH * static_cast<float>(lines.size() - 1);
                     const float hintX = panelX + 8.0f, hintW = kPanelW - 16.0f;
-                    const float rawW = umm_lang::TextWidth(hint) * 1.15f;
+                    float rawW = 0.0f;
+                    for (const auto& l : lines) rawW = std::max(rawW, umm_lang::TextWidth(l.c_str()) * 1.15f);
                     const float fit = (hintW - 28.0f) / std::max(1.0f, rawW);
                     const float scale = std::max(0.6f, std::min(0.92f, fit));
-                    const float textW = rawW * scale;
-                    const float textX = hintX + (hintW - textW) * 0.5f;
                     DrawAssetRectAbs(anchor.raw, kSoftGlowPrimitive, hintX - 16.0f, holdHintY - 10.0f, hintW + 32.0f,
                         kHintH + 26.0f, 0xff000000u, 0.8f);
                     DrawFramedBoxAbs(anchor.raw, hintX, holdHintY, hintW, kHintH, kPanelFill, 1.0f, kGold, 0.95f, 5.0f);
                     DrawSolidRectAbs(anchor.raw, hintX + 2.0f, holdHintY + 2.0f, hintW - 4.0f, kHintH - 4.0f, kPanelFill, 1.0f);
                     DrawBoxAbs(anchor.raw, kBoxInnerGlowPrimitive, hintX + 1.0f, holdHintY + 1.0f, hintW - 2.0f, kHintH - 2.0f,
                         kGold, 0.3f, 6.0f);
-                    DrawLabelAbs(textX, holdHintY, textW + 12.0f, kHintH,
-                        hint, kActiveText, 1.0f, TextAlignH::Left, TextAlignV::Center, nullptr, scale);
+                    for (size_t i = 0; i < lines.size(); ++i) {
+                        const float textW = umm_lang::TextWidth(lines[i].c_str()) * 1.15f * scale;
+                        const float textX = hintX + (hintW - textW) * 0.5f;
+                        DrawLabelAbs(textX, holdHintY + 3.0f + kLineH * static_cast<float>(i), textW + 12.0f, kLineH,
+                            lines[i].c_str(), kActiveText, 1.0f, TextAlignH::Left, TextAlignV::Center, nullptr, scale);
+                    }
                 }
             }
             // With a controller: a strip under the panel says how it gets in (View), and once in, how to move

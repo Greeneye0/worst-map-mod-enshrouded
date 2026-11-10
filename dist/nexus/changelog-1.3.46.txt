@@ -1,0 +1,5 @@
+- Filter presets: five slots under Show All / Hide All in the Map Key. Click one to apply it, Ctrl + click to save your current filters into it, right click to give it your own name. A preset also keeps the map settings: fog and pins (Explored / Hybrid / Reveal All), marker size, looted and completed places, the region filter, region names and level areas.
+- Alt+1 to Alt+5 apply a preset from the World Map; on a controller LT + Left/Right steps through them. They start as Chests, Mining, Exploring, Bosses and Plants, each keeping other players, town portals, custom pins and the main quest on.
+Reported bugs fixed:
+- Inside a Hollow Hall, Pins: Explored hid the hall's chests and notes (Hybrid grayed them), even ones already found: the game's fog never clears in the halls' corner. The hall you're in now counts as explored (reported by Ykses).
+- A new world could take over an old world's looted chests when its first Flame Altar stood where one of the old world's did. A world is now recognised by most of its altars, not one (reported by FWSWBN).

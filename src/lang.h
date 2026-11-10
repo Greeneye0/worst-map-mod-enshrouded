@@ -34,6 +34,8 @@ enum class Str : int {
     Advanced, ShowPosition, AllRegions, Dim, HintCopyPosition, RegionFilter, LevelAreas, TownPortals, HintHideFilter, HintUndoFilter, HintRedoFilter, SearchList, NoListMatches, WoodChest, WoodSarcophagus,
     VanillaWorldMap, VanillaMinimap, DungeonMap, OverworldMap, CatGround, RegionNames, DungeonSpoils, RangerChest, MageChest, WarriorChest,
     PadOpenKey, PadKeyNav, LevelTint, Container, MarkRefilled, MarkRespawned, HintTeleport, Floor, TeleportPair, OneWayTeleport, SpikeTrap, FireTrap, ElectricTrap, TrapRail, LockedDoor, ClosedDoor, OpenDoor, PressurePlate, ButtonLever, ShootSwitch, MagicBarrier,
+    Presets, PresetChests, PresetMining, PresetExploring, PresetBosses, PresetPlants, PresetTip, PresetApplied, PresetSaved,
+    PresetRenameHint,
     Count
 };
 

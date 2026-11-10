@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.45
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.46
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -47,6 +47,10 @@ On the right of the world map.
 - The rows in each category are sorted by name in your language.
 - The mouse wheel or the scroll bar scrolls the list.
 - Hide a marker's row from the map: Alt + left click the marker. Ctrl+Z undoes a filter change and Ctrl+Y redoes it.
+- Filter presets: the 1 2 3 4 5 buttons under Show All / Hide All. Click one to apply it,
+  Ctrl + click to save your current filters and map settings into it, right click to rename
+  it. Alt+1 to Alt+5 apply them from the map; on a controller LT + Left/Right steps through
+  them. They start as Chests, Mining, Exploring, Bosses and Plants.
   On a controller see CONTROLLERS.
 - CUSTOM PINS: click a pin icon to show or hide your own map pins of that kind.
 - Tab or the - button at the top folds the whole panel away. The cog opens SETTINGS.
@@ -346,6 +350,22 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.46
+- Filter presets: five slots under Show All / Hide All in the Map Key. Click one to apply
+  it, Ctrl + click to save your current filters into it, right click to give it your own
+  name. A preset also keeps the map settings: fog and pins (Explored / Hybrid / Reveal All),
+  marker size, looted and completed places, the region filter, region names and level areas.
+- Alt+1 to Alt+5 apply a preset from the World Map; on a controller LT + Left/Right steps
+  through them. They start as Chests, Mining, Exploring, Bosses and Plants, each keeping
+  other players, town portals, custom pins and the main quest on.
+Reported bugs fixed:
+- Inside a Hollow Hall, Pins: Explored hid the hall's chests and notes (Hybrid grayed them),
+  even ones already found: the game's fog never clears in the halls' corner. The hall you're
+  in now counts as explored (reported by Ykses).
+- A new world could take over an old world's looted chests when its first Flame Altar stood
+  where one of the old world's did. A world is now recognised by most of its altars, not one
+  (reported by FWSWBN).
+
 1.3.45
 - Ancient Vaults and Ancient Spires get dungeon maps like the Hollow Halls: the World Map
   and minimap show the floor you're on, with its walls, teleport pads, exits, chests and

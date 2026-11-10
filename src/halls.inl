@@ -311,6 +311,13 @@ bool NearDungeon(float x, float z, int d) {
     return false;
 }
 
+// Pins: Explored inside a Hollow Hall: the game's fog of war never clears in the halls' corner, so a spot there counts
+// as explored when it belongs to the hall you're in (or were last in: the World Map shows a hall only from inside it)
+bool ExploredInHall(float x, float z, bool& inCorner) {
+    inCorner = x < kCornerMaxX && z > kCornerMinZ && Load();
+    return inCorner && g_curDungeon >= 0 && g_curDungeon < static_cast<int>(kHallCount) && NearDungeon(x, z, g_curDungeon);
+}
+
 void Flood(float px, float py, float pz, int half) {
     const float dx = px - g_gox, dy = py - g_goy, dz = pz - g_goz;
     if (dx * dx + dy * dy + dz * dz < 9.0f && half * 2 + 1 <= g_gSize) return;
