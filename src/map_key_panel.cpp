@@ -917,8 +917,10 @@ constexpr auto kTreesRows = MakeResourceRows<kTreesFirst, kTreesCategory, umm_la
     std::make_index_sequence<kTreesCount>{});
 constexpr auto kCreaturesRows = MakeResourceRows<kCreaturesFirst, kCreaturesCategory, umm_lang::Str::CatCreatures>(
     std::make_index_sequence<kCreaturesCount>{});
-constexpr auto kGroundRows = MakeResourceRows<kGroundFirst, kGroundCategory, umm_lang::Str::CatGround>(
-    std::make_index_sequence<kGroundCount>{});
+// The Ground rows, then Roads and Surface Water (added after every other row so their index stays; roads.inl)
+constexpr auto kGroundRows = JoinRows(
+    MakeResourceRows<kGroundFirst, kGroundCategory, umm_lang::Str::CatGround>(std::make_index_sequence<kGroundCount>{}),
+    MakeResourceRows<kSurfaceFirst, kGroundCategory, umm_lang::Str::CatGround>(std::make_index_sequence<kSurfaceCount>{}));
 static_assert(kWaterCount == 2, "Water Well and Water Barrel rows");
 static_assert(kLoreCount == 1 && kBossesCount == 1, "one Lore Note row, one Boss row");
 static_assert(kUniqueCount == 3, "Unique Weapons, Unique Equipment and Collectibles rows");
@@ -926,7 +928,7 @@ static_assert(kSummonsCount == 1, "one Fell Summoning Stone row");
 static_assert(kCosmeticCount == 1, "one Cosmetics row");
 static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount +
                   kLoreCount + kBossesCount + kUniqueCount + kSummonsCount + kNightPlantsCount + kCreaturesCount +
-                  kCosmeticCount + kGroundCount + kLatePlantsCount + kLateBaitCount + kLatePlants2Count == kOreCount,
+                  kCosmeticCount + kGroundCount + kLatePlantsCount + kLateBaitCount + kLatePlants2Count + kSurfaceCount == kOreCount,
               "every row in one category");
 
 struct CategoryGroupSpec {
@@ -6264,6 +6266,7 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
 #include "hd_pool.inl"
 #include "halls.inl"
 #include "ground_areas.inl"
+#include "roads.inl"
 #include "hall_pan_clamp.inl"
 #include "cursor_position.inl"
 
@@ -8087,6 +8090,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         if (overworldLayers) DrawLevelBordersOnMap(root.raw, rootRect, mapState);
         if (overworldLayers) ground::DrawOnMap(root.raw, rootRect, mapState); // under the forests
         const int treeDraws = overworldLayers ? DrawTreeAreasOnMap(root.raw, rootRect, mapState) : 0;
+        if (overworldLayers) roads::DrawOnMap(root.raw, rootRect, mapState);
         if (overworldLayers && g_regionNames) DrawRegionNamesOnMap(root.raw, rootRect, mapState);
         DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my,
                              std::max(500, std::min(1500, 2000 - treeDraws)));
@@ -11242,6 +11246,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         } else if ((g_minimapInSpire = false), g_minimapShowTerrain) {
             DrawMinimapTerrain(client, mmCanvas.raw, vx, vy, vw, vh, vcx, vcy, playerX, playerZ, pxPerMeterX, pxPerMeterY);
         }
+        if (!g_minimapInSpire && !halls::InCorner(playerX, playerZ) && halls::VaultAt(playerX, hallY, playerZ) < 0)
+            roads::DrawOnMinimap(mmCanvas.raw, vx, vy, vw, vh, vcx, vcy, playerX, playerZ, pxPerMeterX); // Roads, Surface Water
         g_endWidget(mmCanvas.raw);
         UMM_LAP(PerfMmTerrain);
 

@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.46
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.47
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -130,6 +130,8 @@ Read from the game's own world files, so every spot is where the game put it.
 - GROUND: the rock and sand recipes ask for (Granite, Basalt, Cinder Rock, Shell Limestone,
   Sandstone, Revelwood Stone, Blackmire Stone, Fine Sand, Sand, Veilwater Basin Sand, Cinder's
   Cradle Sand, Moss) as heat maps where they make up the ground.
+  Roads and Surface Water (under GROUND): every road on the island, and its lakes, rivers
+  and pools as the world starts out, on the World Map and the minimap.
 Each kind has its own row, all off at first. Hover an icon on the world map for its name.
 Deposits, materials, plants and bait also show on the minimap and in Find.
 
@@ -350,6 +352,13 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.47
+- Roads and Surface Water, two new rows under GROUND in the Map Key, on the World Map and
+  the minimap. Roads draws every road on the island (dirt, stone, limestone and the
+  Kindlewastes' ancient roads) from the game's own world files; Surface Water draws its
+  lakes, rivers and pools as the world starts out (water you build or drain isn't shown).
+- They're drawn finer the closer you zoom in, and kept in presets like the other rows.
+
 1.3.46
 - Filter presets: five slots under Show All / Hide All in the Map Key. Click one to apply
   it, Ctrl + click to save your current filters into it, right click to give it your own

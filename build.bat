@@ -40,6 +40,11 @@ if errorlevel 1 exit /b 1
 rem The vaults' and spires' traps, doors and switches (tools\resources\make_traps.py)
 copy /y data\traps.bin bin\loader\traps.bin >nul
 if errorlevel 1 exit /b 1
+rem The roads and surface water (tools\resources\make_resources.py, make_water.py)
+copy /y data\roads.bin bin\loader\roads.bin >nul
+if errorlevel 1 exit /b 1
+copy /y data\water.bin bin\loader\water.bin >nul
+if errorlevel 1 exit /b 1
 rem The Hollow Halls' floor textures for the HD dungeon maps (tools\resources\make_halls_hd.py textures)
 if not exist bin\loader\hd mkdir bin\loader\hd
 copy /y data\hd\* bin\loader\hd\ >nul

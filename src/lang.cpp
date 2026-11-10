@@ -875,6 +875,9 @@ const Row kLatePlantNames[] = {
     {"Moth", "Motte", "Papillon de nuit", "Falena", "Polilla", "Mariposa", "Ćma", "Мотылек", "Метелик", "Güve", "蛾", "나방", "飞蛾", "蛾", "ผีเสื้อกลางคืน"},
     {"Date", "Dattel", "Datte", "Dattero", "Dátil", "Tâmara", "Daktyl", "Финик", "Фінік", "Hurma", "デーツ", "대추야자", "椰枣", "椰棗", "อินทผาลัม"},
     {"Yucca Fruit", "Yucca-Frucht", "Fruit du yucca", "Frutto della yucca", "Yuca", "Macaxeira", "Owoc jukki", "Плод юкки", "Плід юкки", "Yuka Meyvesi", "ユッカの果実", "실난초 과일", "丝兰果", "絲蘭果", "ผลยัคคา"},
+    // Roads (the Surface rows, kSurfaceFirst: Ground category, painted from roads.bin)
+    {"Roads", "Straßen", "Routes", "Strade", "Caminos", "Estradas", "Drogi", "Дороги", "Дороги", "Yollar", "道", "도로", "道路", "道路", "ถนน"},
+    {"Surface Water", "Oberflächenwasser", "Eaux de surface", "Acque superficiali", "Aguas superficiales", "Águas superficiais", "Wody powierzchniowe", "Поверхностные воды", "Поверхневі води", "Yüzey suyu", "地表水", "지표수", "地表水", "地表水", "น้ำผิวดิน"},
 };
 // clang-format on
 

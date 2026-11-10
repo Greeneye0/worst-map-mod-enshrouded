@@ -1,0 +1,2 @@
+- Roads and Surface Water, two new rows under GROUND in the Map Key, on the World Map and the minimap. Roads draws every road on the island (dirt, stone, limestone and the Kindlewastes' ancient roads) from the game's own world files; Surface Water draws its lakes, rivers and pools as the world starts out (water you build or drain isn't shown).
+- They're drawn finer the closer you zoom in, and kept in presets like the other rows.
