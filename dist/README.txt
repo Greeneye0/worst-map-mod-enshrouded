@@ -394,7 +394,7 @@ CHANGES
   it: the Sunken Ancient City shows Follow The Melody.
 - Settings are grouped under World Map, Minimap, Look and Filters. New in Look: Dungeon Maps
   turns the Hollow Hall, vault and spire maps off, and the map then opens on the hall's
-  entrance.
+  entrance. Requested by izisot.
 - Filter presets can be saved from the keyboard with Ctrl+Alt+1 to Ctrl+Alt+5 (SavePreset1
   to SavePreset5 under [Keys]), and the preset keys no longer also reach the game. Requested
   by Ykses.
