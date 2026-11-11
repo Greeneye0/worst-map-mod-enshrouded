@@ -310,10 +310,11 @@ static bool HotPrepare() {
 }
 
 static bool HotReady() {
-    return true;
+    return unlock_map_markers::MapKeyPanelReloadReady();
 }
 
 static void HotResume() {
+    unlock_map_markers::ResumeMapKeyPanelAfterFailedReload();
     LogMessage("the reload failed; carrying on");
 }
 

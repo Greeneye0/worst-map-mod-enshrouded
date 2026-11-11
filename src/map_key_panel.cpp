@@ -4,6 +4,9 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <shlobj.h>
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
 #include <ctime>
 #include <windows.h>
 #include <psapi.h>
@@ -44,6 +47,7 @@
 #include "chest_halls.h"
 #include "chest_loot_ids.h"
 #include "ore_deposits.h"
+#include "creature_templates.h"
 #include <iterator>
 #include <limits>
 #include "ore_shading.h" // GG's vein surfaces (vein_surface.inl)
@@ -178,6 +182,8 @@ void NoteBossKills(uint8_t* client);
 namespace boss_live { void Update(uint8_t* client); } // knowledge.inl
 void NoteVisitedPlaces(uint8_t* client);
 bool PlaceVisited(int32_t x, int32_t z);
+bool PlaceMarkedDone(int32_t x, int32_t z);              // knowledge.inl
+bool TogglePlaceDone(int32_t x, int32_t z, bool& nowDone); // knowledge.inl
 std::string BossTimersText();
 void LoadBossTimers(const char* text);
 extern std::unordered_map<uint16_t, double> g_bossDead;
@@ -192,6 +198,17 @@ int StackSide(size_t d); // knowledge.inl: -1 / +1 for icons drawn aside, off th
 std::vector<std::pair<int32_t, int32_t>> g_rumorSpots;
 const void* DepositIcon(size_t d); // knowledge.inl: a unique item's own icon, else its row's
 bool SanctumVisitedNear(float x, float z); // knowledge.inl
+
+// A place marked done by hand (Ctrl + click a town, a camp, a sanctum...): a check mark like a completed place, and
+// like one it follows Completed Places (Show / Hide)
+extern bool g_hideCompletedPlaces;
+uint32_t NormalizeFilterTypeHash(uint32_t rawHash);
+constexpr uint32_t kElixirWellRowHash = 0xffe5e444u; // Elixir Well / Root: the game checks them off itself
+bool IsHandDoneMarker(const uint8_t* m, uint32_t origHash) {
+    return origHash != 0xafce0c5fu && m[0x34] != 3 && NormalizeFilterTypeHash(origHash) != kElixirWellRowHash &&
+           PlaceMarkedDone(*reinterpret_cast<const int32_t*>(m + 0x14), *reinterpret_cast<const int32_t*>(m + 0x24));
+}
+bool HandDoneHidden(const uint8_t* m, uint32_t origHash) { return g_hideCompletedPlaces && IsHandDoneMarker(m, origHash); }
 
 // A Flame or Night Sanctum marker this character has been to: shown with a check mark like a completed place.
 bool IsVisitedSanctumMarker(const uint8_t* m, uint32_t origHash) {
@@ -317,6 +334,13 @@ bool g_dumpMarkersRequested = false; // the next world-map marker pass writes ma
 int DumpMarkersToFile(uint8_t* client); // map_native_filters.inl
 #endif
 bool g_bridgeRecenterMap = false;
+float g_bridgeZoomSet = 0.0f; // dev: the map op zoomset
+float g_devDot[2] = {-1.0f, -1.0f}; // dev: the map op dot
+float g_devNear[2] = {-1.0f, -1.0f}; // dev: the map op near
+#ifdef UMM_DEV_BRIDGE
+extern float g_devNearPlate[2];
+#endif
+float g_bridgeCenterX = -1.0f, g_bridgeCenterZ = -1.0f; // the bridge's centerat: the World Map centred there next frame
 float g_chestRespawnMinutes = 30.0f;
 bool g_chestsStayLooted = false; // [Chests] RespawnMinutes=0: a looted chest stays marked looted, refilled or not
 float g_chestResetRadiusMeters = 0.0f; // [Chests] ResetRadius: a player this close also holds the respawn timer
@@ -654,6 +678,24 @@ bool g_modOff = false;             // Ctrl + Shift + F12: the whole mod switched
 // minimap and the rest stay on. g_worldMapModded is what is in force: the marker patches on and the mod's World Map
 // hooks at work. It follows !g_modOff && !g_vanillaWorldMap once the patches could be switched (SwitchWorldMap).
 bool g_vanillaWorldMap = false;
+// Settings > Advanced > Dungeon Maps: inside a Hollow Hall, Ancient Vault or Spire the World Map and minimap show its
+// own floor plan (halls.inl); off, they show the overworld as the game does
+bool g_dungeonMaps = true;
+// Settings > Advanced > Nearby Creatures Only: the creature rows' spawn points are left off the minimap, which shows the
+// live creatures within 75 m instead (creature_live.inl), and G G lights them; the World Map keeps the spawn points
+// ("creatures should still be visible on the main map", 2026-11-11)
+bool g_nearCreatures = false;
+bool CreatureSpawnHidden(size_t ore) { return g_nearCreatures && ore >= kCreaturesFirst && ore < kCreaturesFirst + kCreaturesCount; }
+// ... and under it, Hide on World Map: the spawn points off the World Map (and Find) too
+bool g_nearCreaturesHideMap = false;
+// (unless Find is looking for them: the creature rows among its results show while it is open and for 60 s after,
+// g_findShownOres, set in the World Map frame)
+std::vector<uint8_t> g_findShownOres;
+uint64_t g_findShownUntil = 0;
+bool CreatureOffWorldMap(size_t ore) {
+    if (!g_nearCreaturesHideMap || !CreatureSpawnHidden(ore)) return false;
+    return !(GetTickCount64() < g_findShownUntil && ore < g_findShownOres.size() && g_findShownOres[ore]);
+}
 // Settings > Advanced > Vanilla Minimap, under it (only with Vanilla World Map on): the minimap shows what the game's World
 // Map shows, the game's own markers and the players, and none of the mod's (chests, resources, lore, portals...)
 bool g_vanillaMinimap = false;
@@ -971,8 +1013,11 @@ std::wstring g_keySearchTyped; // taken by the panel each frame
 volatile LONG g_mapKeyWheelDelta = 0;
 volatile bool g_mapKeyWheelCapture = false;
 volatile uint64_t g_mapKeyLastFrameTick = 0;
+volatile uint64_t g_playingKeysTick = 0; // the last frame of play (no menu, no map) the preset keys were read in
 
 bool g_dungeonMapUp = false; // a Hollow Hall's dungeon map is what the World Map shows (set each map frame)
+bool PresetKeyGoingDown(int vk); // a filter preset key (load or save) goes down with this key: kept from the game
+
 LRESULT CALLBACK MapKeyWheelMsgProc(int code, WPARAM wParam, LPARAM lParam) {
     if (code == HC_ACTION && wParam == PM_REMOVE && lParam) {
         auto* msg = reinterpret_cast<MSG*>(lParam);
@@ -1003,16 +1048,16 @@ LRESULT CALLBACK MapKeyWheelMsgProc(int code, WPARAM wParam, LPARAM lParam) {
                 msg->message = WM_NULL;
             }
         }
-        // Alt+1..5 apply a filter preset: the number must not reach the game too (its 1 is People & Places)
-        if (msg->message == WM_INPUT && (GetAsyncKeyState(VK_MENU) & 0x8000) &&
-            GetTickCount64() - g_mapKeyLastFrameTick < 250) {
+        // The filter preset keys (Alt+1..5 apply, Ctrl+Alt+1..5 save; [Keys] Preset1.. / SavePreset1..): their key must
+        // not reach the game too (on the map its 1 is People & Places; while playing 1..5 use the hotbar's items)
+        if (msg->message == WM_INPUT && (GetTickCount64() - g_mapKeyLastFrameTick < 250 ||
+                                         GetTickCount64() - g_playingKeysTick < 250)) {
             RAWINPUT ri{};
             UINT size = sizeof(ri);
             if (GetRawInputData(reinterpret_cast<HRAWINPUT>(msg->lParam), RID_INPUT, &ri, &size, sizeof(RAWINPUTHEADER)) !=
                     static_cast<UINT>(-1) &&
-                ri.header.dwType == RIM_TYPEKEYBOARD && !(ri.data.keyboard.Flags & RI_KEY_BREAK) &&
-                ri.data.keyboard.VKey >= '1' && ri.data.keyboard.VKey <= '5') {
-                msg->message = WM_NULL;
+                ri.header.dwType == RIM_TYPEKEYBOARD && !(ri.data.keyboard.Flags & RI_KEY_BREAK)) {
+                if (PresetKeyGoingDown(ri.data.keyboard.VKey)) msg->message = WM_NULL;
             }
         }
         // Esc while typing clears the box, and must not reach the game (it would close the map): taken as a key
@@ -1228,9 +1273,13 @@ struct MapKeys {
         padMarkChest, padHideRow,
         padDown, padLeft, padRight, findClose, findConfirm, findNext, findPrevious, findUp, findDown, findPageUp,
         findPageDown, findFilters, interact, floorUp, floorDown, preset1, preset2, preset3, preset4, preset5,
-        presetNext, presetPrev;
+        presetNext, presetPrev, savePreset1, savePreset2, savePreset3, savePreset4, savePreset5;
     const inp::Binding& Preset(int p) const {
         const inp::Binding* all[5] = {&preset1, &preset2, &preset3, &preset4, &preset5};
+        return *all[p];
+    }
+    const inp::Binding& SavePreset(int p) const {
+        const inp::Binding* all[5] = {&savePreset1, &savePreset2, &savePreset3, &savePreset4, &savePreset5};
         return *all[p];
     }
 } g_keys;
@@ -1273,7 +1322,8 @@ constexpr MapKeySetting kMapKeySettings[] = {
     // A vault's or spire's map: the floor shown, one up / down (PageUp / PageDown zoom, RS + the D-pad are taken)
     {"FloorUp", "Ctrl+Up, Pad:LT+Up", &MapKeys::floorUp},
     {"FloorDown", "Ctrl+Down, Pad:LT+Down", &MapKeys::floorDown},
-    // Filter presets on the World Map: apply slot 1..5, or the next / previous one on a controller
+    // Filter presets on the World Map and while playing (keyboard only there): apply slot 1..5, or the next / previous
+    // one on a controller
     {"Preset1", "Alt+1", &MapKeys::preset1},
     {"Preset2", "Alt+2", &MapKeys::preset2},
     {"Preset3", "Alt+3", &MapKeys::preset3},
@@ -1281,6 +1331,12 @@ constexpr MapKeySetting kMapKeySettings[] = {
     {"Preset5", "Alt+5", &MapKeys::preset5},
     {"PresetNext", "NoKeys, Pad:LT+Right", &MapKeys::presetNext},
     {"PresetPrevious", "NoKeys, Pad:LT+Left", &MapKeys::presetPrev},
+    // ... and save the filters shown into slot 1..5 (as a Ctrl + click on the slot)
+    {"SavePreset1", "Ctrl+Alt+1", &MapKeys::savePreset1},
+    {"SavePreset2", "Ctrl+Alt+2", &MapKeys::savePreset2},
+    {"SavePreset3", "Ctrl+Alt+3", &MapKeys::savePreset3},
+    {"SavePreset4", "Ctrl+Alt+4", &MapKeys::savePreset4},
+    {"SavePreset5", "Ctrl+Alt+5", &MapKeys::savePreset5},
 };
 bool KeyIsDown(int vk) { return inp::KeyDown(vk); }
 // A binding as text on the panel: the controller's chord when the game is showing controller tips.
@@ -1453,13 +1509,191 @@ struct DrawExclusion {
     float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
 };
 DrawExclusion g_drawExclusion;
+// The game's key hints along the bottom of the World Map (Mark Chest Looted, Hide Filter, ...): drawn before the mod's
+// icons, so while those draw they stay out of its strip, or they cover the hints
+DrawExclusion g_hintStrip;
+// How far from a game marker's spot an Alt / Ctrl + click still takes it (UI px): its icon's edge, not only its middle (a
+// spire's diamond is ~50 px across; 16 missed clicks on it). The nearest marker wins, so crowded spots are as before.
+constexpr float kMarkerReach = 26.0f;
+char g_hoverTitleText[128]{}; // the game's hover title (MarkerTitleTextHook) and when it was asked for
+uint64_t g_hoverTitleTick = 0;
+DrawExclusion g_modTitleBox; // the mod's own hover title, drawn last frame (DrawMapHoverTitle)
+uint64_t g_modTitleBoxTick = 0;
+// The game's marker under the cursor (its hover title's marker, MarkerTitleTextHook), and where its icon was drawn
+// (DrawWorldMapMarkerIconHook: its square, UI px), this frame or the last; the cursor (the World Map's frame)
+const uint8_t* g_hoveredGameMarker = nullptr;
+uint64_t g_hoveredGameMarkerTick = 0, g_hoveredIconTick = 0;
+float g_hoveredIcon[3]{}; // centre x, y, half size
+bool g_mapCursorIn = false;
+float g_mapCursor[2]{};
+// The game's hovered marker, when the cursor is on its icon as drawn: it is over the mod's icons (a Wooden Chest
+// beside an Ancient Spire), so it gets the hover title and Alt / Ctrl + click; off its icon, the mod's icon does
+// The marker the game shows its hover title for, this frame or the last (some, a rumor's "?", are drawn away from their
+// marker's own spot and not through the icon hook: no icon square to test). Its spot.
+bool GameTitledMarker(int32_t& x, int32_t& z) {
+    if (!g_hoveredGameMarker || GetTickCount64() - g_hoveredGameMarkerTick > 150ULL) return false;
+    __try {
+        x = *reinterpret_cast<const int32_t*>(g_hoveredGameMarker + 0x14);
+        z = *reinterpret_cast<const int32_t*>(g_hoveredGameMarker + 0x24);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+bool GameIconUnderCursor(int32_t* x = nullptr, int32_t* z = nullptr) {
+    const uint64_t now = GetTickCount64();
+    if (!g_hoveredGameMarker || !g_mapCursorIn || now - g_hoveredGameMarkerTick > 150ULL || now - g_hoveredIconTick > 150ULL)
+        return false;
+    // (inside its diamond: the place icons are diamonds, and the round ones fill about as much; a square would take the
+    // corners, where the icon under it shows)
+    if (std::fabs(g_mapCursor[0] - g_hoveredIcon[0]) + std::fabs(g_mapCursor[1] - g_hoveredIcon[1]) > g_hoveredIcon[2])
+        return false;
+    __try {
+        if (x) *x = *reinterpret_cast<const int32_t*>(g_hoveredGameMarker + 0x14);
+        if (z) *z = *reinterpret_cast<const int32_t*>(g_hoveredGameMarker + 0x24);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+// The game's "People & Places" legend at the top left (its row of icons under the title): the same
+DrawExclusion g_legendBox;
+// The players' locators on the World Map (the game's pins, drawn under the mod's icons): no mod icon over them
+// The game draws its markers after them too, so DrawWorldMapMarkerIconHook skips one whose spot is in a locator's box
+// (g_locatorKeep: last frame's boxes, kept while the map is drawn)
+DrawExclusion g_locators[8], g_locatorKeep[8];
+uint64_t g_locatorKeepTick = 0;
+float g_locatorRingZoom = 0.0f; // (dev op locatorzoom) the game draws the ring only on hover: zoomed all the way out it is the bare arrow too
+float g_locatorBox[4] = {-0.45f, -0.45f, 0.45f, 0.5f}; // round a player's map spot, in the game's marker icon sizes
+// (their drawn square, ~53 px with its padding): left, top, right, bottom. The arrow itself, ~half one across: a box the
+// size of the locator's ring left a gap round you where creatures and the like weren't drawn.
+float g_markerIconSize = 53.0f; // the game's marker icons drawn this frame (DrawWorldMapMarkerIconHook), UI px
+// The hover title's area (the game's, to the right of its hovered marker, or the mod's own): a tooltip panel is drawn
+// behind it, like the game's gear tooltips, so the name reads on a crowded map. Set before the icon passes.
+DrawExclusion g_titleBox;
+bool MapLayerReady(); // below: the map-layer pass is running (Map Desk on)
+// Where the mod's drawing would sit over the game's UI (a marker's menu column, the key hints, the legend): with the Map
+// Desk on, drawn under it in the map layer (UnderRing); without, left out as before
+bool OverGameUi(float x, float y, float w, float h) {
+    auto in = [&](const DrawExclusion& e) { return e.active && x < e.x1 && x + w > e.x0 && y < e.y1 && y + h > e.y0; };
+    return in(g_drawExclusion) || in(g_hintStrip) || in(g_legendBox);
+}
+bool g_ringReplayFlag = false; // (DrawUnderRing replaying: nothing excluded)
 bool Excluded(float x, float y, float w, float h) {
-    return g_drawExclusion.active && x < g_drawExclusion.x1 && x + w > g_drawExclusion.x0 && y < g_drawExclusion.y1 &&
-           y + h > g_drawExclusion.y0;
+    return !g_ringReplayFlag && !MapLayerReady() && OverGameUi(x, y, w, h);
+}
+// The mod's icons and check marks over the "player over here" ring: not dropped, drawn later in the map's own layer, under
+// the game's markers and that ring (desk.inl DrawUnder calls DrawUnderRing; without the Map Desk they draw as before)
+// The same for whole passes that belong with the game's markers (check marks on their corners, the mod's map words):
+// with g_toMapLayer set they all go into the map's layer, under the game's markers, labels and the ring.
+struct RingDraw {
+    int kind; // 0 asset, 1 icon, 2 label, 3 nine-slice box (border in w2), 4 solid rect
+    size_t asset;
+    uint8_t iconRef[16];
+    float x, y, w, h;
+    uint32_t rgba;
+    float alpha, brightness;
+    std::string text;
+    int hAlign = 0, vAlign = 0;
+    const uint8_t* style = nullptr;
+    float opacity = 1.0f; // the UI opacity to draw it at (a faint place name's)
+    float border = 0.0f;
+};
+float g_queueOpacity = 1.0f; // set by a caller that would have lowered the UI opacity (regions.inl DrawFaintPlaceName)
+std::vector<RingDraw> g_ringQueue, g_ringDrawing;
+extern bool g_mapDesk; // desk.inl
+bool g_ringReplay = false;
+bool g_toMapLayer = false;
+uint64_t g_mapLayerTick = 0; // the desk's map-layer pass ran recently (DrawUnderRing): the queue gets drawn
+bool MapLayerReady() { return g_mapDesk && GetTickCount64() - g_mapLayerTick <= 250; }
+bool g_arrowHovered = false;  // the cursor on your arrow (SetLocatorExclusions)
+DrawExclusion g_arrowBox;      // the player's bare arrow: the mod's icons go under it (not the check marks on game markers)
+bool g_markerChecks = false;   // drawing the check marks on the game's markers (they'd sink under their own marker)
+bool UnderRing(float x, float y, float w, float h) {
+    if (g_ringReplay || !MapLayerReady()) return false;
+    if (g_toMapLayer) return true;
+    // (only icon-sized things move under: a level-area tint strip or a forest run crossing the arrow or the hints, moved
+    // whole into the map layer, drew a dark band across the map)
+    if (w > 120.0f || h > 120.0f) return false;
+    if (OverGameUi(x, y, w, h)) return true;
+    if (!g_markerChecks && g_arrowBox.active && x < g_arrowBox.x1 && x + w > g_arrowBox.x0 && y < g_arrowBox.y1 && y + h > g_arrowBox.y0)
+        return true;
+    for (const DrawExclusion& e : g_locators)
+        if (e.active && x < e.x1 && x + w > e.x0 && y < e.y1 && y + h > e.y0) return true;
+    return false;
+}
+
+bool LevelMapView(uint8_t* mapState, float& zoom, float& originX, float& originY, float& mapWorldH); // levels.inl
+// The locators of the players the World Map shows (you, and the others unless Other Players is off), from the client's
+// player list (client + 0x4642c0, 0x240 apart, live position at +0x10 / +0x18)
+void SetLocatorExclusions(uint8_t* client, uint8_t* mapState) {
+    for (DrawExclusion& e : g_locators) e.active = false;
+    for (DrawExclusion& e : g_locatorKeep) e.active = false;
+    g_arrowBox.active = false;
+    g_locatorKeepTick = GetTickCount64();
+    float zoom = 0.0f, ox = 0.0f, oy = 0.0f, worldH = 0.0f;
+    if (!client || !LevelMapView(mapState, zoom, ox, oy, worldH)) return;
+    uint8_t* players = *reinterpret_cast<uint8_t**>(client + 0x4642c0);
+    const uint64_t count = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
+    const uint32_t localId = *reinterpret_cast<uint32_t*>(client + 0x18);
+    if (!players || count > 64) return;
+    size_t n = 0;
+    for (uint64_t i = 0; i < count && n < std::size(g_locators); ++i) {
+        const uint8_t* p = players + i * 0x240;
+        const uint32_t id = *reinterpret_cast<const uint32_t*>(p);
+        if (!id || (id != localId && !g_otherPlayersEnabled)) continue;
+        float sx = ox + *reinterpret_cast<const float*>(p + 0x10) * zoom;
+        float sy = oy + (worldH - *reinterpret_cast<const float*>(p + 0x18)) * zoom;
+        // off the view, the game pins your locator, as its ring ("player over here"), at the view's edge (measured: with you
+        // below the view its middle is 170 UI px above the bottom, straight above you)
+        bool offView = false;
+        if (id == localId) {
+            const float* r = g_overlayRootRect;
+            const float minX = r[0] + 70.0f, maxX = r[0] + r[2] - 70.0f, minY = r[1] + 180.0f, maxY = r[1] + r[3] - 170.0f;
+            offView = sx < minX || sx > maxX || sy < minY || sy > maxY;
+            sx = std::clamp(sx, minX, maxX), sy = std::clamp(sy, minY, maxY);
+        }
+        // (the locator is drawn the same size at any zoom, the pins aren't: in UI px, measured at the pins' 53)
+        const float u = 53.0f;
+        // the cursor on the arrow: the game draws its ring and point over its own pins, the mod's icons and check marks
+        // (drawn after) are kept out of it; the game's pins under it aren't hidden (the box UnderLocator reads stays
+        // the arrow's: hiding them made the pins round you vanish on hover)
+        static const float kRing[4] = {-0.95f, -0.95f, 0.95f, 1.5f};
+        // (the game shows the ring with the cursor anywhere on it: its whole width, the point too)
+        // the "player over here" ring: the game opens it with the cursor on the arrow itself and keeps it while the cursor
+        // stays on the ring (near the arrow without touching it, there is no ring and nothing may be hidden)
+        static bool s_ringOpen = false;
+        const float cdx = g_mapCursor[0] - sx, cdy = g_mapCursor[1] - sy;
+        const bool onArrow = g_mapCursorIn && std::fabs(cdx) < 0.45f * u && std::fabs(cdy) < 0.45f * u;
+        const bool onRing = g_mapCursorIn && cdx > kRing[0] * u && cdx < kRing[2] * u && cdy > kRing[1] * u && cdy < kRing[3] * u;
+        if (id == localId) s_ringOpen = onArrow || (s_ringOpen && onRing), g_arrowHovered = onArrow;
+        const bool ringed = id == localId && s_ringOpen;
+        // zoomed out the game draws your locator as that ring and point all the time; zoomed in it is the bare arrow, and
+        // nothing round it is hidden (the user: pins round you must stay)
+        const bool ringShown = id == localId && (ringed || offView || zoom < g_locatorRingZoom);
+        const float* box = g_locatorBox;
+        g_locators[n++] = {true, sx + box[0] * u, sy + box[1] * u, sx + box[2] * u, sy + box[3] * u};
+        // nothing round the player is hidden, ever (the user: "stop hiding stuff around the player"): the game's pins
+        // are never skipped; only while you hover the locator are the mod's own icons kept out of its ring
+        g_locatorKeep[n - 1].active = false;
+        // only while the ring shows are the mod's icons and check marks kept out of it (they drew over it); the game's
+        // pins are never skipped
+        // (these boxes don't hide anything: what the mod draws in them goes under, in the map layer: the player's arrow on
+        // top of everything, its ring too)
+        if (ringShown) g_locators[n - 1] = {true, sx + kRing[0] * u, sy + kRing[1] * u, sx + kRing[2] * u, sy + kRing[3] * u};
+        else {
+            if (id == localId) g_arrowBox = g_locators[n - 1]; // the bare arrow: g_arrowBox (check marks on a marker under it
+            g_locators[n - 1].active = false;                  // stay with their marker)
+        }
+    }
 }
 
 void DrawSolidRectAbs(void* parentWidgetRaw, float absX, float absY, float w, float h, uint32_t rgba, float alpha, float brightness = 1.0f) {
     if (!parentWidgetRaw || w <= 0.0f || h <= 0.0f || alpha <= 0.0f || Excluded(absX, absY, w, h)) return;
+    if (UnderRing(absX, absY, w, h)) {
+        if (g_ringQueue.size() < 4096) g_ringQueue.push_back({4, 0, {}, absX, absY, w, h, rgba, alpha, brightness});
+        return;
+    }
     float rect[4] = {absX, absY, w, h};
     uint32_t zeroImage = 0; // Image ID 0 is the engine's built-in solid white quad texture
     uint64_t packedCol = MakePackedColor(rgba, alpha, brightness);
@@ -1471,6 +1705,10 @@ void DrawSolidRectAbs(void* parentWidgetRaw, float absX, float absY, float w, fl
 void DrawAssetRectAbs(void* parentWidgetRaw, size_t assetOffset, float absX, float absY, float w, float h, uint32_t rgba, float alpha, float brightness = 1.0f) {
     uint8_t* assets = GetUiAssets();
     if (!assets || !parentWidgetRaw || w <= 0.0f || h <= 0.0f || alpha <= 0.0f || Excluded(absX, absY, w, h)) return;
+    if (UnderRing(absX, absY, w, h)) {
+        if (g_ringQueue.size() < 4096) g_ringQueue.push_back({0, assetOffset, {}, absX, absY, w, h, rgba, alpha, brightness});
+        return;
+    }
     float rect[4] = {absX, absY, w, h};
     uint64_t packedCol = MakePackedColor(rgba, alpha, brightness);
     alignas(16) uint8_t tmp[16]{};
@@ -1718,6 +1956,14 @@ uint32_t MultiplyColor(uint32_t a, uint32_t b) {
 
 void DrawIconRectAbs(void* parentWidgetRaw, const void* iconRef16, float absX, float absY, float w, float h, uint32_t rgba, float alpha, float brightness = 1.0f) {
     if (!parentWidgetRaw || !iconRef16 || w <= 0.0f || h <= 0.0f || alpha <= 0.0f || Excluded(absX, absY, w, h)) return;
+    if (UnderRing(absX, absY, w, h)) {
+        if (g_ringQueue.size() < 4096) {
+            RingDraw d{1, 0, {}, absX, absY, w, h, rgba, alpha, brightness};
+            std::memcpy(d.iconRef, iconRef16, 16);
+            g_ringQueue.push_back(d);
+        }
+        return;
+    }
     // The Boss row's icon is drawn by the mod from kBossIconRuns (its icon GUID in ore_deposits.h is only a stand-in)
     if (iconRef16 == static_cast<const void*>(kOreIcons[kBossesFirst])) {
         const float px = w / kBossIconSize, py = h / kBossIconSize;
@@ -1743,6 +1989,14 @@ void DrawBoxAbs(void* parentWidgetRaw, size_t assetOffset, float absX, float abs
                 uint32_t rgba, float alpha, float border, float brightness = 1.0f) {
     uint8_t* assets = GetUiAssets();
     if (!assets || !parentWidgetRaw || w <= 0.0f || h <= 0.0f || alpha <= 0.0f || Excluded(absX, absY, w, h)) return;
+    if (UnderRing(absX, absY, w, h)) {
+        if (g_ringQueue.size() < 4096) {
+            RingDraw d{3, assetOffset, {}, absX, absY, w, h, rgba, alpha, brightness};
+            d.border = border;
+            g_ringQueue.push_back(std::move(d));
+        }
+        return;
+    }
     if (!g_nineSlice) {
         if (assetOffset == kRoundedBoxPrimitive) {
             DrawSolidRectAbs(parentWidgetRaw, absX, absY, w, h, rgba, alpha, brightness);
@@ -1778,6 +2032,14 @@ void DrawLabelAbs(float absX, float absY, float w, float h, const char* utf8,
                   const uint8_t* style = nullptr, float fontScale = 1.0f) {
     uint8_t* assets = GetUiAssets();
     if (!assets || !utf8 || !*utf8 || Excluded(absX, absY, w, h)) return;
+    if (UnderRing(absX, absY, w, h)) {
+        if (g_ringQueue.size() < 4096) {
+            RingDraw d{2, 0, {}, absX, absY, w, h, rgba, alpha, fontScale};
+            d.text = utf8, d.hAlign = static_cast<int>(hAlign), d.vAlign = static_cast<int>(vAlign), d.style = style; d.opacity = g_queueOpacity;
+            g_ringQueue.push_back(std::move(d));
+        }
+        return;
+    }
     UiText text = MakeUiText(utf8);
     alignas(16) uint8_t label[0x400]{};
     g_beginLabel(label, &text, style ? style : assets + kSmallTextStyleOffset, 0);
@@ -2076,6 +2338,7 @@ void SyncLinkedResourceRows(uint8_t* client) {
 // one step. Another world's filters start the history over.
 struct FilterSnapshot {
     std::vector<std::pair<uint32_t, bool>> states; // the mod's own rows first, then the game's entries in order
+    uint64_t seq = 0; // in the undo / redo history: when it got there (g_historySeq), against the marks' steps
     bool operator==(const FilterSnapshot& o) const { return states == o.states; }
 };
 
@@ -2153,12 +2416,24 @@ void AnnounceMark(const char* name, size_t word, bool on) {
     ShowMapNotice(filter_notice::Mark(name, state, umm_lang::T(on ? umm_lang::Str::On : umm_lang::Str::Off)));
 }
 
+// Ctrl + click on a marker that can't be marked: "Elixir Well / Root - Can't be marked"
+const char* FilterRowName(uint32_t hash, const void** key = nullptr); // below
+void AnnounceCantMark(uint32_t rowHash) {
+    const char* name = FilterRowName(rowHash);
+    ShowMapNotice(std::string(name ? name : "") + (name ? " - " : "") + umm_lang::T(umm_lang::Str::CantMark));
+}
+
+// A place marked done by hand, or the mark cleared: "Night Sanctum - Done: ON"
+void AnnounceMarkDone(const char* name, bool on) {
+    if (name) ShowMapNotice(filter_notice::Mark(name, umm_lang::T(umm_lang::Str::PlaceDone), umm_lang::T(on ? umm_lang::Str::On : umm_lang::Str::Off)));
+}
+
 void AnnounceMarkState(const char* name, umm_lang::Str state) {
     if (name) ShowMapNotice(filter_notice::Mark(name, umm_lang::T(state)));
 }
 
 // The name a row shows for one of its types, and that row: null when no row has the type
-const char* FilterRowName(uint32_t hash, const void** key = nullptr) {
+const char* FilterRowName(uint32_t hash, const void** key) {
     for (const auto& grp : kCategoryGroups) {
         for (size_t r = 0; r < grp.rowCount; ++r) {
             const MarkerRowSpec& row = grp.rows[r];
@@ -2193,6 +2468,58 @@ void AnnounceFilterChange(const FilterSnapshot& before, const FilterSnapshot& af
 
 std::vector<FilterSnapshot> g_filterUndo, g_filterRedo;
 FilterSnapshot g_filterLastSeen;
+
+// Ctrl + click marks (a chest looted, a note read, a boss beaten, an item found, a place done) share Ctrl+Z / Ctrl+Y
+// with the filters: each is a step, and undo / redo takes the latest of either kind (by seq). Marks toggle, so undoing
+// or redoing one is the same toggle again at the same spot (a place by its marker's position). Kept for the session.
+struct MarkStep {
+    int kind;            // 1 boss, 2 unique item, 3 lore note, 4 chest, 5 place
+    float wx, wz;        // the click (a place: its marker)
+    float r, shift, chestR;
+    bool onMap;          // from the World Map (only what it draws can be marked), else the minimap
+    uint64_t seq;
+};
+std::vector<MarkStep> g_markUndo, g_markRedo;
+#ifdef UMM_DEV_BRIDGE
+std::atomic<int> g_devHistoryStep{0}; // 1 undo, 2 redo, from the bridge
+#endif
+uint64_t g_historySeq = 1;
+bool ToggleChestClearedNearWorldPos(float wx, float wz, float maxRadiusMeters);
+bool TogglePlaceDone(int32_t x, int32_t z, bool& nowDone);
+extern bool g_markClickOnWorldMap;
+void AnnounceMarkDone(const char* name, bool on);
+const char* PlaceRowNameAt(uint8_t* client, int32_t x, int32_t z);
+
+// A mark just made: a new step, and nothing left to redo
+void NoteMarkStep(int kind, float wx, float wz, float r, float shift, float chestR, bool onMap) {
+    if (!kind) return;
+    g_markUndo.push_back({kind, wx, wz, r, shift, chestR, onMap, ++g_historySeq});
+    if (g_markUndo.size() > 50) g_markUndo.erase(g_markUndo.begin());
+    g_markRedo.clear();
+    g_filterRedo.clear();
+}
+
+// The same toggle again (undo or redo)
+bool ReplayMark(uint8_t* client, const MarkStep& s) {
+    g_markClickOnWorldMap = s.onMap;
+    bool done = false;
+    switch (s.kind) {
+    case 1: done = ToggleManualBossNear(s.wx, s.wz, s.r, s.shift); break;
+    case 2: done = ToggleUniqueFoundNear(s.wx, s.wz, s.r, s.shift); break;
+    case 3: done = ToggleLoreReadNear(s.wx, s.wz, s.r, s.shift, s.chestR); break;
+    case 4: done = ToggleChestClearedNearWorldPos(s.wx, s.wz, s.chestR); break;
+    case 5: {
+        bool nowDone = false;
+        done = TogglePlaceDone(static_cast<int32_t>(s.wx), static_cast<int32_t>(s.wz), nowDone);
+        if (done) AnnounceMarkDone(PlaceRowNameAt(client, static_cast<int32_t>(s.wx), static_cast<int32_t>(s.wz)), nowDone);
+        break;
+    }
+    default: break;
+    }
+    g_markClickOnWorldMap = false;
+    g_chestLootDirty = true;
+    return done;
+}
 
 // The history is kept in filter_history.txt, so Ctrl+Z still reaches back after a hot reload or a restart: the rows'
 // hashes once, then each snapshot as one 0/1 per row (the last one seen, the undo steps oldest first, the redo steps).
@@ -2281,9 +2608,11 @@ void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
         g_filterUndo.clear();
         g_filterRedo.clear();
     } else if (!(now == g_filterLastSeen)) {
+        g_filterLastSeen.seq = ++g_historySeq;
         g_filterUndo.push_back(std::move(g_filterLastSeen));
         if (g_filterUndo.size() > kMaxSteps) g_filterUndo.erase(g_filterUndo.begin());
         g_filterRedo.clear();
+        g_markRedo.clear();
         changed = true;
     }
     const bool first = g_filterLastSeen.states.empty();
@@ -2294,13 +2623,37 @@ void UpdateFilterHistory(uint8_t* client, uint8_t* mapState, bool keysFree) {
     const inp::PadState pad = keysFree && !g_padKeyFocus ? inp::ReadPad() : inp::PadState{};
     const bool undoDown = keysFree && (inp::KeysHeld(g_keys.undo, KeyIsDown) || inp::PadHeld(g_keys.undo, pad));
     const bool redoDown = keysFree && (inp::KeysHeld(g_keys.redo, KeyIsDown) || inp::PadHeld(g_keys.redo, pad));
-    const bool undo = undoDown && !undoWasDown;
-    const bool redo = redoDown && !redoWasDown;
+    bool undo = undoDown && !undoWasDown;
+    bool redo = redoDown && !redoWasDown;
+#ifdef UMM_DEV_BRIDGE
+    if (const int dev = g_devHistoryStep.exchange(0)) (dev == 1 ? undo : redo) = true; // mapfilters undo / redo
+#endif
     undoWasDown = undoDown;
     redoWasDown = redoDown;
+    if (!undo && !redo) return;
+    // A mark's step, if it is later than the filters' one
+    {
+        auto& mFrom = undo ? g_markUndo : g_markRedo;
+        auto& mTo = undo ? g_markRedo : g_markUndo;
+        const auto& fFrom = undo ? g_filterUndo : g_filterRedo;
+        if (!mFrom.empty() && (fFrom.empty() || mFrom.back().seq > fFrom.back().seq)) {
+            MarkStep s = mFrom.back();
+            mFrom.pop_back();
+            ReplayMark(client, s);
+            s.seq = ++g_historySeq;
+            mTo.push_back(s);
+            if (mapState) {
+                *reinterpret_cast<uint64_t*>(mapState + 0x542f8) = 0; // the marker pass runs again
+                *reinterpret_cast<uint8_t*>(mapState + 0xc1b4) = 1;
+            }
+            if (g_log) g_log("Map Key: %s a mark (kind %d)", undo ? "undid" : "redid", s.kind);
+            return;
+        }
+    }
     auto& from = undo ? g_filterUndo : g_filterRedo;
     auto& to = undo ? g_filterRedo : g_filterUndo;
-    if ((!undo && !redo) || from.empty()) return;
+    if (from.empty()) return;
+    now.seq = ++g_historySeq;
     to.push_back(now);
     RestoreFilterSnapshot(client, mapState, from.back());
     from.pop_back();
@@ -2513,12 +2866,28 @@ int MatchingFilterPreset(uint8_t* client) {
     return -1;
 }
 
-// Alt+1..5 and the controller's next / previous, once a frame with the map up
-void UpdatePresetKeys(uint8_t* client, uint8_t* mapState, bool keysFree) {
+bool PresetKeyGoingDown(int vk) {
+    auto heldWith = [vk](int k) { return k == vk || KeyIsDown(k); }; // the key itself is going down now
+    for (int p = 0; p < kPresetCount; ++p)
+        if (inp::KeysHeld(g_keys.Preset(p), heldWith) || inp::KeysHeld(g_keys.SavePreset(p), heldWith)) return true;
+    return false;
+}
+
+void StoreFilterPreset(uint8_t* client, int p);
+// Alt+1..5 and the controller's next / previous, once a frame with the map up (and while playing: keysOnly, the
+// keyboard's only, as the controller's LT + D-pad is the game's there); Ctrl+Alt+1..5 save into the slot
+void UpdatePresetKeys(uint8_t* client, uint8_t* mapState, bool keysFree, bool keysOnly = false) {
+    auto isDown = [keysOnly](const inp::Binding& b) { return keysOnly ? inp::KeysHeld(b, KeyIsDown) : BindingDown(b); };
+    static bool saveWas[kPresetCount]{};
+    for (int i = 0; i < kPresetCount; ++i) {
+        const bool down = keysFree && isDown(g_keys.SavePreset(i));
+        if (down && !saveWas[i]) StoreFilterPreset(client, i);
+        saveWas[i] = down;
+    }
     static bool was[kPresetCount + 2]{};
     for (int i = 0; i < kPresetCount + 2; ++i) {
         const inp::Binding& b = i < kPresetCount ? g_keys.Preset(i) : (i == kPresetCount ? g_keys.presetNext : g_keys.presetPrev);
-        const bool down = keysFree && BindingDown(b);
+        const bool down = keysFree && isDown(b);
         const bool edge = down && !was[i];
         was[i] = down;
         if (!edge) continue;
@@ -3200,6 +3569,16 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     boss_live::Update(client);
     NoteVisitedPlaces(client);
     chest_glow::UpdateKey(client, appFocused);
+    // The filter preset keys while playing too (requested 2026-11-11): the minimap and the World Map change together,
+    // the notice beside the minimap
+    if (client[0x1cd8] == 1 && appFocused) {
+        g_playingKeysTick = nowTick;
+        const uint64_t noticeBefore = g_filterNoticeTick;
+        UpdatePresetKeys(client, nullptr, true, true);
+        if (g_filterNoticeTick != noticeBefore) g_filterNoticeOnHud = true;
+    } else {
+        g_playingKeysTick = 0;
+    }
 
     // 1. A chest counts as looted when the interact key is pressed next to it and the game switches to its
     //    chest screen (21) right after. The key alone, or the inventory (9) opened by itself, marks nothing.
@@ -3658,6 +4037,42 @@ uint32_t GetQuestFilterHashForMarkerIdUncached(uint32_t id08, bool activeObjecti
     return (questCat >= 0x64ULL) ? 0xa7cadc08u : 0xc52e92e5u;
 }
 
+// The id of the quest pin (a marker of type 0xafce0c5f of its own) of the quest that names a place's marker id, or 0:
+// the quests' pins by quest, gathered every 2 s from the marker arrays
+uint32_t QuestPinIdForPlaceInner(uint8_t* client, uint32_t placeId) {
+    static std::unordered_map<const void*, uint32_t> pins;
+    static uint64_t built = 0;
+    if (!g_getQuestByMarkerId || !client || !placeId) return 0u;
+    if (GetTickCount64() - built > 2000) {
+        built = GetTickCount64();
+        pins.clear();
+        constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+        for (size_t a = 0; a < 4; ++a) {
+            uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[a]);
+            const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[a] + 8);
+            if (!base || count == 0 || count > 10000) continue;
+            for (uint64_t i = 0; i < count; ++i) {
+                const uint8_t* m = base + i * 0xA0;
+                if (GetMarkerOrigTypeHash(m) != 0xafce0c5fu) continue;
+                uint32_t id = IsSlotSaved(m) ? *reinterpret_cast<const uint32_t*>(m + 0x4c) : 0u;
+                if (!id) id = *reinterpret_cast<const uint32_t*>(m + 0x08);
+                if (const void* q = id ? g_getQuestByMarkerId(id) : nullptr) pins.emplace(q, id);
+            }
+        }
+    }
+    const void* q = g_getQuestByMarkerId(placeId);
+    if (!q) return 0u;
+    auto it = pins.find(q);
+    return it != pins.end() && it->second != placeId ? it->second : 0u;
+}
+uint32_t QuestPinIdForPlace(uint8_t* client, uint32_t placeId) {
+    __try {
+        return QuestPinIdForPlaceInner(client, placeId);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return 0u;
+    }
+}
+
 // The lore list FUN_140d50dd0 (IsLoreRumorMarkerId) walks: client + 0xb3d40 groups (count at +0xb3d48, 0x22f00
 // bytes each, items at +0x18 / count +0x20), items of 0x1748 bytes whose entries (0xb8 bytes, count at item +0x171c)
 // start at item +0x58 and list marker ids (16 bytes apart, count at entry +0x78). FUN_140d1fd90 reads the byte
@@ -4029,6 +4444,13 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                        g_isLoreRumorMarkerId && savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) &&
                        LoreRumorFound(client, savedId08) != 1;
             };
+            // The id a rumor "?" carries: a place with a rumor that a quest also names (the Sunken Ancient City: a clothes
+            // rumor and Follow The Melody) gets the game's quest "!" but the rumor's card on hover. It carries the quest
+            // pin's id instead, so hovering it shows the quest (requested by the user)
+            auto rumorCardId = [&](bool rumor) {
+                const uint32_t pinId = rumor ? QuestPinIdForPlace(client, savedId08) : 0u;
+                return pinId ? pinId : savedId08;
+            };
 
             if (origHash == 0xa17072beu) {
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
@@ -4108,7 +4530,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 // An active quest objective here shows as the quest (vanilla shows the quest, not the place), and an
                 // unread rumor as the "?"
                 const bool rumor = isSubpinRumor(townFilterOn);
-                applyMarkerVisibility(m, origHash, savedId08,
+                applyMarkerVisibility(m, origHash, rumorCardId(rumor && !subpinQuestOn),
                                       townFilterOn && revealedForPinMode && !subpinQuestOn && !rumor,
                                       subpinQuestOn || rumor, allowSubpinId);
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
@@ -4121,7 +4543,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             }
             if (origHash == 0x9786a9f3u) {
                 const bool rumor = isSubpinRumor(passageFilterOn);
-                applyMarkerVisibility(m, origHash, savedId08,
+                applyMarkerVisibility(m, origHash, rumorCardId(rumor && !subpinQuestOn),
                                       passageFilterOn && revealedForPinMode && !subpinQuestOn && !rumor,
                                       subpinQuestOn || rumor, allowSubpinId);
                 arr0Sig = (arr0Sig ^ computeMarkerKey(m) ^ *reinterpret_cast<uint32_t*>(m + 0x30)) * 0x100000001b3ULL;
@@ -4141,13 +4563,17 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 // place's icon that the unlock patches reveal; the quest even where the map is not explored yet.
                 const bool subpinRumor = isSubpinRumor(poiFilterOn);
                 if (subpinQuestOn || subpinRumor) {
-                    applyMarkerVisibility(m, origHash, savedId08, false, true, true);
+                    // a place with a rumor that a quest also names (the Sunken Ancient City: a clothes rumor and Follow
+                    // The Melody): the game drew the quest's "!" with the rumor's card. It carries the quest pin's id, so
+                    // its card is the quest's (requested by the user)
+                    applyMarkerVisibility(m, origHash, rumorCardId(subpinRumor && !subpinQuestOn), false, true, true);
                     if (subpinRumor) {
                         addCountForHash(0x8ba7c122u);
                         noteRumor(m);
                     }
                 } else if (!revealedForPinMode || !poiFilterOn || GameNeverShowsPlace(savedId08) ||
-                           (g_hideCompletedPlaces && (m[0x34] == 3 || IsVisitedSanctumMarker(m, origHash)) &&
+                           (((g_hideCompletedPlaces && (m[0x34] == 3 || IsVisitedSanctumMarker(m, origHash))) ||
+                             HandDoneHidden(m, origHash)) &&
                             !IsWaypointMarker(m))) {
                     // (state 3: the game's completed place, drawn with a check mark; hidden with Completed Places: Hide,
                     // like a sanctum you have been to, unless your waypoint is on it: hidden, it can't be clicked to
@@ -5824,12 +6250,52 @@ struct HideRowTarget {
 const char* RowText(const MarkerRowSpec& row);
 bool MarkerHiddenOnMap(const uint8_t* m); // regions.inl
 
+// A quest / rumor pin (type 0xafce0c5f, search radius at +0x28) whose circle holds (wx, wz) while no other shown marker is
+// within reach of it: its spot (the smallest circle if several). False if none.
+bool RumorCircleAtInner(uint8_t* client, float wx, float wz, float reach, int32_t& outX, int32_t& outZ) {
+    constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+    float bestR = 1e9f;
+    bool nearOther = false;
+    for (size_t a = 0; a < 4; ++a) {
+        uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[a]);
+        const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[a] + 8);
+        if (!base || count == 0 || count > 10000) continue;
+        for (uint64_t i = 0; i < count; ++i) {
+            const uint8_t* m = base + i * 0xA0;
+            const uint32_t type = *reinterpret_cast<const uint32_t*>(m + 0x30);
+            if (type == 0u || MarkerHiddenOnMap(m)) continue;
+            const float dx = *reinterpret_cast<const int32_t*>(m + 0x14) - wx, dz = *reinterpret_cast<const int32_t*>(m + 0x24) - wz;
+            const float d2 = dx * dx + dz * dz;
+            if (type != 0xafce0c5fu) {
+                if (d2 < reach * reach) nearOther = true;
+                continue;
+            }
+            const float r = std::max(*reinterpret_cast<const float*>(m + 0x28), *reinterpret_cast<const float*>(m + 0x2c));
+            if (!(r > 0.5f && r < 5000.0f) || d2 > r * r || r >= bestR) continue;
+            bestR = r;
+            outX = *reinterpret_cast<const int32_t*>(m + 0x14), outZ = *reinterpret_cast<const int32_t*>(m + 0x24);
+        }
+    }
+    return bestR < 1e9f && !nearOther;
+}
+bool RumorCircleAt(uint8_t* client, float wx, float wz, float reach, int32_t& outX, int32_t& outZ) {
+    __try {
+        return RumorCircleAtInner(client, wx, wz, reach, outX, outZ);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+
 // The Map Key row of the marker clicked: the shown marker nearest the spot, within maxDist metres. The mod's own icons
 // (lore notes, ores, ...) aren't markers of the game's: knownRow is the one under the cursor.
-bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uint32_t knownRow, HideRowTarget& out) {
+bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uint32_t knownRow, HideRowTarget& out,
+                     bool gameFirst = false) {
     auto* filterEntries = reinterpret_cast<FilterEntry*>(client + 0x40eaa0);
     const size_t filterCount = *reinterpret_cast<uint8_t*>(client + 0x40ebe0);
-    uint32_t h = knownRow;
+    // The game's markers are drawn over the mod's icons, so one near the spot wins over knownRow (small ore or chest
+    // icons sit under an Ancient Spire: Alt + click on the spire went to their row, often already off)
+    // (gameFirst: Alt + click; Ctrl + click marks the chest icon under the cursor)
+    uint32_t h = gameFirst ? 0u : knownRow;
     if (!h) {
     float best = maxDist * maxDist;
     constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
@@ -5884,6 +6350,7 @@ bool HideRowTargetAt(uint8_t* client, int32_t wx, int32_t wz, float maxDist, uin
         }
     }
     }
+    if (h == 0u) h = knownRow;
     if (h == 0u) return false;
     const char* name = nullptr;
     for (const auto& grp : kCategoryGroups) {
@@ -5912,6 +6379,80 @@ void HideClickedRow(uint8_t* client, uint8_t* mapState, const HideRowTarget& tar
     }
     AnnounceFilterChange(before, TakeFilterSnapshot(client));
     if (g_log) g_log("Map: hid the row %08x (%s)", target.hashes[0], how);
+}
+
+void AnnounceMarkDone(const char* name, bool on);
+
+// The row name of the game's marker at exactly (x, z), for a place mark undone or redone
+const char* PlaceRowNameAt(uint8_t* client, int32_t x, int32_t z) {
+    constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+    for (size_t a = 0; a < 4; ++a) {
+        uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[a]);
+        const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[a] + 8);
+        if (!base || count == 0 || count > 10000) continue;
+        for (uint64_t i = 0; i < count; ++i) {
+            const uint8_t* m = base + i * 0xA0;
+            if (*reinterpret_cast<const int32_t*>(m + 0x14) != x || *reinterpret_cast<const int32_t*>(m + 0x24) != z) continue;
+            const uint32_t origHash = GetMarkerOrigTypeHash(m);
+            if (origHash == 0u || origHash == 0xafce0c5fu) continue;
+            if (const char* n = FilterRowName(NormalizeFilterTypeHash(origHash))) return n;
+        }
+    }
+    return nullptr;
+}
+
+// Ctrl + click on a place the game shows (a town, a camp, a sanctum, a cave...): marked done by hand, or the mark
+// cleared. Not chests (looted), Elixir Wells and Roots (the game checks them off), players, portals, altars or the
+// mod's own icons. The nearest such marker the map draws
+// within maxDist metres; false if none.
+bool ToggleDonePlaceAt(uint8_t* client, float wx, float wz, float maxDist, int32_t* hitX = nullptr, int32_t* hitZ = nullptr) {
+    auto placeRow = [](uint32_t fh) {
+        if (fh == kGoldChestTypeHash || fh == kSilverChestTypeHash || fh == kWoodChestTypeHash || fh == kSpoilsTypeHash ||
+            fh == kOtherPlayerTypeHash || fh == kTownPortalTypeHash || fh == kWaterSourceTypeHash || fh == 0xa447cba3u ||
+            fh == kElixirWellRowHash || IsOreHash(fh)) // (Elixir Wells and Roots: the game checks them off)
+            return false;
+        for (const MarkerRowSpec& r : kCategory1Rows) if (r.typeHash == fh) return true;
+        for (const MarkerRowSpec& r : kCategory2Rows) if (r.typeHash == fh) return true;
+        for (const MarkerRowSpec& r : kCategory3Rows) if (r.typeHash == fh) return true;
+        return false;
+    };
+    float best = maxDist * maxDist;
+    const uint8_t* hit = nullptr;
+    uint32_t hitRow = 0;
+    constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+    for (size_t a = 0; a < 4; ++a) {
+        uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[a]);
+        const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[a] + 8);
+        if (!base || count == 0 || count > 10000) continue;
+        for (uint64_t i = 0; i < count; ++i) {
+            const uint8_t* m = base + i * 0xA0;
+            const uint32_t origHash = GetMarkerOrigTypeHash(m);
+            if (origHash == 0u || origHash == 0xafce0c5fu || *reinterpret_cast<const uint32_t*>(m + 0x30) == 0u || MarkerHiddenOnMap(m))
+                continue;
+            if ((*reinterpret_cast<const uint32_t*>(m) & 0xFFFF0000u) == kChestMarkerUidPrefix) continue;
+            const float dx = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)) - wx;
+            const float dz = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24)) - wz;
+            const float d2 = dx * dx + dz * dz;
+            if (d2 > best) continue;
+            const uint32_t fh = NormalizeFilterTypeHash(origHash);
+            if (!placeRow(fh)) continue;
+            // only a place shown as itself: one drawn as a quest's "!" or a rumor's "?" (its own row off, the Cave
+            // Passage under "Emerald Shores And Sanguine Seas") is the quest's, not a place to check off
+            if (*reinterpret_cast<const uint32_t*>(m + 0x30) == 0xafce0c5fu) continue;
+            best = d2;
+            hit = m;
+            hitRow = fh;
+        }
+    }
+    if (!hit) return false;
+    const int32_t x = *reinterpret_cast<const int32_t*>(hit + 0x14), z = *reinterpret_cast<const int32_t*>(hit + 0x24);
+    bool nowDone = false;
+    if (!TogglePlaceDone(x, z, nowDone)) return false;
+    if (hitX) *hitX = x;
+    if (hitZ) *hitZ = z;
+    AnnounceMarkDone(FilterRowName(hitRow), nowDone);
+    if (g_log) g_log("Map: place %08x at %d,%d marked %s by hand", hitRow, x, z, nowDone ? "done" : "not done");
+    return true;
 }
 
 bool g_worldMapWasOpen = true;
@@ -6261,12 +6802,15 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
 }
 
 #include "knowledge.inl"
+#include "creature_live.inl"
 #include "regions.inl"
 #include "levels.inl"
 #include "hd_pool.inl"
 #include "halls.inl"
 #include "ground_areas.inl"
 #include "roads.inl"
+void DrawUnderRing(void* widget); // the mod's icons from over the player's ring (desk.inl calls it)
+#include "desk.inl"
 #include "hall_pan_clamp.inl"
 #include "cursor_position.inl"
 
@@ -6341,6 +6885,34 @@ void DrawVisitedSanctumsOnMap(void* widgetRaw, const float* rootRect, uint8_t* c
         const float cx = sx + kIconHalf - kCheck * 0.7f, cy = sy + kIconHalf - kCheck * 0.7f;
         DrawAssetRectAbs(widgetRaw, kCirclePrimitive, cx - 1.0f, cy - 1.0f, kCheck + 2.0f, kCheck + 2.0f, 0xFF0A0E10u, 0.85f * a);
         DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, cx, cy, kCheck, kCheck, 0xFFFFFFFFu, 0.98f * a, 1.12f);
+    }
+    // The places marked done by hand, where the map draws their marker (not the game's own completed ones: theirs is
+    // drawn already)
+    constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+    for (size_t arr = 0; arr < 4; ++arr) {
+        uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[arr]);
+        const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[arr] + 8);
+        if (!base || count == 0 || count > 10000) continue;
+        for (uint64_t i = 0; i < count; ++i) {
+            const uint8_t* m = base + i * 0xA0;
+            const int32_t px = *reinterpret_cast<const int32_t*>(m + 0x14), pz = *reinterpret_cast<const int32_t*>(m + 0x24);
+            if (m[0x34] == 3 || *reinterpret_cast<const uint32_t*>(m + 0x30) == 0u || !PlaceMarkedDone(px, pz)) continue;
+            const uint32_t origHash = GetMarkerOrigTypeHash(m);
+            if (origHash == 0u || origHash == 0xafce0c5fu || MarkerHiddenOnMap(m) ||
+                NormalizeFilterTypeHash(origHash) == kElixirWellRowHash) continue;
+            // Only where the place's own row shows it (its marker stays in the game's list with the row off)
+            if (!IsFilterEnabled(filterEntries, filterCount, NormalizeFilterTypeHash(origHash))) continue;
+            if ((origHash == 0x7b4c9e16u || origHash == 0x6df85109u) &&
+                SanctumVisitedNear(static_cast<float>(px), static_cast<float>(pz))) continue; // drawn above
+            const float fx = static_cast<float>(px), fz = static_cast<float>(pz);
+            const float sx = originX + fx * zoom, sy = originY + (mapWorldH - fz) * zoom;
+            if (sx < left || sx > right || sy < top + 114.0f || sy > bottom) continue;
+            if (RegionHidesAt(fx, fz) || halls::MapHides(fx, fz)) continue;
+            const float a = OutsideFocusedRegion(fx, fz) ? 0.3f : 1.0f;
+            const float cx = sx + kIconHalf - kCheck * 0.7f, cy = sy + kIconHalf - kCheck * 0.7f;
+            DrawAssetRectAbs(widgetRaw, kCirclePrimitive, cx - 1.0f, cy - 1.0f, kCheck + 2.0f, kCheck + 2.0f, 0xFF0A0E10u, 0.85f * a);
+            DrawAssetRectAbs(widgetRaw, kCheckmarkPrimitive, cx, cy, kCheck, kCheck, 0xFFFFFFFFu, 0.98f * a, 1.12f);
+        }
     }
 }
 
@@ -6483,12 +7055,23 @@ uint64_t g_modHoverTitleTick = 0;
 // Like the game's own hover title ("Gem Forge"): bold and large, starting at x and centred on y, on a soft shadow.
 // A copy of the game's bold h3 style at 40 px, the game's own title's size (its identifier string dropped: it is a
 // relative pointer).
-void DrawMapHoverTitle(float x, float y, const char* name) {
+bool GameTitleReplaced(const void* m); // with the title hook
+// the name of the quest whose place pin is under the cursor, drawn by the mod (HideRumorsInner)
+char g_questTitle[160]{};
+uint64_t g_questTitleTick = 0;
+const uint8_t* g_questTitleFor = nullptr;
+void PublishCursorIcon();
+#ifdef UMM_DEV_BRIDGE
+void RunQuestAt(uint8_t* client);
+#endif
+bool ModHoverTitleShowing();
+void* g_hoverTitleWidget = nullptr; // the World Map overlay's root this frame: the mod's titles' panels go in it
+void DrawMapHoverTitle(float x, float y, const char* name, bool gameTitle) {
     static uint8_t titleStyle[kUiCharacterStyleSize]{};
     static uint8_t* titleStyleFor = nullptr;
     uint8_t* assets = GetUiAssets();
-    if (!assets || !name || !*name) return;
-    g_modHoverTitleTick = GetTickCount64();
+    if (!assets || !name || !*name || (!gameTitle && GameIconUnderCursor())) return; // the game's icon is over the mod's: its title
+    if (!gameTitle) g_modHoverTitleTick = GetTickCount64();
     if (titleStyleFor != assets) {
         std::memcpy(titleStyle, assets + kH3StyleOffset, sizeof(titleStyle));
         std::memset(titleStyle, 0, 8);
@@ -6499,6 +7082,15 @@ void DrawMapHoverTitle(float x, float y, const char* name) {
     const float fontScale = 40.0f / 15.0f; // TextWidth is calibrated on the small text
     const float h = 18.0f * fontScale, w = umm_lang::TextWidth(name) * fontScale + 12.0f;
     const float by = y - h * 0.5f;
+    g_modTitleBox = {true, x - 4.0f, by - 4.0f, x + w * 1.45f + 8.0f, by + h + 4.0f};
+    g_modTitleBoxTick = GetTickCount64();
+    // a dark tooltip panel behind it, like the game's titles get (SafeDrawTitlePanel)
+    {
+        // (the drawn title measured on screen: ~0.62 of TextWidth at this scale; no soft shadow: it showed as a smear)
+        const float pw = umm_lang::TextWidth(name) * fontScale * 0.68f + 44.0f, ph = h * 0.95f; // ("Gold Chest (Locked)" ran past 0.62)
+        const float px = x - 18.0f, py = y - ph * 0.5f;
+        DrawFramedBoxAbs(g_hoverTitleWidget, px, py, pw, ph, 0xff15191au, 0.93f, 0xff6c8c96u, 0.45f, 6.0f);
+    }
     // No band behind it (the soft glow reads as a dark oval on the map): a faint 1 px drop shadow, like the game's own
     // hover title (Silver Chest)
     // The style's size only caps the label's: the label is scaled up to the game's title (measured: 1.45x)
@@ -6553,6 +7145,23 @@ int MapThinCell(float mapPx, float edgePx, float cell) {
     return static_cast<int>(std::floor(mapPx / cell)) - static_cast<int>(std::floor(edgePx / cell));
 }
 
+// Your position from the client's player list (client + 0x4642c0, 0x240 apart, live position at +0x10 / +0x18)
+bool LocalPlayerXZ(uint8_t* client, float& x, float& z) {
+    if (!client) return false;
+    uint8_t* players = *reinterpret_cast<uint8_t**>(client + 0x4642c0);
+    const uint64_t count = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
+    const uint32_t localId = *reinterpret_cast<uint32_t*>(client + 0x18);
+    if (!players || count > 64) return false;
+    for (uint64_t i = 0; i < count; ++i) {
+        const uint8_t* p = players + i * 0x240;
+        if (*reinterpret_cast<const uint32_t*>(p) != localId) continue;
+        x = *reinterpret_cast<const float*>(p + 0x10);
+        z = *reinterpret_cast<const float*>(p + 0x18);
+        return true;
+    }
+    return false;
+}
+
 void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client, uint8_t* mapState,
                           bool haveCursor, float mx, float my, int maxIcons) {
     g_hoveredDepositRow = 0u;
@@ -6594,11 +7203,29 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     // Three passes: the dense resource rows (thinned to one per cell, capped), then the sparse point rows (water,
     // beacons), then lore notes and bosses: never thinned or capped, drawn on top, so a barrel beside a boss can't
     // hide it.
-    for (int pass = 0; pass < 3; ++pass)
-    for (size_t i = 0; i < kOreDepositCount && (pass > 0 || drawn < maxIcons); ++i) {
+    // The capped pass: the dense rows on screen, nearest the player first when there are more than the cap allows (the
+    // creatures alone can be thousands), so what is around you is never the part thinned away; scattered order beyond
+    // that, as before.
+    static std::vector<std::pair<float, uint32_t>> closeDeps;
+    closeDeps.clear();
+    float px = 0.0f, pz = 0.0f;
+    const bool havePlayer = LocalPlayerXZ(client, px, pz);
+    for (size_t i = 0; i < kOreDepositCount; ++i) {
         const size_t d = (i * 7919) % kOreDepositCount;
         const OreDeposit& dep = kOreDeposits[d];
-        if (!g_oreEnabled[dep.ore] || kOreAreaColors[dep.ore] != 0) continue;
+        if (!g_oreEnabled[dep.ore] || kOreAreaColors[dep.ore] != 0 || !IsResourceCategory(kOreCategory[dep.ore]) || CreatureOffWorldMap(dep.ore)) continue;
+        const float sx = originX + dep.x * zoom, sy = originY + (mapWorldH - dep.z) * zoom;
+        if (sx < left - size || sx > right + size || sy < top - size || sy > bottom + size) continue;
+        const float dx = dep.x - px, dz = dep.z - pz;
+        closeDeps.emplace_back(havePlayer ? dx * dx + dz * dz : 0.0f, static_cast<uint32_t>(d));
+    }
+    if (havePlayer && closeDeps.size() > static_cast<size_t>(maxIcons))
+        std::stable_sort(closeDeps.begin(), closeDeps.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    for (int pass = 0; pass < 3; ++pass)
+    for (size_t i = 0; i < (pass == 0 ? closeDeps.size() : kOreDepositCount) && (pass > 0 || drawn < maxIcons); ++i) {
+        const size_t d = pass == 0 ? closeDeps[i].second : (i * 7919) % kOreDepositCount;
+        const OreDeposit& dep = kOreDeposits[d];
+        if (!g_oreEnabled[dep.ore] || kOreAreaColors[dep.ore] != 0 || CreatureOffWorldMap(dep.ore)) continue;
         const int depPass = IsResourceCategory(kOreCategory[dep.ore]) ? 0 : (IsKnowledgeDeposit(d) ? 2 : 1);
         if (depPass != pass) continue;
         const float sx = originX + dep.x * zoom + (pass == 2 ? StackSide(d) * size * 0.7f : 0.0f);
@@ -6902,7 +7529,7 @@ void DrawGearIconAbs(void* widgetRaw, float cx, float cy, float r, uint32_t col,
 
 const PanelLayout& CurrentPanelLayout();
 
-constexpr float kSettingsCardH = 664.0f;
+constexpr float kSettingsCardH = 868.0f; // (four section headers: World Map, Minimap, Look, Filters)
 
 float SettingsSegWidth() {
     using umm_lang::Str;
@@ -6938,12 +7565,27 @@ float SettingsCardWidth() {
         TextWidth(T(Str::RegionNames)),
         TextWidth(T(Str::VanillaWorldMap)),
         TextWidth(T(Str::VanillaMinimap)) + 14.0f, // indented under Vanilla World Map
+        TextWidth(T(Str::DungeonMaps)),
+        TextWidth(T(Str::MapDesk)),
+        TextWidth(T(Str::NearbyCreatures)),
+        TextWidth(T(Str::HideOnWorldMap)) + 14.0f, // indented under Nearby Creatures Only
         TextWidth(T(Str::FilterLocks)) + 40.0f // " (12)"
     });
     return std::max(CurrentPanelLayout().panelW, std::min(640.0f, std::max(448.0f, 12.0f + maxLbl + 18.0f + 2.0f * segW + 4.0f + 12.0f)));
 }
 
 bool SetVanillaWorldMap(bool on); // below
+void SaveMinimapConfig();
+// Dungeon Maps on or off; off, an open dungeon map turns back into the overworld at once
+void SetDungeonMaps(bool on) {
+    g_dungeonMaps = on;
+    if (!on) {
+        halls::g_mapDungeon = -1;
+        halls::g_mapOverworld = false;
+    }
+    SaveMinimapConfig();
+    if (g_log) g_log("Dungeon Maps %s", on ? "on" : "off: the overworld map in halls, vaults and spires");
+}
 
 // Draws the Settings modal card (accessible from the [⚙] cog on both the World Map and HUD Minimap).
 // Returns true if any setting was changed this frame.
@@ -7064,6 +7706,14 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
 
     ry += 2.0f * kRowH + 6.0f; // the FOG and PINS rows
 
+    // Section: the World Map
+    {
+        DrawSolidRectAbs(widgetRaw, sx + 8.0f, ry + 4.0f, cardW - 16.0f, 1.0f, kGoldDim, 0.65f);
+        DrawLabelAbs(sx + 12.0f, ry + 4.0f, cardW - 24.0f, kRowH - 6.0f, T(Str::SecMap), kTitle, 0.9f,
+                     TextAlignH::Left, TextAlignV::Center);
+        ry += kRowH - 2.0f;
+    }
+
     // Row 1: Custom Marker Size: [-] [1.0x] [+]
     {
         const float stepBtnW = 26.0f, stepBtnH = 22.0f, badgeW = 66.0f, gap = 4.0f;
@@ -7103,6 +7753,145 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
             changed = true;
         }
         ry += kRowH;
+    }
+
+    // Row 5: Looted / Read / Beaten: [Hide] | [Greyed Out]
+    {
+        const float segH = 22.0f, gap = 4.0f;
+        const float btn1X = ctrlRight - segW;
+        const float btn0X = btn1X - gap - segW;
+        const float by = ry + (kRowH - segH) * 0.5f;
+
+        // A long name (the card's width is capped) is drawn a little smaller instead of running under the buttons
+        const float labelW = btn0X - (sx + 12.0f) - 10.0f;
+        const float textW = umm_lang::TextWidth(T(Str::LootedChests)) * 1.6f; // the estimate, in this font
+        const float scale = textW > labelW ? std::max(0.7f, labelW / textW) : 1.0f;
+        DrawLabelAbs(sx + 12.0f, ry, labelW, kRowH, T(Str::LootedChests), 0xffd6e6eeu, 0.96f, TextAlignH::Left,
+                     TextAlignV::Center, nullptr, scale);
+
+        bool hov0 = isHov(btn0X, by, segW, segH);
+        bool hov1 = isHov(btn1X, by, segW, segH);
+        bool act0 = (g_lootedChestMode == 0);
+        bool act1 = (g_lootedChestMode == 1);
+
+        DrawKeyButtonAbs(widgetRaw, btn0X, by, segW, segH, hov0, act0);
+        DrawLabelAbs(btn0X, by, segW, segH, T(Str::Hide), act0 ? kActiveText : (hov0 ? kText : kTextMuted),
+                     act0 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
+
+        DrawKeyButtonAbs(widgetRaw, btn1X, by, segW, segH, hov1, act1);
+        DrawLabelAbs(btn1X, by, segW, segH, T(Str::GreyedOut), act1 ? kActiveText : (hov1 ? kText : kTextMuted),
+                     act1 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
+
+        if (clicked && hov0 && g_lootedChestMode != 0) {
+            g_lootedChestMode = 0;
+            g_chestLootDirty = true;
+            SaveMinimapConfig();
+            changed = true;
+        } else if (clicked && hov1 && g_lootedChestMode != 1) {
+            g_lootedChestMode = 1;
+            g_chestLootDirty = true;
+            SaveMinimapConfig();
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Row 6: Completed Places: [Show] | [Hide] (places the game shows with a check mark)
+    {
+        const float segH = 22.0f, gap = 4.0f;
+        const float btn1X = ctrlRight - segW;
+        const float btn0X = btn1X - gap - segW;
+        const float by = ry + (kRowH - segH) * 0.5f;
+        DrawLabelAbs(sx + 12.0f, ry, btn0X - (sx + 12.0f) - 10.0f, kRowH, T(Str::CompletedPlaces), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        const bool hov0 = isHov(btn0X, by, segW, segH), hov1 = isHov(btn1X, by, segW, segH);
+        const bool act0 = !g_hideCompletedPlaces, act1 = g_hideCompletedPlaces;
+        DrawKeyButtonAbs(widgetRaw, btn0X, by, segW, segH, hov0, act0);
+        DrawLabelAbs(btn0X, by, segW, segH, T(Str::Show), act0 ? kActiveText : (hov0 ? kText : kTextMuted),
+                     act0 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
+        DrawKeyButtonAbs(widgetRaw, btn1X, by, segW, segH, hov1, act1);
+        DrawLabelAbs(btn1X, by, segW, segH, T(Str::Hide), act1 ? kActiveText : (hov1 ? kText : kTextMuted),
+                     act1 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
+        if (clicked && (hov0 || hov1) && g_hideCompletedPlaces != hov1) {
+            g_hideCompletedPlaces = hov1;
+            SaveMinimapConfig();
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Row A3: Region Names (the regions' names on the World Map) [ON / OFF]
+    {
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::RegionNames), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_regionNames);
+        if (clicked && hovRow) {
+            g_regionNames = !g_regionNames;
+            SaveMinimapConfig();
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Row A3b: Level Areas (the World Map in the areas of the enemies' levels) [ON / OFF]
+    {
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::LevelAreas), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_levelAreas);
+        if (clicked && hovRow) {
+            g_levelAreas = !g_levelAreas;
+            SaveMinimapConfig();
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Row A3c: Tint Strength, under Level Areas and only with it: [-] [50%] [+] in steps of 10 %
+    {
+        const bool usable = g_levelAreas;
+        const float stepBtnW = 26.0f, stepBtnH = 22.0f, badgeW = 66.0f, gap = 4.0f;
+        const float plusX = ctrlRight - stepBtnW;
+        const float badgeX = plusX - gap - badgeW;
+        const float minusX = badgeX - gap - stepBtnW;
+        const float by = ry + (kRowH - stepBtnH) * 0.5f;
+        DrawLabelAbs(sx + 26.0f, ry, minusX - (sx + 26.0f) - 10.0f, kRowH, T(Str::LevelTint),
+                     usable ? 0xffd6e6eeu : kOffText, usable ? 0.96f : 0.6f, TextAlignH::Left, TextAlignV::Center);
+        const bool canLess = usable && g_levelTintPct > 10, canMore = usable && g_levelTintPct < 80;
+        const bool hovMinus = usable && isHov(minusX, by, stepBtnW, stepBtnH);
+        const bool hovPlus = usable && isHov(plusX, by, stepBtnW, stepBtnH);
+        DrawKeyButtonAbs(widgetRaw, minusX, by, stepBtnW, stepBtnH, hovMinus, false);
+        DrawLabelAbs(minusX, by, stepBtnW, stepBtnH, "-", canLess ? (hovMinus ? kActiveText : kText) : kOffText, 0.95f,
+                     TextAlignH::Center, TextAlignV::Center);
+        char pct[8];
+        std::snprintf(pct, sizeof(pct), "%d%%", g_levelTintPct);
+        DrawFramedBoxAbs(widgetRaw, badgeX, by, badgeW, stepBtnH, kCategoryFill, 0.95f, kButtonFrame, 0.9f, 3.0f);
+        DrawLabelAbs(badgeX, by, badgeW, stepBtnH, pct, usable ? kActiveText : kOffText, 0.98f, TextAlignH::Center,
+                     TextAlignV::Center);
+        DrawKeyButtonAbs(widgetRaw, plusX, by, stepBtnW, stepBtnH, hovPlus, false);
+        DrawLabelAbs(plusX, by, stepBtnW, stepBtnH, "+", canMore ? (hovPlus ? kActiveText : kText) : kOffText, 0.95f,
+                     TextAlignH::Center, TextAlignV::Center);
+        if (clicked && ((hovMinus && canLess) || (hovPlus && canMore))) {
+            g_levelTintPct += hovPlus ? 10 : -10;
+            SaveMinimapConfig();
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Section: the minimap
+    {
+        DrawSolidRectAbs(widgetRaw, sx + 8.0f, ry + 4.0f, cardW - 16.0f, 1.0f, kGoldDim, 0.65f);
+        DrawLabelAbs(sx + 12.0f, ry + 4.0f, cardW - 24.0f, kRowH - 6.0f, T(Str::SecMinimap), kTitle, 0.9f,
+                     TextAlignH::Left, TextAlignV::Center);
+        ry += kRowH - 2.0f;
     }
 
     // Row 2: Show Minimap [ON / OFF]
@@ -7241,65 +8030,155 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         ry += kRowH;
     }
 
-    // Row 5: Looted / Read / Beaten: [Hide] | [Greyed Out]
+    // Row A1: Position (X, Y, Z) [ON / OFF]
     {
-        const float segH = 22.0f, gap = 4.0f;
-        const float btn1X = ctrlRight - segW;
-        const float btn0X = btn1X - gap - segW;
-        const float by = ry + (kRowH - segH) * 0.5f;
-
-        // A long name (the card's width is capped) is drawn a little smaller instead of running under the buttons
-        const float labelW = btn0X - (sx + 12.0f) - 10.0f;
-        const float textW = umm_lang::TextWidth(T(Str::LootedChests)) * 1.6f; // the estimate, in this font
-        const float scale = textW > labelW ? std::max(0.7f, labelW / textW) : 1.0f;
-        DrawLabelAbs(sx + 12.0f, ry, labelW, kRowH, T(Str::LootedChests), 0xffd6e6eeu, 0.96f, TextAlignH::Left,
-                     TextAlignV::Center, nullptr, scale);
-
-        bool hov0 = isHov(btn0X, by, segW, segH);
-        bool hov1 = isHov(btn1X, by, segW, segH);
-        bool act0 = (g_lootedChestMode == 0);
-        bool act1 = (g_lootedChestMode == 1);
-
-        DrawKeyButtonAbs(widgetRaw, btn0X, by, segW, segH, hov0, act0);
-        DrawLabelAbs(btn0X, by, segW, segH, T(Str::Hide), act0 ? kActiveText : (hov0 ? kText : kTextMuted),
-                     act0 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
-
-        DrawKeyButtonAbs(widgetRaw, btn1X, by, segW, segH, hov1, act1);
-        DrawLabelAbs(btn1X, by, segW, segH, T(Str::GreyedOut), act1 ? kActiveText : (hov1 ? kText : kTextMuted),
-                     act1 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
-
-        if (clicked && hov0 && g_lootedChestMode != 0) {
-            g_lootedChestMode = 0;
-            g_chestLootDirty = true;
-            SaveMinimapConfig();
-            changed = true;
-        } else if (clicked && hov1 && g_lootedChestMode != 1) {
-            g_lootedChestMode = 1;
-            g_chestLootDirty = true;
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::ShowPosition), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_minimapShowPosition);
+        if (clicked && hovRow) {
+            g_minimapShowPosition = !g_minimapShowPosition;
             SaveMinimapConfig();
             changed = true;
         }
         ry += kRowH;
     }
 
-    // Row 6: Completed Places: [Show] | [Hide] (places the game shows with a check mark)
+    // Row A8: Nearby Creatures Only (the creature rows' spawn points off the maps; the live creatures near you on the
+    // minimap, creature_live.inl) [ON / OFF]
     {
-        const float segH = 22.0f, gap = 4.0f;
-        const float btn1X = ctrlRight - segW;
-        const float btn0X = btn1X - gap - segW;
-        const float by = ry + (kRowH - segH) * 0.5f;
-        DrawLabelAbs(sx + 12.0f, ry, btn0X - (sx + 12.0f) - 10.0f, kRowH, T(Str::CompletedPlaces), 0xffd6e6eeu, 0.96f,
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::NearbyCreatures), 0xffd6e6eeu, 0.96f,
                      TextAlignH::Left, TextAlignV::Center);
-        const bool hov0 = isHov(btn0X, by, segW, segH), hov1 = isHov(btn1X, by, segW, segH);
-        const bool act0 = !g_hideCompletedPlaces, act1 = g_hideCompletedPlaces;
-        DrawKeyButtonAbs(widgetRaw, btn0X, by, segW, segH, hov0, act0);
-        DrawLabelAbs(btn0X, by, segW, segH, T(Str::Show), act0 ? kActiveText : (hov0 ? kText : kTextMuted),
-                     act0 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
-        DrawKeyButtonAbs(widgetRaw, btn1X, by, segW, segH, hov1, act1);
-        DrawLabelAbs(btn1X, by, segW, segH, T(Str::Hide), act1 ? kActiveText : (hov1 ? kText : kTextMuted),
-                     act1 ? 1.0f : 0.85f, TextAlignH::Center, TextAlignV::Center);
-        if (clicked && (hov0 || hov1) && g_hideCompletedPlaces != hov1) {
-            g_hideCompletedPlaces = hov1;
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_nearCreatures);
+        if (clicked && hovRow) {
+            g_nearCreatures = !g_nearCreatures;
+            SaveMinimapConfig();
+            if (g_log) g_log("Nearby Creatures Only %s", g_nearCreatures ? "on" : "off");
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Row A8b: Hide on World Map, under Nearby Creatures Only and only with it: the creature spawn points off the World
+    // Map too
+    {
+        const bool usable = g_nearCreatures;
+        bool hovRow = usable && isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 26.0f, ry, cardW - 50.0f - OnOffBadgeWidth(), kRowH, T(Str::HideOnWorldMap),
+                     usable ? 0xffd6e6eeu : kOffText, usable ? 0.96f : 0.6f, TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, usable && g_nearCreaturesHideMap);
+        if (clicked && hovRow) {
+            g_nearCreaturesHideMap = !g_nearCreaturesHideMap;
+            SaveMinimapConfig();
+            if (g_log) g_log("Nearby Creatures: hide on World Map %s", g_nearCreaturesHideMap ? "on" : "off");
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Section: how the maps look
+    {
+        DrawSolidRectAbs(widgetRaw, sx + 8.0f, ry + 4.0f, cardW - 16.0f, 1.0f, kGoldDim, 0.65f);
+        DrawLabelAbs(sx + 12.0f, ry + 4.0f, cardW - 24.0f, kRowH - 6.0f, T(Str::SecLook), kTitle, 0.9f,
+                     TextAlignH::Left, TextAlignV::Center);
+        ry += kRowH - 2.0f;
+    }
+
+    // Row A7: Map Desk (the World Map lies on a cartographer's desk, desk.inl) [ON / OFF]
+    {
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::MapDesk), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_mapDesk);
+        if (clicked && hovRow) {
+            g_mapDesk = !g_mapDesk;
+            SaveMinimapConfig();
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Row A6: Dungeon Maps (a Hollow Hall's, vault's or spire's own map on the World Map and minimap) [ON / OFF]
+    {
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::DungeonMaps), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_dungeonMaps);
+        if (clicked && hovRow) {
+            SetDungeonMaps(!g_dungeonMaps);
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Row A4: Vanilla World Map (the World Map as the game draws it; the minimap stays) [ON / OFF]
+    {
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::VanillaWorldMap), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_vanillaWorldMap);
+        // (with a controller, View on the game's map brings the mod's back)
+        if (clicked && hovRow && SetVanillaWorldMap(!g_vanillaWorldMap)) changed = true;
+        ry += kRowH;
+    }
+
+    // Row A5: Vanilla Minimap, under Vanilla World Map and only with it: the minimap with the game's markers only
+    {
+        const bool usable = g_vanillaWorldMap;
+        bool hovRow = usable && isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 26.0f, ry, cardW - 50.0f - OnOffBadgeWidth(), kRowH, T(Str::VanillaMinimap),
+                     usable ? 0xffd6e6eeu : kOffText, usable ? 0.96f : 0.6f, TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, usable && g_vanillaMinimap);
+        if (clicked && hovRow) {
+            g_vanillaMinimap = !g_vanillaMinimap;
+            SaveMinimapConfig();
+            if (g_log) g_log("Vanilla Minimap %s", g_vanillaMinimap ? "on: the game's markers only" : "off");
+            changed = true;
+        }
+        ry += kRowH;
+    }
+
+    // Section: the Map Key's filters
+    {
+        DrawSolidRectAbs(widgetRaw, sx + 8.0f, ry + 4.0f, cardW - 16.0f, 1.0f, kGoldDim, 0.65f);
+        DrawLabelAbs(sx + 12.0f, ry + 4.0f, cardW - 24.0f, kRowH - 6.0f, T(Str::SecFilters), kTitle, 0.9f,
+                     TextAlignH::Left, TextAlignV::Center);
+        ry += kRowH - 2.0f;
+    }
+
+    // Row A2: Region Filter (the Map Key's Region row) [ON / OFF]
+    {
+        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
+        if (hovRow) {
+            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
+        }
+        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::RegionFilter), 0xffd6e6eeu, 0.96f,
+                     TextAlignH::Left, TextAlignV::Center);
+        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_regionFilterEnabled);
+        if (clicked && hovRow) {
+            g_regionFilterEnabled = !g_regionFilterEnabled;
             SaveMinimapConfig();
             changed = true;
         }
@@ -7326,146 +8205,6 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
             changed = true;
         }
         ry += kRowH;
-    }
-
-    // Advanced: a titled section for the settings most players never need
-    {
-        DrawSolidRectAbs(widgetRaw, sx + 8.0f, ry + 4.0f, cardW - 16.0f, 1.0f, kGoldDim, 0.65f);
-        DrawLabelAbs(sx + 12.0f, ry + 4.0f, cardW - 24.0f, kRowH - 6.0f, T(Str::Advanced), kTitle, 0.9f,
-                     TextAlignH::Left, TextAlignV::Center);
-        ry += kRowH - 2.0f;
-    }
-
-    // Row A1: Position (X, Y, Z) [ON / OFF]
-    {
-        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
-        if (hovRow) {
-            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
-        }
-        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::ShowPosition), 0xffd6e6eeu, 0.96f,
-                     TextAlignH::Left, TextAlignV::Center);
-        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_minimapShowPosition);
-        if (clicked && hovRow) {
-            g_minimapShowPosition = !g_minimapShowPosition;
-            SaveMinimapConfig();
-            changed = true;
-        }
-    }
-
-    // Row A2: Region Filter (the Map Key's Region row) [ON / OFF]
-    {
-        ry += kRowH;
-        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
-        if (hovRow) {
-            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
-        }
-        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::RegionFilter), 0xffd6e6eeu, 0.96f,
-                     TextAlignH::Left, TextAlignV::Center);
-        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_regionFilterEnabled);
-        if (clicked && hovRow) {
-            g_regionFilterEnabled = !g_regionFilterEnabled;
-            SaveMinimapConfig();
-            changed = true;
-        }
-    }
-
-    // Row A3: Region Names (the regions' names on the World Map) [ON / OFF]
-    {
-        ry += kRowH;
-        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
-        if (hovRow) {
-            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
-        }
-        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::RegionNames), 0xffd6e6eeu, 0.96f,
-                     TextAlignH::Left, TextAlignV::Center);
-        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_regionNames);
-        if (clicked && hovRow) {
-            g_regionNames = !g_regionNames;
-            SaveMinimapConfig();
-            changed = true;
-        }
-    }
-
-    // Row A3b: Level Areas (the World Map in the areas of the enemies' levels) [ON / OFF]
-    {
-        ry += kRowH;
-        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
-        if (hovRow) {
-            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
-        }
-        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::LevelAreas), 0xffd6e6eeu, 0.96f,
-                     TextAlignH::Left, TextAlignV::Center);
-        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_levelAreas);
-        if (clicked && hovRow) {
-            g_levelAreas = !g_levelAreas;
-            SaveMinimapConfig();
-            changed = true;
-        }
-    }
-
-    // Row A3c: Tint Strength, under Level Areas and only with it: [-] [50%] [+] in steps of 10 %
-    {
-        ry += kRowH;
-        const bool usable = g_levelAreas;
-        const float stepBtnW = 26.0f, stepBtnH = 22.0f, badgeW = 66.0f, gap = 4.0f;
-        const float plusX = ctrlRight - stepBtnW;
-        const float badgeX = plusX - gap - badgeW;
-        const float minusX = badgeX - gap - stepBtnW;
-        const float by = ry + (kRowH - stepBtnH) * 0.5f;
-        DrawLabelAbs(sx + 26.0f, ry, minusX - (sx + 26.0f) - 10.0f, kRowH, T(Str::LevelTint),
-                     usable ? 0xffd6e6eeu : kOffText, usable ? 0.96f : 0.6f, TextAlignH::Left, TextAlignV::Center);
-        const bool canLess = usable && g_levelTintPct > 10, canMore = usable && g_levelTintPct < 80;
-        const bool hovMinus = usable && isHov(minusX, by, stepBtnW, stepBtnH);
-        const bool hovPlus = usable && isHov(plusX, by, stepBtnW, stepBtnH);
-        DrawKeyButtonAbs(widgetRaw, minusX, by, stepBtnW, stepBtnH, hovMinus, false);
-        DrawLabelAbs(minusX, by, stepBtnW, stepBtnH, "-", canLess ? (hovMinus ? kActiveText : kText) : kOffText, 0.95f,
-                     TextAlignH::Center, TextAlignV::Center);
-        char pct[8];
-        std::snprintf(pct, sizeof(pct), "%d%%", g_levelTintPct);
-        DrawFramedBoxAbs(widgetRaw, badgeX, by, badgeW, stepBtnH, kCategoryFill, 0.95f, kButtonFrame, 0.9f, 3.0f);
-        DrawLabelAbs(badgeX, by, badgeW, stepBtnH, pct, usable ? kActiveText : kOffText, 0.98f, TextAlignH::Center,
-                     TextAlignV::Center);
-        DrawKeyButtonAbs(widgetRaw, plusX, by, stepBtnW, stepBtnH, hovPlus, false);
-        DrawLabelAbs(plusX, by, stepBtnW, stepBtnH, "+", canMore ? (hovPlus ? kActiveText : kText) : kOffText, 0.95f,
-                     TextAlignH::Center, TextAlignV::Center);
-        if (clicked && ((hovMinus && canLess) || (hovPlus && canMore))) {
-            g_levelTintPct += hovPlus ? 10 : -10;
-            SaveMinimapConfig();
-            changed = true;
-        }
-    }
-
-    // Row A4: Vanilla World Map (the World Map as the game draws it; the minimap stays) [ON / OFF]
-    {
-        ry += kRowH;
-        bool hovRow = isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
-        if (hovRow) {
-            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
-        }
-        DrawLabelAbs(sx + 12.0f, ry, cardW - 36.0f - OnOffBadgeWidth(), kRowH, T(Str::VanillaWorldMap), 0xffd6e6eeu, 0.96f,
-                     TextAlignH::Left, TextAlignV::Center);
-        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, g_vanillaWorldMap);
-        // (with a controller, View on the game's map brings the mod's back)
-        if (clicked && hovRow && SetVanillaWorldMap(!g_vanillaWorldMap)) changed = true;
-    }
-
-    // Row A5: Vanilla Minimap, under Vanilla World Map and only with it: the minimap with the game's markers only
-    {
-        ry += kRowH;
-        const bool usable = g_vanillaWorldMap;
-        bool hovRow = usable && isHov(sx + 8.0f, ry, cardW - 16.0f, kRowH);
-        if (hovRow) {
-            DrawFramedBoxAbs(widgetRaw, sx + 8.0f, ry, cardW - 16.0f, kRowH, kHoverFill, 0.85f, kGold, 0.7f, 4.0f);
-        }
-        DrawLabelAbs(sx + 26.0f, ry, cardW - 50.0f - OnOffBadgeWidth(), kRowH, T(Str::VanillaMinimap),
-                     usable ? 0xffd6e6eeu : kOffText, usable ? 0.96f : 0.6f, TextAlignH::Left, TextAlignV::Center);
-        DrawOnOffBadgeAbs(widgetRaw, ctrlRight, ry, kRowH, usable && g_vanillaMinimap);
-        if (clicked && hovRow) {
-            g_vanillaMinimap = !g_vanillaMinimap;
-            SaveMinimapConfig();
-            if (g_log) g_log("Vanilla Minimap %s", g_vanillaMinimap ? "on: the game's markers only" : "off");
-            changed = true;
-        }
     }
 
     return changed;
@@ -7787,17 +8526,43 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         g_worldMapOpenCenterFrames = 2;
         g_bridgeRecenterMap = false;
     }
+#ifdef UMM_DEV_BRIDGE
+    if (g_bridgeZoomSet > 0.0f) {
+        if (uint8_t* mv = *reinterpret_cast<uint8_t**>(mapState + 8)) *reinterpret_cast<float*>(mv + 0x10) = g_bridgeZoomSet;
+        g_bridgeZoomSet = 0.0f;
+    }
+#endif
+    if (g_bridgeCenterX >= 0.0f) {
+        CenterMapViewOnWorldPos(mapState, g_bridgeCenterX, g_bridgeCenterZ);
+        g_bridgeCenterX = -1.0f;
+    }
     uint64_t nowMapTick = GetTickCount64();
     // A new open is only the screen changing to the map (cleared in the per-frame screen check), not a pause in its
     // frames: Alt-Tab or a hitch while the map stays open used to centre it on the player again
+    static bool s_openOnEntrance = false; // Dungeon Maps off, opened in a Hollow Hall: centred on its entrance
+    static float s_entranceX = 0.0f, s_entranceZ = 0.0f;
     if (!g_worldMapWasOpen) {
         g_worldMapWasOpen = true;
-        halls::OnMapOpen(client); // in a Hollow Hall: the map shows the dungeon
+        // In a Hollow Hall the map shows the dungeon; with Dungeon Maps off, the overworld centred on the hall's
+        // entrance (where the game puts you on it; your own spot is the empty rock of the halls' corner)
+        s_openOnEntrance = false;
+        halls::OnMapOpen(client);
+        if (!g_dungeonMaps) {
+            float ex = 0.0f, ez = 0.0f;
+            halls::g_mapOverworld = true; // MapFocus: the entrance
+            if (halls::g_mapDungeon >= 0 && halls::g_mapDungeon < static_cast<int>(halls::kHallCount) && halls::MapFocus(ex, ez)) {
+                s_openOnEntrance = true;
+                s_entranceX = ex;
+                s_entranceZ = ez;
+            }
+            halls::g_mapDungeon = -1;
+            halls::g_mapOverworld = false;
+        }
         // Center on the player only when opened from play (screen 1, the M key). From any menu (the backpack
         // or journal 9, Show on Map for a quest 7, ...) the game has already centered the map on what was asked
         // for, so leave it there. A dungeon map always shows its whole hall (back from another tab with Q / E it was
         // left wherever the game had it)
-        g_worldMapOpenCenterFrames = (g_screenBeforeMap == 1 || halls::MapActive()) ? 2 : 0;
+        g_worldMapOpenCenterFrames = (g_screenBeforeMap == 1 || halls::MapActive() || s_openOnEntrance) ? 2 : 0;
         // At most once a second: a screen flipping with the map every frame wrote ~11000 lines a minute
         static uint64_t s_lastOpenLog = 0;
         const bool logOpen = nowMapTick - s_lastOpenLog >= 1000ULL;
@@ -7823,6 +8588,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             FitMapZoom(mapState, extentW, extentH, g_lastRootW - 520.0f, g_lastRootH - 114.0f - 70.0f);
         }
         if (halls::MapFocus(focusX, focusZ)) CenterMapViewOnWorldPos(mapState, focusX, focusZ); // the dungeon / its entrance
+        else if (s_openOnEntrance) CenterMapViewOnWorldPos(mapState, s_entranceX, s_entranceZ); // Dungeon Maps off, in a hall
         else CenterMapViewOnPlayer(client, mapState);
     }
 
@@ -8082,8 +8848,111 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 // Its height varies (other mods add buttons: Hollow Halls Progression's Return Beacons), so the mod's
                 // icons stay out of its whole column
                 g_drawExclusion = {zoom > 0.0f, left - kMargin, rootRect[1], left + kMenuW + kMargin, bottomEdge};
+#ifdef UMM_DEV_BRIDGE
+                static uint64_t lg = 0;
+                if (g_log && GetTickCount64() - lg > 1000)
+                    lg = GetTickCount64(), g_log("Map: menu column on (marker %p type %08x): icons off from x %.0f to %.0f", menuMarker,
+                                                 *reinterpret_cast<const uint32_t*>(menuMarker + 0x30), left - kMargin, left + kMenuW + kMargin);
+#endif
             }
         }
+        // The key hints' strip at the bottom: no mod icon over it (the layers' images below are drawn another way)
+        g_hintStrip = {true, rootRect[0], rootRect[1] + rootH - 92.0f, rootRect[0] + rootW, rootRect[1] + rootH};
+        SetLocatorExclusions(client, mapState);
+        // Find's results: the creature rows it lists stay on the World Map with Hide on World Map (CreatureOffWorldMap)
+        if (g_findDialogOpen && g_nearCreaturesHideMap) {
+            std::vector<uint8_t> was = GetTickCount64() < g_findShownUntil ? g_findShownOres : std::vector<uint8_t>();
+            g_findShownOres.assign(kOreCount, 0);
+            for (const FindPlaceEntry& e : g_findMatchedPlaces)
+                if (IsOreHash(e.filterTypeHash)) g_findShownOres[OreIndexOf(e.filterTypeHash)] = 1;
+            g_findShownUntil = GetTickCount64() + 60000;
+            // the setting's change noted (as the filter changes are): "Boar - Hide on World Map: OFF", "+ 2 more"
+            std::vector<size_t> fresh;
+            for (size_t o = 0; o < g_findShownOres.size(); ++o)
+                if (g_findShownOres[o] && CreatureSpawnHidden(o) && (o >= was.size() || !was[o])) fresh.push_back(o);
+            if (!fresh.empty()) {
+                std::string name = OreName(fresh[0]);
+                if (fresh.size() > 1) name += " +" + std::to_string(fresh.size() - 1);
+                ShowMapNotice(filter_notice::Mark(name, umm_lang::T(umm_lang::Str::HideOnWorldMap), umm_lang::T(umm_lang::Str::Off)));
+            }
+        }
+        g_hoverTitleWidget = root.raw;
+        g_mapCursorIn = haveCursor, g_mapCursor[0] = mx, g_mapCursor[1] = my;
+        PublishCursorIcon();
+#ifdef UMM_DEV_BRIDGE
+        if (g_devNear[0] > 0.0f) { // dev: the markers projected within 60 UI px of a screen point
+            float zz = 0, dox = 0, doy = 0, dwh = 0;
+            if (LevelMapView(mapState, zz, dox, doy, dwh) && g_log) {
+                constexpr size_t kAO[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+                for (size_t a = 0; a < 4; ++a) {
+                    uint8_t* base = *reinterpret_cast<uint8_t**>(client + kAO[a]);
+                    const uint64_t n = *reinterpret_cast<uint64_t*>(client + kAO[a] + 8);
+                    if (!base || n > 10000) continue;
+                    for (uint64_t i = 0; i < n; ++i) {
+                        const uint8_t* m = base + i * 0xA0;
+                        const float sx = dox + *reinterpret_cast<const int32_t*>(m + 0x14) * zz;
+                        const float sy = doy + (dwh - *reinterpret_cast<const int32_t*>(m + 0x24)) * zz;
+                        if (std::fabs(sx - g_devNear[0]) > 60.0f || std::fabs(sy - g_devNear[1]) > 60.0f) continue;
+                        g_log("Near: a%zu#%llu at %d,%d screen %.0f,%.0f orig %08x type %08x id %08x r %.0f", a, static_cast<unsigned long long>(i),
+                              *reinterpret_cast<const int32_t*>(m + 0x14), *reinterpret_cast<const int32_t*>(m + 0x24), sx, sy,
+                              GetMarkerOrigTypeHash(m), *reinterpret_cast<const uint32_t*>(m + 0x30), *reinterpret_cast<const uint32_t*>(m + 0x08),
+                              *reinterpret_cast<const float*>(m + 0x28));
+                    }
+                }
+                g_log("Near: zoom %.3f", zz);
+                // the game's own list for this frame (mapState +0x542f0: data, +0x542f8: count), its raw entries
+                const uint8_t* list = *reinterpret_cast<uint8_t* const*>(mapState + 0x542f0);
+                const uint64_t ln = *reinterpret_cast<const uint64_t*>(mapState + 0x542f8);
+                g_log("Near: list %p count %llu", list, static_cast<unsigned long long>(ln));
+                for (uint64_t i = 0; list && i < ln && i < 4000; ++i) {
+                    const uint8_t* e = list + i * 0x40;
+                    const uint8_t* m = *reinterpret_cast<uint8_t* const*>(e + 8);
+                    std::string w;
+                    for (int k = 0; k < 0x40; k += 4) {
+                        char one[12];
+                        std::snprintf(one, sizeof(one), " %08x", *reinterpret_cast<const uint32_t*>(e + k));
+                        w += one;
+                    }
+                    // entries with no marker, or their marker near the point
+                    bool hit = !m;
+                    if (m) {
+                        const float sx = dox + *reinterpret_cast<const int32_t*>(m + 0x14) * zz;
+                        const float sy = doy + (dwh - *reinterpret_cast<const int32_t*>(m + 0x24)) * zz;
+                        hit = std::fabs(sx - g_devNear[0]) < 60.0f && std::fabs(sy - g_devNear[1]) < 60.0f;
+                    }
+                    if (hit) g_log("Near: entry %llu marker %p:%s", static_cast<unsigned long long>(i), m, w.c_str());
+                }
+            }
+            g_devNear[0] = -1.0f;
+        }
+        if (g_devDot[0] > 0.0f) {
+            float zz = 0, dox = 0, doy = 0, dwh = 0;
+            if (LevelMapView(mapState, zz, dox, doy, dwh)) {
+                const float sx = dox + g_devDot[0] * zz, sy = doy + (dwh - g_devDot[1]) * zz;
+                DrawSolidRectAbs(root.raw, sx - 6.0f, sy - 6.0f, 12.0f, 12.0f, 0xffff00ffu, 1.0f);
+                static uint64_t lg = 0;
+                if (g_log && GetTickCount64() - lg > 1000) lg = GetTickCount64(), g_log("Map: dot at %.0f,%.0f (cursor %.0f,%.0f)", sx, sy, mx, my);
+            }
+        }
+#endif
+#ifdef UMM_DEV_BRIDGE
+        RunQuestAt(client);
+#endif
+        {
+            // the hover title's area: the game's to the right of its hovered icon (its name, the region under it), or
+            // the mod's own as drawn last frame
+            const uint64_t now = GetTickCount64();
+            g_titleBox.active = false;
+            if (GameIconUnderCursor() && now - g_hoverTitleTick < 150ULL && g_hoverTitleText[0]) {
+                const float half = g_hoveredIcon[2] * 0.6f;
+                const float w = umm_lang::TextWidth(g_hoverTitleText) * (40.0f / 15.0f) * 1.45f + 16.0f;
+                g_titleBox = {true, g_hoveredIcon[0] + half, g_hoveredIcon[1] - 30.0f,
+                              g_hoveredIcon[0] + half + std::max(w, 260.0f), g_hoveredIcon[1] + 58.0f};
+            } else if (now - g_modTitleBoxTick < 150ULL) {
+                g_titleBox = g_modTitleBox;
+            }
+        }
+        g_legendBox = {!halls::MapActive(), rootRect[0] + 30.0f, rootRect[1] + 112.0f, rootRect[0] + 340.0f, rootRect[1] + 232.0f};
         // The overworld's layers stay off the dungeon map
         const bool overworldLayers = !halls::MapActive();
         if (overworldLayers) DrawRegionBorderOnMap(root.raw, rootRect, mapState);
@@ -8091,14 +8960,30 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         if (overworldLayers) ground::DrawOnMap(root.raw, rootRect, mapState); // under the forests
         const int treeDraws = overworldLayers ? DrawTreeAreasOnMap(root.raw, rootRect, mapState) : 0;
         if (overworldLayers) roads::DrawOnMap(root.raw, rootRect, mapState);
+        g_toMapLayer = true; // the mod's map words and the check marks on the game's markers: under the game's markers
         if (overworldLayers && g_regionNames) DrawRegionNamesOnMap(root.raw, rootRect, mapState);
+        g_toMapLayer = false;
         DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my,
                              std::max(500, std::min(1500, 2000 - treeDraws)));
+        // (the check marks stay over their marker: in the map layer the game's marker covered them; only where the ring,
+        // the hints, the legend or a menu are over them do they go under, UnderRing)
+        g_markerChecks = true;
         DrawVisitedSanctumsOnMap(root.raw, rootRect, client, mapState);
         DrawRefilledChestsOnMap(root.raw, rootRect, client, mapState);
+        g_markerChecks = false;
         if (g_woodChestEnabled || halls::MapActive()) DrawWoodChestsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my);
         DrawGraveHeightsOnMap(root.raw, rootRect, client, mapState);
         if (g_townPortalsEnabled) DrawTownPortalsOnMap(root.raw, rootRect, mapState, haveCursor, mx, my); // Town Portal's open portals
+        // a quest's place pin under the cursor: the quest's name on the tooltip panel (its card blanked: HideRumorsInner)
+        if (g_questTitleFor && g_questTitleFor == g_hoveredGameMarker && GetTickCount64() - g_questTitleTick < 150ULL && g_questTitle[0])
+            DrawMapHoverTitle(g_hoveredIcon[0] + g_hoveredIcon[2] * 0.65f + 26.0f, g_hoveredIcon[1], g_questTitle, true);
+        // the game's hover title, drawn by the mod on its tooltip panel (the game's own is left empty: MarkerTitleTextHook)
+        if (g_hoveredGameMarker && GameTitleReplaced(g_hoveredGameMarker) && !ModHoverTitleShowing() &&
+            GetTickCount64() - g_hoverTitleTick < 150ULL && g_hoverTitleText[0])
+            DrawMapHoverTitle(g_hoveredIcon[0] + g_hoveredIcon[2] * 0.65f + 26.0f, g_hoveredIcon[1], g_hoverTitleText, true); // (past the icon as the game's: its visible half and a gap)
+        g_hintStrip.active = false;
+        for (DrawExclusion& e : g_locators) e.active = false;
+        g_legendBox.active = false;
         DrawMapCursorPosition(root.raw, rootRect, mapState, haveCursor, mx, my, false);
         DrawFilterNotice(root.raw, rootRect);
         // Hollow Halls Progression: a reached beacon's badge travels there
@@ -8157,13 +9042,47 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 const float oy = *reinterpret_cast<float*>(view + 0x1f4) + *reinterpret_cast<float*>(view + 0x190) -
                                  *reinterpret_cast<float*>(view + 0x1fc);
                 HideRowTarget target;
-                if (zoom > 0.0f && HideRowTargetAt(client, static_cast<int32_t>((mx - ox) / zoom),
-                        static_cast<int32_t>(worldH - (my - oy) / zoom), 16.0f / zoom, g_hoveredDepositRow, target)) {
+                // the game's marker under the cursor (exactly its spot); else the nearest within reach
+                int32_t hx = 0, hz = 0;
+                // the game's marker if the cursor is on its icon, or it shows the title of one and no icon of the mod's
+                // is under the cursor; else the nearest within reach
+                const bool onGameIcon = !padHideRow && (GameIconUnderCursor(&hx, &hz) || (!g_hoveredDepositRow && GameTitledMarker(hx, hz)));
+                // nothing under the cursor: a quest / rumor pin whose search circle holds the click (its "?" is drawn
+                // shifted inside that circle, away from its own spot)
+                int32_t cx = 0, cz = 0;
+                const bool inCircle = !onGameIcon && zoom > 0.0f && !g_hoveredDepositRow &&
+                    RumorCircleAt(client, (mx - ox) / zoom, worldH - (my - oy) / zoom, kMarkerReach / zoom, cx, cz);
+                if (zoom > 0.0f && (onGameIcon ? HideRowTargetAt(client, hx, hz, 1.0f, 0u, target)
+                                    : inCircle ? HideRowTargetAt(client, cx, cz, 1.0f, 0u, target)
+                                               : HideRowTargetAt(client, static_cast<int32_t>((mx - ox) / zoom),
+                        static_cast<int32_t>(worldH - (my - oy) / zoom), kMarkerReach / zoom, g_hoveredDepositRow, target))) {
                     HideClickedRow(client, mapState, target, padHideRow ? "controller" : "Alt+click");
                     ClearMapViewClickLatch(mapState); // no menu, no waypoint
                     g_panelClickLatch = true;
                     g_findClosingFrames = std::max(g_findClosingFrames, 8);
                 }
+#ifdef UMM_DEV_BRIDGE
+                else if (g_log && zoom > 0.0f) { // dev: what was near the click
+                    const float wx = (mx - ox) / zoom, wz = worldH - (my - oy) / zoom;
+                    float best = 1e12f; uint32_t bo = 0, b30 = 0; int bx = 0, bz = 0; int bh = 0;
+                    constexpr size_t kOff[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+                    for (size_t a = 0; a < 4; ++a) {
+                        uint8_t* base = *reinterpret_cast<uint8_t**>(client + kOff[a]);
+                        const uint64_t n = *reinterpret_cast<uint64_t*>(client + kOff[a] + 8);
+                        if (!base || n > 10000) continue;
+                        for (uint64_t k = 0; k < n; ++k) {
+                            const uint8_t* m = base + k * 0xA0;
+                            const float dx = *reinterpret_cast<const int32_t*>(m + 0x14) - wx, dz = *reinterpret_cast<const int32_t*>(m + 0x24) - wz;
+                            if (dx * dx + dz * dz >= best || *reinterpret_cast<const uint32_t*>(m + 0x30) == 0u) continue;
+                            best = dx * dx + dz * dz; bo = GetMarkerOrigTypeHash(m); b30 = *reinterpret_cast<const uint32_t*>(m + 0x30);
+                            bx = *reinterpret_cast<const int32_t*>(m + 0x14); bz = *reinterpret_cast<const int32_t*>(m + 0x24);
+                            bh = MarkerHiddenOnMap(m) ? 1 : 0;
+                        }
+                    }
+                    g_log("Map: Alt+click at %.0f,%.0f found nothing within %.1f m (zoom %.3f, hovered row %08x); nearest drawn %08x/%08x at %d,%d, %.1f m, hidden %d",
+                          wx, wz, kMarkerReach / zoom, zoom, g_hoveredDepositRow, bo, b30, bx, bz, std::sqrt(best), bh);
+                }
+#endif
             }
         }
 
@@ -8265,21 +9184,45 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                         // A marker under the cursor that can't be marked (a Shroud Root, an ore): its row off. The
                         // wider search for chests and the like below would otherwise catch one beside it.
                         HideRowTarget under;
-                        const bool hideRow = HideRowTargetAt(client, static_cast<int32_t>(clickWx), static_cast<int32_t>(clickWz),
-                                                             16.0f / zoom, g_hoveredDepositRow, under) &&
-                                             !RowCanBeMarked(under.hashes[0]);
-                        if (hideRow) {
-                            HideClickedRow(client, mapState, under, "Ctrl+click");
+                        // Ctrl + click only marks, it never hides a row (Alt + click does that). A marker under the
+                        // cursor that isn't a chest, note, boss or item: a place (a town, a camp, a sanctum) is marked
+                        // done; anything else (a quest, an ore, a creature) is left as it is, and the wider search for
+                        // chests and the like below doesn't catch one beside it.
+                        // (the game's marker under the cursor exactly, when the mod's icon isn't; else the nearest within reach)
+                        int32_t hx = 0, hz = 0;
+                        const bool hovered = !padMarkChest && (GameIconUnderCursor(&hx, &hz) || (!g_hoveredDepositRow && GameTitledMarker(hx, hz)));
+                        if (hovered) g_hoveredDepositRow = 0u; // (the game's icon is over the mod's)
+                        const float atX = hovered ? static_cast<float>(hx) : clickWx, atZ = hovered ? static_cast<float>(hz) : clickWz;
+                        const float reach = hovered ? 1.0f : kMarkerReach / zoom;
+                        bool unmarkable = HideRowTargetAt(client, static_cast<int32_t>(atX), static_cast<int32_t>(atZ),
+                                                          reach, g_hoveredDepositRow, under) &&
+                                          !RowCanBeMarked(under.hashes[0]);
+                        int32_t placeX = 0, placeZ = 0;
+                        const bool placeDone = unmarkable && g_hoveredDepositRow == 0u &&
+                                               ToggleDonePlaceAt(client, atX, atZ, reach, &placeX, &placeZ);
+                        if (placeDone) {
+                            unmarkable = false;
+                            NoteMarkStep(5, static_cast<float>(placeX), static_cast<float>(placeZ), 0, 0, 0, true);
+                        }
+                        if (unmarkable) {
+                            if (g_log) g_log("Map: Ctrl+click on %08x: nothing to mark there", under.hashes[0]);
+                            AnnounceCantMark(under.hashes[0]);
                             ClearMapViewClickLatch(mapState);
                             g_panelClickLatch = true;
                             g_findClosingFrames = std::max(g_findClosingFrames, 8);
                         }
                         g_markClickOnWorldMap = true;
-                        const bool marked = !hideRow &&
-                            (ToggleManualBossNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM) ||
-                             ToggleUniqueFoundNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM) ||
-                             ToggleLoreReadNear(clickWx, clickWz, std::max(10.0f, 16.0f / zoom), shiftM, hitRadiusMeters) ||
-                             ToggleChestClearedNearWorldPos(clickWx, clickWz, hitRadiusMeters));
+                        const float nearR = std::max(10.0f, 16.0f / zoom);
+                        int kind = 0;
+                        if (!placeDone && !unmarkable) {
+                            kind = ToggleManualBossNear(clickWx, clickWz, nearR, shiftM)                        ? 1
+                                   : ToggleUniqueFoundNear(clickWx, clickWz, nearR, shiftM)                     ? 2
+                                   : ToggleLoreReadNear(clickWx, clickWz, nearR, shiftM, hitRadiusMeters)       ? 3
+                                   : ToggleChestClearedNearWorldPos(clickWx, clickWz, hitRadiusMeters)          ? 4
+                                                                                                                : 0;
+                            NoteMarkStep(kind, clickWx, clickWz, nearR, shiftM, hitRadiusMeters, true);
+                        }
+                        const bool marked = placeDone || kind != 0;
                         g_markClickOnWorldMap = false;
                         if (marked) {
                             SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
@@ -9003,9 +9946,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                             // a name too long for the row (the constructs' "Ancient G.A.R.D. Construct (Dozer)") is
                             // drawn smaller instead of running under the ON / OFF badge
                             const float labelW = kPanelW - 46.0f - rowRight - OnOffBadgeWidth() - LockSlotWidth();
-                            const float textW = umm_lang::TextWidth(rowText) * kFilterRowFontScale;
+                            // (TextWidth runs ~15% short of the drawn text: long names ran under the lock and ON / OFF)
+                            const float textW = umm_lang::TextWidth(rowText) * kFilterRowFontScale * 1.35f;
                             const float rowFont = textW > labelW
-                                ? std::max(kFilterRowFontScale * 0.7f, kFilterRowFontScale * labelW / textW)
+                                ? std::max(kFilterRowFontScale * 0.55f, kFilterRowFontScale * labelW / textW)
                                 : kFilterRowFontScale;
                             DrawLabelAbs(panelX + 52.0f, py + curY, labelW, kItemRowH,
                                 rowText, textCol, rowOn ? 0.96f : 0.75f,
@@ -9124,12 +10068,36 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     }
                     const float holdHintY = hintY;
                     constexpr float kLineH = 26.0f;
-                    const float kHintH = 32.0f + kLineH * static_cast<float>(lines.size() - 1);
                     const float hintX = panelX + 8.0f, hintW = kPanelW - 16.0f;
+                    // A line too long even at 0.8 is wrapped at its spaces (the presets' Ctrl + click line ran out of
+                    // the box): no text under the frame in any language
                     float rawW = 0.0f;
                     for (const auto& l : lines) rawW = std::max(rawW, umm_lang::TextWidth(l.c_str()) * 1.15f);
-                    const float fit = (hintW - 28.0f) / std::max(1.0f, rawW);
-                    const float scale = std::max(0.6f, std::min(0.92f, fit));
+                    const float room = hintW - 28.0f;
+                    const float scale = std::max(0.8f, std::min(0.92f, room / std::max(1.0f, rawW)));
+                    {
+                        std::vector<std::string> wrapped;
+                        for (const auto& l : lines) {
+                            std::string cur;
+                            size_t at = 0;
+                            while (at <= l.size()) {
+                                size_t sp = l.find(' ', at);
+                                if (sp == std::string::npos) sp = l.size();
+                                const std::string word = l.substr(at, sp - at);
+                                const std::string tryLine = cur.empty() ? word : cur + " " + word;
+                                if (!cur.empty() && umm_lang::TextWidth(tryLine.c_str()) * 1.15f * scale > room) {
+                                    wrapped.push_back(cur);
+                                    cur = word;
+                                } else {
+                                    cur = tryLine;
+                                }
+                                at = sp + 1;
+                            }
+                            wrapped.push_back(cur);
+                        }
+                        lines.swap(wrapped);
+                    }
+                    const float kHintH = 32.0f + kLineH * static_cast<float>(lines.size() - 1);
                     DrawAssetRectAbs(anchor.raw, kSoftGlowPrimitive, hintX - 16.0f, holdHintY - 10.0f, hintW + 32.0f,
                         kHintH + 26.0f, 0xff000000u, 0.8f);
                     DrawFramedBoxAbs(anchor.raw, hintX, holdHintY, hintW, kHintH, kPanelFill, 1.0f, kGold, 0.95f, 5.0f);
@@ -9498,6 +10466,54 @@ bool BlockWorldMapInput(uint8_t* mapState) {
 }
 
 
+#ifdef UMM_DEV_BRIDGE
+// dev (map op "questat"): the markers within 30 m of a spot, their id and the quests the game has for them; run in a
+// World Map frame (the game's quest lookups aren't safe from the bridge)
+float g_questAt[2]{};
+bool g_questAtPending = false;
+// The u32s in a quest's first 0x200 bytes that read as game text (its name among them), and the strings it points at
+void DumpQuestText(const uint8_t* q) {
+    for (int off = 0; off < 0x200; off += 4) {
+        __try {
+            const uint32_t v = *reinterpret_cast<const uint32_t*>(q + off);
+            char text[160]{};
+            if (v > 0x10000 && ReadLocaText(v, text, sizeof(text)) && text[0] && g_log) g_log("Quest at:   +%x = %08x: %s", off, v, text);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+        }
+    }
+}
+
+void RunQuestAt(uint8_t* client) {
+    if (!g_questAtPending || !client) return;
+    g_questAtPending = false;
+    const float qx = g_questAt[0], qz = g_questAt[1];
+    __try {
+            constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+            for (size_t a = 0; a < 4; ++a) {
+                uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[a]);
+                const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[a] + 8);
+                if (!base || count == 0 || count > 10000) continue;
+                for (uint64_t i = 0; i < count; ++i) {
+                    const uint8_t* m = base + i * 0xA0;
+                    const float dx = *reinterpret_cast<const int32_t*>(m + 0x14) - qx, dz = *reinterpret_cast<const int32_t*>(m + 0x24) - qz;
+                    if (dx * dx + dz * dz > 30.0f * 30.0f) continue;
+                    uint32_t id = IsSlotSaved(m) ? *reinterpret_cast<const uint32_t*>(m + 0x4c) : 0u;
+                    if (!id) id = *reinterpret_cast<const uint32_t*>(m + 0x08);
+                    const void* act = g_getActiveQuestForMarkerId && id ? g_getActiveQuestForMarkerId(id) : nullptr;
+                    const void* any = g_getQuestByMarkerId && id ? g_getQuestByMarkerId(id) : nullptr;
+                    if (g_log) g_log("Quest at: a%zu#%llu orig %08x type %08x id %08x at %d,%d: active %p any %p rumor %d", a,
+                                     static_cast<unsigned long long>(i), GetMarkerOrigTypeHash(m), *reinterpret_cast<const uint32_t*>(m + 0x30), id,
+                                     *reinterpret_cast<const int32_t*>(m + 0x14), *reinterpret_cast<const int32_t*>(m + 0x24), act, any,
+                                     LoreRumorFound(client, id));
+                    if (any) DumpQuestText(static_cast<const uint8_t*>(any));
+                }
+            }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        if (g_log) g_log("Quest at: faulted");
+    }
+}
+#endif
+
 // A dungeon map: the menu's grey over the whole screen in the map's own root widget, under the menu bars (the game's
 // overworld terrain is off there, see hall_pan::InstallTerrainSkip, so the bars show grey through)
 void DrawUnderBars(void* mapRootWidget) {
@@ -9547,6 +10563,47 @@ void SafeDrawMapKeyOverlay(void* mapState) {
     SafeDrawMapKeyOverlayInner(mapState);
 }
 
+
+uint64_t g_deskHintsTick = 0; // when the key-hint hook last drew the desk
+void* g_deskMapState = nullptr;
+// The map desk under the map (desk.inl), kept apart so a fault can't take the map with it
+float* UiOpacityTop(void* widget); // regions.inl
+void ReplayLabel(void* widget, const RingDraw& d) {
+    float* op = d.opacity < 1.0f ? UiOpacityTop(widget) : nullptr;
+    const float was = op ? *op : 1.0f;
+    if (op) *op = was * d.opacity;
+    __try {
+        DrawLabelAbs(d.x, d.y, d.w, d.h, d.text.c_str(), d.rgba, d.alpha, static_cast<TextAlignH>(d.hAlign),
+                     static_cast<TextAlignV>(d.vAlign), d.style, d.brightness);
+    } __finally {
+        if (op) *op = was;
+    }
+}
+// The icons held back from over the ring (UnderRing), drawn into the map layer's widget at the desk's sort key
+void DrawUnderRing(void* widget) {
+    g_ringDrawing.swap(g_ringQueue);
+    g_ringQueue.clear();
+    g_ringReplay = g_ringReplayFlag = true;
+    g_mapLayerTick = GetTickCount64();
+    for (const RingDraw& d : g_ringDrawing) {
+        if (d.kind == 1) DrawIconRectAbs(widget, d.iconRef, d.x, d.y, d.w, d.h, d.rgba, d.alpha, d.brightness);
+        else if (d.kind == 0) DrawAssetRectAbs(widget, d.asset, d.x, d.y, d.w, d.h, d.rgba, d.alpha, d.brightness);
+        else if (d.kind == 3) DrawBoxAbs(widget, d.asset, d.x, d.y, d.w, d.h, d.rgba, d.alpha, d.border, d.brightness);
+        else if (d.kind == 4) DrawSolidRectAbs(widget, d.x, d.y, d.w, d.h, d.rgba, d.alpha, d.brightness);
+        else ReplayLabel(widget, d);
+    }
+    g_ringReplay = g_ringReplayFlag = false;
+    g_ringDrawing.clear();
+}
+
+void SafeDeskDraw(void* mapState) {
+    __try {
+        desk::DrawUnder(static_cast<uint8_t*>(mapState), g_overlayRootRect);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        g_mapDesk = false;
+        if (g_log) g_log("Map desk: a fault while drawing; off for this session");
+    }
+}
 void DrawMapFilterMenuHook(void* mapState) {
     // Note: We intentionally do NOT call g_origDrawMapFilterMenu(mapState) so the vanilla
     // "Filter Map Markers" / "Hidden types: 0" box is cleanly replaced by our Map Key & Filters panel
@@ -9555,6 +10612,7 @@ void DrawMapFilterMenuHook(void* mapState) {
     {
         greeneye::Lease lease;
         if (lease) g_mapMenuDrawnTick = GetTickCount64();
+        if (lease && !g_worldMapModded) desk::HideGameEdge(false); // the game's own map: its edge as it was
         if (lease && !g_worldMapModded && g_vanillaWorldMap && !g_modOff && g_origXInputGetState) {
             if (g_padKeyFocus) { // it was the pad that switched to the game's map
                 g_padKeyFocus = false;
@@ -9563,6 +10621,10 @@ void DrawMapFilterMenuHook(void* mapState) {
             if (ReadPadPresses().pressed & inp::PadButtons(g_keys.padMapKey)) g_padVanillaOffPending = true;
         }
         if (lease && g_worldMapModded) {
+            // the desk: from the key-hint hook when the hints draw this frame (before them, so their key caps come after
+            // it), else here
+            g_deskMapState = mapState;
+            if (GetTickCount64() - g_deskHintsTick > 80) SafeDeskDraw(mapState); // (no hints this frame: Find open)
             SafeDrawMapKeyOverlay(mapState);
             return;
         }
@@ -9771,6 +10833,30 @@ void ReadMapKeys(bool writeMissing) {
     g_padMapChords[3].Set(fresh.redo);
 }
 
+
+// The game's graphics preset is Ultra: "render": { "preset": "Ultra" } in local_settings.json
+// (Saved Games, keen games, Enshrouded; the Map Desk's large images are meant for it)
+bool GameGraphicsUltra() {
+    PWSTR saved = nullptr;
+    if (FAILED(SHGetKnownFolderPath(FOLDERID_SavedGames, 0, nullptr, &saved)) || !saved) return false;
+    std::wstring path = std::wstring(saved) + L"\\keen games\\Enshrouded\\local_settings.json";
+    CoTaskMemFree(saved);
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) return false;
+    std::string text(65536, '\0');
+    text.resize(std::fread(text.data(), 1, text.size(), f));
+    std::fclose(f);
+    const size_t render = text.find("\"render\"");
+    const size_t preset = render == std::string::npos ? render : text.find("\"preset\"", render);
+    if (preset == std::string::npos) return false;
+    const size_t open = text.find('"', text.find(':', preset));
+    if (open == std::string::npos) return false;
+    const bool ultra = text.compare(open + 1, 6, "Ultra\"") == 0;
+    if (g_log) g_log("Map desk: the game's graphics preset is %sUltra: Map Desk %s by default", ultra ? "" : "not ",
+                     ultra ? "on" : "off");
+    return ultra;
+}
+
 void LoadMinimapConfig() {
     // A hand edit of [Keys] applies within two seconds. The file is only looked at that often, and read once.
     {
@@ -9830,6 +10916,12 @@ void LoadMinimapConfig() {
     g_regionNames = GetPrivateProfileIntA("MinimapV2", "RegionNames", 1, cfg.c_str()) != 0;
     g_vanillaWorldMap = GetPrivateProfileIntA("MinimapV2", "VanillaWorldMap", 0, cfg.c_str()) != 0;
     g_vanillaMinimap = GetPrivateProfileIntA("MinimapV2", "VanillaMinimap", 0, cfg.c_str()) != 0;
+    g_dungeonMaps = GetPrivateProfileIntA("MinimapV2", "DungeonMaps", 1, cfg.c_str()) != 0;
+    g_nearCreatures = GetPrivateProfileIntA("MinimapV2", "NearbyCreatures", 0, cfg.c_str()) != 0;
+    g_nearCreaturesHideMap = GetPrivateProfileIntA("MinimapV2", "NearbyCreaturesHideMap", 0, cfg.c_str()) != 0;
+    // Map Desk: off unless the game's graphics are on Ultra, until the player sets it
+    const int mapDesk = static_cast<int>(GetPrivateProfileIntA("MinimapV2", "MapDesk", -1, cfg.c_str()));
+    g_mapDesk = mapDesk < 0 ? GameGraphicsUltra() : mapDesk != 0;
     // The regions shown, a bit each; before 1.3.19 one region (RegionFocus, -1 all)
     const int regionMask = static_cast<int>(GetPrivateProfileIntA("MinimapV2", "RegionMask", -1, cfg.c_str()));
     if (regionMask >= 0) {
@@ -10075,6 +11167,10 @@ void SaveMinimapConfig() {
     async_io::IniWrite("MinimapV2", "RegionNames", g_regionNames ? "1" : "0", cfg.c_str());
     async_io::IniWrite("MinimapV2", "VanillaWorldMap", g_vanillaWorldMap ? "1" : "0", cfg.c_str());
     async_io::IniWrite("MinimapV2", "VanillaMinimap", g_vanillaMinimap ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "DungeonMaps", g_dungeonMaps ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "NearbyCreatures", g_nearCreatures ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "NearbyCreaturesHideMap", g_nearCreaturesHideMap ? "1" : "0", cfg.c_str());
+    async_io::IniWrite("MinimapV2", "MapDesk", g_mapDesk ? "1" : "0", cfg.c_str());
     std::snprintf(buf, sizeof(buf), "%u", g_regionMask & kAllRegionsMask);
     async_io::IniWrite("MinimapV2", "RegionMask", buf, cfg.c_str());
     async_io::IniWrite("MinimapV2", "RegionFocus", nullptr, cfg.c_str());
@@ -10659,6 +11755,7 @@ struct MinimapMarkerDraw {
     bool isPulsing;
     bool isCleared;
     int8_t heightDir = 0; // nearby chests: +1 above the player, -1 below
+    uint32_t ring = 0;    // a live creature fighting / alerted: a ring of this colour around it (0: none)
 };
 
 struct AssetSpec32 {
@@ -11145,10 +12242,24 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 float clickWz = playerZ - (mouseY - vcy) / pxPerMeterY;
                 float maxRadiusM = std::max(12.0f, 14.0f / pxPerMeterX);
                 const float shiftM = 13.0f * btnScale * 0.6f / pxPerMeterX; // as the deposits are drawn aside
-                if (ToggleManualBossNear(clickWx, clickWz, std::max(10.0f, 10.0f / pxPerMeterX), shiftM) ||
-                    ToggleUniqueFoundNear(clickWx, clickWz, std::max(10.0f, 10.0f / pxPerMeterX), shiftM) ||
-                    ToggleLoreReadNear(clickWx, clickWz, std::max(10.0f, 10.0f / pxPerMeterX), shiftM, maxRadiusM) ||
-                    ToggleChestClearedNearWorldPos(clickWx, clickWz, maxRadiusM)) {
+                const float nearR = std::max(10.0f, 10.0f / pxPerMeterX);
+                int32_t placeX = 0, placeZ = 0;
+                int kind = ToggleManualBossNear(clickWx, clickWz, nearR, shiftM)                   ? 1
+                                 : ToggleUniqueFoundNear(clickWx, clickWz, nearR, shiftM)                ? 2
+                                 : ToggleLoreReadNear(clickWx, clickWz, nearR, shiftM, maxRadiusM)       ? 3
+                                 : ToggleChestClearedNearWorldPos(clickWx, clickWz, maxRadiusM)          ? 4
+                                 : ToggleDonePlaceAt(client, clickWx, clickWz, std::max(8.0f, 12.0f / pxPerMeterX), &placeX, &placeZ) ? 5
+                                                                                                         : 0;
+                if (kind == 5) NoteMarkStep(5, static_cast<float>(placeX), static_cast<float>(placeZ), 0, 0, 0, false);
+                else NoteMarkStep(kind, clickWx, clickWz, nearR, shiftM, maxRadiusM, false);
+                // Nothing marked, but a marker under the cursor: it can't be marked (a quest, an Elixir Well, an ore)
+                HideRowTarget under;
+                if (kind == 0 && HideRowTargetAt(client, static_cast<int32_t>(clickWx), static_cast<int32_t>(clickWz),
+                                                 std::max(6.0f, 9.0f / pxPerMeterX), 0u, under)) {
+                    AnnounceCantMark(under.hashes[0]);
+                    kind = -1;
+                }
+                if (kind != 0) {
                     toggledChest = true;
                     g_filterNoticeOnHud = true;
                 }
@@ -11230,7 +12341,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         // In a Hollow Hall the dungeon's floor plan and your footprints, by level (halls.inl); elsewhere the terrain
         float hallY = 0.0f;
         bool mmInVault = false; // in an Ancient Vault or Spire: its fast travel point isn't drawn (a one-way pad there)
-        if (halls::Update(client, playerX, playerZ, g_lootSection, hallY)) {
+        if (g_dungeonMaps && halls::Update(client, playerX, playerZ, g_lootSection, hallY)) {
             g_minimapInSpire = halls::InSpire(playerX, hallY, playerZ);
             mmInVault = halls::VaultAt(playerX, hallY, playerZ) >= 0;
             halls::Draw(mmCanvas.raw, vx, vy, vw, vh, vcx, vcy, playerX, hallY, playerZ, pxPerMeterX, pxPerMeterY);
@@ -11332,6 +12443,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 // A main quest's area circle (Plains For First Base): only while its quest is on, like the world map
                 if (origHash == 0x454e24f2u && !IsActiveQuestArea(savedId08, m[0x35])) continue;
                 const bool visitedSanctum = IsVisitedSanctumMarker(m, origHash);
+                const bool handDone = IsHandDoneMarker(m, origHash);
                 // A place with an unread lore rumor about it: the game's "?" in its stead, by the game's rule (as on the
                 // World Map), before its own row or Completed Places is asked
                 const uint32_t placeQuestHash = (origHash != 0xafce0c5fu && origHash != 0x454e24f2u)
@@ -11348,8 +12460,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 if (rumorHere) {
                     normHash = 0x8ba7c122u;
                 } else {
-                    if (!vanillaData && g_hideCompletedPlaces && (markerState == 3u || visitedSanctum) && origHash != 0xafce0c5fu &&
-                        !IsWaypointMarker(m)) continue; // Completed Places: Hide (not the place your waypoint is on)
+                    if (!vanillaData && ((g_hideCompletedPlaces && (markerState == 3u || visitedSanctum)) ||
+                                         (handDone && g_hideCompletedPlaces)) && origHash != 0xafce0c5fu &&
+                        !IsWaypointMarker(m)) continue; // Completed Places: Hide, a place marked done by hand too
+                                                        // (not the place your waypoint is on)
                     if (!IsFilterEnabled(filterEntries, filterCount, normHash)) {
                         if (placeQuestHash != 0u && IsFilterEnabled(filterEntries, filterCount, placeQuestHash)) normHash = placeQuestHash;
                         else continue;
@@ -11364,7 +12478,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 }
 
                 // In Enshrouded (0x140d1394d: cmp dword ptr [rdi+34h], 3), markerState == 3 is Completed/Cleared!
-                const bool isCleared = !rumorHere && ((markerState == 3u) || (normHash == kCompletedQuestTypeHash) || visitedSanctum);
+                const bool isCleared = !rumorHere && ((markerState == 3u) || (normHash == kCompletedQuestTypeHash) || visitedSanctum || (handDone && !vanillaData));
                 if (hideClearedOnBigMap && isCleared && normHash != kCompletedQuestTypeHash) continue;
 
                 uint32_t displayHash = (normHash == kCompletedQuestTypeHash)
@@ -11535,7 +12649,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             }
             for (size_t d = 0; d < kOreDepositCount; ++d) {
                 const OreDeposit& dep = kOreDeposits[d];
-                if (!g_oreEnabled[dep.ore]) continue;
+                if (!g_oreEnabled[dep.ore] || CreatureSpawnHidden(dep.ore)) continue;
                 const float dxMeters = dep.x - playerX;
                 const float dzMeters = dep.z - playerZ;
                 if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) continue;
@@ -11565,6 +12679,32 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                     (unexplored || done) ? 0xFF8C9296u : 0xFFFFFFFFu, (unexplored || done) ? 0.55f : 0.95f,
                     IsResourceCategory(kOreCategory[dep.ore]) ? kMiningCategory : kOreCategory[dep.ore], false, checked,
                     heightDir});
+            }
+        }
+
+        // 2c2. Live creatures (Settings > Nearby Creatures Only): the creatures within the height-arrow range, where they
+        // are now, each under its first row that is on, with the chests' height caret; a red ring while it fights, an amber
+        // one while it is alerted (looking for you)
+        if (!vanillaData && g_nearCreatures) {
+            float liveY = 0.0f;
+            const bool haveLiveY = LocalPlayerY(client, liveY);
+            for (const creature_live::LiveCreature& c : creature_live::Nearby(playerX, playerZ, 75.0f)) {
+                const int row = creature_live::ShownRow(c.model);
+                if (row < 0) continue;
+                const float dxMeters = c.x - playerX, dzMeters = c.z - playerZ;
+                if (dxMeters * dxMeters + dzMeters * dzMeters > 75.0f * 75.0f) continue;
+                if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) continue;
+                if (haveLiveY && halls::MinimapOtherFloor(c.x, c.y, c.z, playerX, liveY, playerZ)) continue;
+                const float sx = vcx + dxMeters * pxPerMeterX;
+                const float sy = vcy - dzMeters * pxPerMeterY;
+                if (sx < vx + iconPad * 0.5f || sx > vx + vw - iconPad * 0.5f || sy < vy + iconPad * 0.5f ||
+                    sy > vy + vh - iconPad * 0.5f)
+                    continue;
+                const int8_t heightDir = haveLiveY ? HeightCaret(0x40000000u ^ c.entity, c.y - liveY, 3.5f) : 0;
+                const int aggro = creature_live::Aggro(c);
+                drawList.push_back(MinimapMarkerDraw{sx, sy, 13.0f * btnScale, kOreIcons[row], 0xFFFFFFFFu, 0.95f,
+                                                     kOreCategory[row], false, false, heightDir,
+                                                     aggro == 2 ? 0xff2828ffu : aggro == 1 ? 0xff20b4ffu : 0u});
             }
         }
 
@@ -11627,6 +12767,11 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             DrawIconRectAbs(anchor.raw, md.iconRef,
                             md.sx - md.size * 0.5f, md.sy - md.size * 0.5f,
                             md.size, md.size, md.color, md.alpha);
+            if (md.ring) {
+                const float ringSz = md.size * 1.45f;
+                DrawAssetRectAbs(anchor.raw, kCircleOutlinePrimitive, md.sx - ringSz * 0.5f, md.sy - ringSz * 0.5f, ringSz,
+                                 ringSz, md.ring, 0.95f, 1.0f);
+            }
             if (md.isCleared) {
                 // Draw the native completed checkmark (assets + 0xef30) on completed Shroud Roots, Vaults, POIs, or looted chests
                 float checkSz = std::max(10.0f, md.size * 0.62f);
@@ -12253,6 +13398,40 @@ void SafePreSyncWorldMapMarkers() {
     SafePreSyncWorldMapMarkersInner();
 }
 
+
+// A quest / rumor pin under the cursor that a quest names (the Sunken Ancient City's "!": Follow The Melody's place,
+// with an unread rumor about it): the game showed the rumor's card for it, looked up by its id. While the cursor is on
+// such a pin its id (+0x08) is 0 as the game builds its list (no card), back in the overlay pass, and the mod draws
+// the quest's name on its tooltip panel (g_questTitle).
+uint8_t* g_blankedPin = nullptr;
+uint32_t g_blankedId = 0;
+void HideRumorsInner(bool hide) {
+    if (!hide) {
+        if (g_blankedPin && *reinterpret_cast<uint32_t*>(g_blankedPin + 0x08) == 0u) *reinterpret_cast<uint32_t*>(g_blankedPin + 0x08) = g_blankedId;
+        g_blankedPin = nullptr;
+        return;
+    }
+    uint8_t* pin = const_cast<uint8_t*>(g_hoveredGameMarker);
+    if (g_blankedPin || !pin || GetTickCount64() - g_hoveredGameMarkerTick > 150ULL ||
+        *reinterpret_cast<const uint32_t*>(pin + 0x30) != 0xafce0c5fu || !g_getQuestByMarkerId)
+        return;
+    const uint32_t id = *reinterpret_cast<const uint32_t*>(pin + 0x08);
+    if (!id) return;
+    const uint8_t* quest = static_cast<const uint8_t*>(g_getQuestByMarkerId(id));
+    if (!quest || !ReadLocaText(*reinterpret_cast<const uint32_t*>(quest + 4), g_questTitle, sizeof(g_questTitle)) || !g_questTitle[0])
+        return;
+    g_questTitleTick = GetTickCount64();
+    g_questTitleFor = pin;
+    g_blankedPin = pin, g_blankedId = id;
+    *reinterpret_cast<uint32_t*>(pin + 0x08) = 0u;
+}
+void HideRumorsOverHoveredPin(bool hide) {
+    __try {
+        HideRumorsInner(hide);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
 void BuildWorldMapPlayersHook(void* outVec, void* mapState) {
     if (g_origBuildWorldMapPlayers) {
         g_origBuildWorldMapPlayers(outVec, mapState);
@@ -12374,10 +13553,192 @@ void DrawWorldMapMarkerIconWithOverrides(void* mapState, uint8_t* m, uint8_t* dr
     }
 }
 
+// A game marker whose spot is under a player's locator (the game draws its markers over the locators)
+bool UnderLocator(uint8_t* mapState, const uint8_t* m, const uint8_t* drawParams) {
+    if (!m || GetTickCount64() - g_locatorKeepTick > 250) return false;
+    float zoom = 0.0f, ox = 0.0f, oy = 0.0f, worldH = 0.0f;
+    __try {
+        if (!LevelMapView(mapState, zoom, ox, oy, worldH)) return false;
+        const float sx = ox + static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)) * zoom;
+        const float sy = oy + (worldH - static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24))) * zoom;
+        // the marker's icon (its drawn size, half each way) overlapping the box
+        float half = drawParams ? *reinterpret_cast<const float*>(drawParams + 0x40) * 0.5f : 10.0f;
+        if (!(half > 2.0f && half < 100.0f)) half = 10.0f;
+        g_markerIconSize = g_markerIconSize * 0.95f + half * 2.0f * 0.05f;
+        for (const DrawExclusion& e : g_locatorKeep)
+            if (e.active && sx + half > e.x0 && sx - half < e.x1 && sy + half > e.y0 && sy - half < e.y1) return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    return false;
+}
+
+// The marker under the cursor, found while the game draws its icons: the one whose diamond holds the cursor, the
+// biggest if several (the game draws the hovered one enlarged). The game asks for every marker's title each frame (some
+// 80000 a second), so the title hook can't tell which one is hovered. Published once a frame (PublishCursorIcon).
+struct CursorIcon {
+    const uint8_t* m = nullptr;
+    float x = 0, y = 0, half = 0;
+};
+CursorIcon g_cursorBest;
+// Every game icon drawn this frame: the game draws the one it hovers enlarged, so it is found by its size against the
+// others of its type (the game's own choice, for every kind of pin); the cursor test is the fallback
+struct FrameIcon {
+    const uint8_t* m;
+    float x, y, half;
+    uint32_t type;
+};
+std::vector<FrameIcon> g_frameIcons, g_questIcons;
+bool g_gameQuestHover = false; // the game hovers a quest / rumor pin (drawn enlarged): its card shows, the mod's panel waits
+int g_iconDrawsThisFrame = 0; // dev: icons through the hook a frame
+float g_nearestIconD = 1e9f;   // dev: the nearest icon's distance from the cursor (UI px) and its type
+uint32_t g_nearestIconType = 0;
+void NoteCursorIcon(uint8_t* mapState, const uint8_t* m, const uint8_t* drawParams) {
+    ++g_iconDrawsThisFrame;
+    if (!g_mapCursorIn || !drawParams) return;
+    float zoom = 0.0f, ox = 0.0f, oy = 0.0f, worldH = 0.0f;
+    __try {
+        if (!LevelMapView(mapState, zoom, ox, oy, worldH)) return;
+        float half = *reinterpret_cast<const float*>(drawParams + 0x40) * 0.5f;
+        if (!(half > 2.0f && half < 150.0f)) return;
+        const float sx = ox + static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)) * zoom;
+        const float sy = oy + (worldH - static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24))) * zoom;
+        {
+            const float d = std::fabs(g_mapCursor[0] - sx) + std::fabs(g_mapCursor[1] - sy);
+            if (d < g_nearestIconD) g_nearestIconD = d, g_nearestIconType = *reinterpret_cast<const uint32_t*>(m + 0x30);
+        }
+        // (the game hovers a marker anywhere on its drawn square, at least ~22 UI px round small ones: the same here, or
+        // near an icon's edge the game showed its plain title and the mod's panel didn't take over)
+        // (a quest / rumor pin is skipped: the game keeps its own label for them, and one near a chest took the chest's
+        // hover from the mod: the Gold Chest under a "!" showed its plain title)
+        if (*reinterpret_cast<const uint32_t*>(m + 0x30) == 0xafce0c5fu) {
+            if (g_questIcons.size() < 2000) g_questIcons.push_back({m, sx, sy, half, 0xafce0c5fu});
+            return;
+        }
+        if (g_frameIcons.size() < 8000) g_frameIcons.push_back({m, sx, sy, half, *reinterpret_cast<const uint32_t*>(m + 0x30)});
+        const float reachPx = std::max(half * 1.25f, 28.0f); // (a hovered icon is drawn enlarged; the game's reach is wider)
+        if (std::fabs(g_mapCursor[0] - sx) > reachPx || std::fabs(g_mapCursor[1] - sy) > reachPx) return;
+        if (g_cursorBest.m && half <= g_cursorBest.half) return;
+        g_cursorBest = {m, sx, sy, half};
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+// Once a World Map frame: last frame's marker under the cursor becomes the hovered one
+void HideRumorsOverHoveredPin(bool hide);
+// Quest and rumor pins ("!" / "?") aren't drawn through the icon hook: the nearest one's spot within ~30 UI px of the
+// cursor, when no hooked icon is under it
+float g_nearestPinD = 1e9f, g_nearestPinAt[2]{}; // dev: the nearest quest / rumor pin to the cursor
+uint32_t g_nearestPinOrig = 0;
+int g_questPinsSeen = 0;
+void PickQuestPinUnderCursor() {
+    uint8_t* client = GetUiClient();
+    uint8_t* mapState = g_lastMapState;
+    float zoom = 0.0f, ox = 0.0f, oy = 0.0f, worldH = 0.0f;
+    if (!client || !mapState || !g_mapCursorIn || !LevelMapView(mapState, zoom, ox, oy, worldH)) return;
+    constexpr float kHalf = 60.0f; // (a hovered "!" is drawn about twice its size: its whole diamond)
+    float best = kHalf * kHalf;
+    constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+    for (size_t a = 0; a < 4; ++a) {
+        uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[a]);
+        const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[a] + 8);
+        if (!base || count == 0 || count > 10000) continue;
+        for (uint64_t i = 0; i < count; ++i) {
+            const uint8_t* m = base + i * 0xA0;
+            if (*reinterpret_cast<const uint32_t*>(m + 0x30) != 0xafce0c5fu || MarkerHiddenOnMap(m)) continue;
+            ++g_questPinsSeen;
+            const float sx = ox + static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)) * zoom;
+            const float sy = oy + (worldH - static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24))) * zoom;
+            const float dx = g_mapCursor[0] - sx, dy = g_mapCursor[1] - sy;
+            if (dx * dx + dy * dy < g_nearestPinD * g_nearestPinD)
+                g_nearestPinD = std::sqrt(dx * dx + dy * dy), g_nearestPinAt[0] = sx, g_nearestPinAt[1] = sy, g_nearestPinOrig = GetMarkerOrigTypeHash(m);
+            if (dx * dx + dy * dy >= best) continue;
+            best = dx * dx + dy * dy;
+            g_cursorBest = {m, sx, sy, kHalf};
+        }
+    }
+}
+void SafePickQuestPinUnderCursor() {
+    __try {
+        PickQuestPinUnderCursor();
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+// The icon the game draws enlarged (its hover), near the cursor: over 1.12 times the smallest of its type this frame
+const FrameIcon* GameEnlargedIcon() {
+    std::unordered_map<uint32_t, float> smallest;
+    for (const FrameIcon& f : g_frameIcons) {
+        auto it = smallest.find(f.type);
+        if (it == smallest.end() || f.half < it->second) smallest[f.type] = f.half;
+    }
+    const FrameIcon* best = nullptr;
+    for (const FrameIcon& f : g_frameIcons) {
+        if (f.half < smallest[f.type] * 1.12f) continue;
+        const float reach = f.half * 2.5f + 20.0f;
+        if (!g_mapCursorIn || std::fabs(g_mapCursor[0] - f.x) > reach || std::fabs(g_mapCursor[1] - f.y) > reach) continue;
+        if (!best || f.half / smallest[f.type] > best->half / smallest[best->type]) best = &f;
+    }
+    return best;
+}
+
+void PublishCursorIcon() {
+    HideRumorsOverHoveredPin(false);
+    {
+        // each quest pin against its own usual size (quest pins differ: a rumor's "?" in its circle isn't the size of a
+        // main quest's "!"), kept per pin and reset when the zoom changes
+        static std::unordered_map<const uint8_t*, float> usual;
+        static float usualZoom = 0.0f;
+        float zz = 0.0f, a1 = 0.0f, a2 = 0.0f, a3 = 0.0f;
+        if (g_lastMapState && LevelMapView(g_lastMapState, zz, a1, a2, a3) && std::fabs(zz - usualZoom) > 1e-4f * zz)
+            usual.clear(), usualZoom = zz;
+        if (usual.size() > 4000) usual.clear();
+        g_gameQuestHover = false;
+        for (const FrameIcon& f : g_questIcons) {
+            auto it = usual.find(f.m);
+            if (it == usual.end()) it = usual.emplace(f.m, f.half).first;
+            else it->second = std::min(it->second, f.half);
+            const float reach = f.half * 2.5f + 20.0f;
+            if (f.half >= it->second * 1.12f && g_mapCursorIn && std::fabs(g_mapCursor[0] - f.x) < reach && std::fabs(g_mapCursor[1] - f.y) < reach)
+                g_gameQuestHover = true;
+        }
+        g_questIcons.clear();
+    }
+    if (const FrameIcon* e = GameEnlargedIcon()) g_cursorBest = {e->m, e->x, e->y, e->half};
+    if (g_gameQuestHover) g_cursorBest = {}; // the game's quest / rumor card is up: no other marker counts as hovered
+    if (g_arrowHovered) g_cursorBest = {}; // the cursor on your arrow: the game shows its own label there (your place)
+    g_frameIcons.clear();
+#ifdef UMM_DEV_BRIDGE
+    {
+        static uint64_t last = 0;
+        if (g_log && GetTickCount64() - last > 500 && g_mapCursorIn) {
+            last = GetTickCount64();
+            const uint8_t* b = g_cursorBest.m;
+            const uint32_t id = b ? *reinterpret_cast<const uint32_t*>(b + 0x08) : 0u;
+            const void* q = b && id && g_getQuestByMarkerId ? g_getQuestByMarkerId(id) : nullptr;
+            g_log("Map: cursor %.0f,%.0f: %d icons drawn, nearest %.0f px (type %08x); picked %p type %08x orig %08x id %08x half %.1f quest %p; title for %p",
+                  g_mapCursor[0], g_mapCursor[1], g_iconDrawsThisFrame, g_nearestIconD, g_nearestIconType, b,
+                  b ? *reinterpret_cast<const uint32_t*>(b + 0x30) : 0u, b ? GetMarkerOrigTypeHash(b) : 0u, id, g_cursorBest.half, q,
+                  g_questTitleFor);
+            g_log("Map:   quest pins %d, nearest %.0f px at %.0f,%.0f (orig %08x)", g_questPinsSeen, g_nearestPinD, g_nearestPinAt[0],
+                  g_nearestPinAt[1], g_nearestPinOrig);
+        }
+        g_iconDrawsThisFrame = 0, g_nearestIconD = 1e9f, g_nearestPinD = 1e9f, g_questPinsSeen = 0;
+    }
+#endif
+
+    if (g_cursorBest.m) {
+        g_hoveredGameMarker = g_cursorBest.m;
+        g_hoveredGameMarkerTick = g_hoveredIconTick = GetTickCount64();
+        g_hoveredIcon[0] = g_cursorBest.x, g_hoveredIcon[1] = g_cursorBest.y, g_hoveredIcon[2] = g_cursorBest.half;
+    }
+    g_cursorBest = {};
+}
+
 void DrawWorldMapMarkerIconHook(void* mapState, uint8_t* m, uint8_t* drawParams) {
     if (!g_origDrawWorldMapMarkerIcon) return;
     greeneye::Lease lease;
     if (lease && g_worldMapModded && MarkerHiddenOnMap(m)) return; // Map Key > Region: Hide, or another Hollow Hall
+    if (lease && g_worldMapModded && UnderLocator(static_cast<uint8_t*>(mapState), m, drawParams)) return; // the locator on top
+    if (lease && g_worldMapModded && m) NoteCursorIcon(static_cast<uint8_t*>(mapState), m, drawParams);
     if (lease && g_worldMapModded) DrawWorldMapMarkerIconWithOverrides(mapState, m, drawParams);
     else g_origDrawWorldMapMarkerIcon(mapState, m, drawParams);
 }
@@ -12444,16 +13805,70 @@ bool ModHoverTitleShowing() {
     return !mapState || *reinterpret_cast<const uint32_t*>(mapState + 0xf8) != 3;
 }
 
+// The game's hover title's text, for its area (g_titleBox)
+void NoteHoverTitle(const UiText* got) {
+    __try {
+        if (got && got->utf8 && got->len > 0 && got->len < sizeof(g_hoverTitleText)) {
+            std::memcpy(g_hoverTitleText, got->utf8, got->len);
+            g_hoverTitleText[got->len] = 0;
+            g_hoverTitleTick = GetTickCount64();
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+
+// The game's hover title the mod draws itself, on a tooltip panel: the hovered marker's, while its icon's place is known
+// (drawn through the icon hook this frame or the last) and no menu is open on a marker
+bool GameTitleReplaced(const void* m) {
+    const uint64_t now = GetTickCount64();
+    if (!m || m != g_hoveredGameMarker || now - g_hoveredIconTick > 150ULL) return false;
+    // a quest or rumor pin ("!" / "?"): the game's label for it doesn't come from the title asked here (left empty, it
+    // still showed), so the mod's panel only doubled it; the game's is kept
+    if (*reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(m) + 0x30) == 0xafce0c5fu) return false;
+    const uint8_t* mapState = g_lastMapState;
+    return !mapState || *reinterpret_cast<const uint32_t*>(mapState + 0xf8) != 3;
+}
+
 UiText* MarkerTitleTextHook(UiText* outText, const void* uiMarker) {
     {
         greeneye::Lease lease;
-        if (lease && g_worldMapModded && outText && (ModHoverTitleShowing() || TitleHiddenByRegion(uiMarker))) {
+        if (lease && g_worldMapModded && outText && TitleHiddenByRegion(uiMarker)) {
             *outText = MakeUiText("");
             return outText;
         }
     }
-    return g_getMarkerTitleText(outText, uiMarker);
+    UiText* got = g_getMarkerTitleText(outText, uiMarker);
+    if (uiMarker && uiMarker == g_hoveredGameMarker) NoteHoverTitle(got); // the hovered one's text
+    {
+        // the mod's own title shows instead (its icon is under the cursor), or the mod draws this one itself, on a
+        // tooltip panel (DrawGameHoverTitle): the game's left empty
+        greeneye::Lease lease;
+        if (lease && g_worldMapModded && got && (ModHoverTitleShowing() || GameTitleReplaced(uiMarker))) *got = MakeUiText("");
+
+    }
+    return got;
 }
+
+#ifdef UMM_DEV_BRIDGE
+// dev (map op "nearplate" x,y): the plates drawn within 120 UI px of a screen point, their entry's raw words
+float g_devNearPlate[2] = {-1.0f, -1.0f};
+void LogPlateNear(uint8_t* entry, const float* rect4) {
+    __try {
+        static int n = 0;
+        static uint64_t since = 0;
+        if (GetTickCount64() - since > 3000) since = GetTickCount64(), n = 0;
+        if (!entry || !rect4 || n > 30 || !g_log) return;
+        if (std::fabs(rect4[0] + rect4[2] * 0.5f - g_devNearPlate[0]) > 120.0f || std::fabs(rect4[1] + rect4[3] * 0.5f - g_devNearPlate[1]) > 120.0f) return;
+        ++n;
+        char w[512];
+        int len = 0;
+        for (int k = 0; k < 0x48 && len < 480; k += 4)
+            len += std::snprintf(w + len, sizeof(w) - len, " %08x", *reinterpret_cast<const uint32_t*>(entry + k));
+        g_log("Plate near: rect %.0f %.0f %.0f %.0f entry %p:%s", rect4[0], rect4[1], rect4[2], rect4[3], entry, w);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+#endif
 
 void DrawWorldMapMarkerPlateHook(void* widget, uint8_t* entry, const float* rect4) {
     if (!g_origDrawWorldMapMarkerPlate) return;
@@ -12467,6 +13882,9 @@ void DrawWorldMapMarkerPlateHook(void* widget, uint8_t* entry, const float* rect
         }
     }
 
+#ifdef UMM_DEV_BRIDGE
+    if (g_devNearPlate[0] > 0.0f) LogPlateNear(entry, rect4);
+#endif
     DrawMarkerPlateAndPop(widget, entry, rect4, pushed ? pushedUiCtx : nullptr);
 }
 
@@ -12511,6 +13929,240 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
         changed = true;
     } else if (std::strcmp(action, "recenter") == 0 && worldMap) {
         g_bridgeRecenterMap = true;
+#ifdef UMM_DEV_BRIDGE
+    } else if (std::strcmp(action, "locatorzoom") == 0) {
+        g_locatorRingZoom = static_cast<float>(std::atof(value)); // dev
+    } else if (std::strcmp(action, "locatorbox") == 0) { // dev: "left,top,right,bottom" round a player's spot
+        std::sscanf(value, "%f,%f,%f,%f", &g_locatorBox[0], &g_locatorBox[1], &g_locatorBox[2], &g_locatorBox[3]);
+    } else if (std::strcmp(action, "nearplate") == 0) {
+        sscanf_s(value, "%f,%f", &g_devNearPlate[0], &g_devNearPlate[1]); // dev: plates drawn near a screen point
+    } else if (std::strcmp(action, "near") == 0) {
+        sscanf_s(value, "%f,%f", &g_devNear[0], &g_devNear[1]); // dev: markers projected near a screen point
+    } else if (std::strcmp(action, "dot") == 0) {
+        // dev: value "x,z": a magenta dot drawn where the mod projects that world spot (0: off)
+        g_devDot[0] = g_devDot[1] = -1.0f;
+        sscanf_s(value, "%f,%f", &g_devDot[0], &g_devDot[1]);
+    } else if (std::strcmp(action, "zoomset") == 0) {
+        g_bridgeZoomSet = static_cast<float>(std::atof(value)); // dev: the World Map's zoom set next frame
+    } else if (std::strcmp(action, "meshtest") == 0) {
+        desk::g_meshTest = std::atoi(value); // dev: a textured spinning quad (desk.inl MeshTest)
+    } else if (std::strcmp(action, "deskband") == 0) {
+        desk::g_deskBandKey = std::atoi(value); // dev: the over layer's sub-layer
+#endif
+#ifdef UMM_DEV_BRIDGE
+    } else if (std::strcmp(action, "eyelog") == 0) {
+        chest_glow::g_eyeLogUntil.store(GetTickCount64() + 1000ULL * static_cast<uint64_t>(std::max(0, std::atoi(value))));
+#endif
+    } else if (std::strcmp(action, "proxyfinal") == 0) {
+        InterlockedExchange(&chest_glow::g_proxyFinal, std::atoi(value) && chest_glow::g_stageNext ? 1 : 0); // copies placed before staging
+    } else if (std::strcmp(action, "proxysmooth") == 0) {
+        const double v = std::atof(value); // G G creature copies: 0 = the last camera step, up to 0.95 = a long average
+        if (v >= 0.0 && v <= 0.95) chest_glow::g_proxySmooth = v;
+    } else if (std::strcmp(action, "proxypredict") == 0) {
+        InterlockedExchange(&chest_glow::g_proxyPredict, std::atoi(value) ? 1 : 0); // G G creature copies: camera one step ahead
+    } else if (std::strcmp(action, "proxylate") == 0) {
+        InterlockedExchange(&chest_glow::g_proxyLate, std::atoi(value) ? 1 : 0); // G G creature copies placed again late in the frame
+    } else if (std::strcmp(action, "proxyeye") == 0) {
+        chest_glow::g_proxyEye = std::atoi(value) == 0 ? 0 : 1; // G G creature copies: 1 client view, 0 renderer camera
+        if (g_log) g_log("Chest glow: creature copies placed by the %s", chest_glow::g_proxyEye ? "client view" : "renderer camera");
+    } else if (std::strcmp(action, "proxynear") == 0) {
+        const float m = static_cast<float>(std::atof(value)); // G G creature copies: metres from the eye
+        if (m >= 0.1f && m <= 10.0f) chest_glow::g_proxyNear = m;
+        if (g_log) g_log("Chest glow: creature copies %.2f m from the eye", chest_glow::g_proxyNear);
+    } else if (std::strcmp(action, "nearcreatures") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
+        g_nearCreatures = std::strcmp(value, "on") == 0; // Settings > Advanced > Nearby Creatures Only
+        SaveMinimapConfig();
+    } else if (std::strcmp(action, "deskdim") == 0) {
+        g_deskDim = std::clamp(static_cast<float>(std::atof(value)), 0.05f, 1.0f); // the desk art's brightness (trial)
+    } else if (std::strcmp(action, "mapdesk") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
+        g_mapDesk = std::strcmp(value, "on") == 0; // Settings > Advanced > Map Desk
+        SaveMinimapConfig();
+    } else if (std::strcmp(action, "centerat") == 0 && worldMap) {
+        float x = 0.0f, z = 0.0f; // value "x,z": the World Map centred on that spot
+        if (sscanf_s(value, "%f,%f", &x, &z) == 2) g_bridgeCenterX = x, g_bridgeCenterZ = z;
+#ifdef UMM_DEV_BRIDGE
+    } else if (std::strcmp(action, "movers") == 0 && client) {
+        // dev: call twice; the second call logs the entities within 120 m that moved since the first, with their
+        // components (type:size) and the first bytes of the small ones
+        static std::unordered_map<uint64_t, std::array<float, 3>> before;
+        const bool first = before.empty();
+        float px = 0.0f, pz = 0.0f;
+        int moved = 0, seen = 0;
+        if (LocalPlayerXZ(client, px, pz)) {
+            for (int ri = 0; ri < kMaxWaterRegistries; ++ri) {
+                auto* reg = static_cast<uint8_t*>(g_waterRegistries[ri].load(std::memory_order_relaxed));
+                if (!reg) continue;
+                boss_live::RegistryTypes& t = boss_live::g_types[ri];
+                if (!t.position) boss_live::DetectTypes(reg, t, px, pz);
+                if (!t.position) continue;
+                uint8_t* map = reg + 0x148;
+                const uint64_t capacity = *reinterpret_cast<uint64_t*>(map + 0x10);
+                auto* used = *reinterpret_cast<uint64_t**>(map + 0x08);
+                auto* ids = *reinterpret_cast<uint32_t**>(map + 0x28);
+                auto* records = *reinterpret_cast<uint8_t***>(reg + 0x188);
+                if (!used || !ids || !records || capacity > (1u << 22)) continue;
+                for (uint64_t i = 0; i < capacity; ++i) {
+                    if (!(used[i >> 6] >> (i & 63) & 1) || ids[i] < 0x400 || !records[i]) continue;
+                    float pos[3];
+                    if (!EcsPosition(records[i], t.position, pos) || (pos[0] - px) * (pos[0] - px) + (pos[2] - pz) * (pos[2] - pz) > 120.0f * 120.0f) continue;
+                    ++seen;
+                    const uint64_t key = (static_cast<uint64_t>(ri) << 32) | ids[i];
+                    if (first) { before[key] = {pos[0], pos[1], pos[2]}; continue; }
+                    auto it = before.find(key);
+                    if (it == before.end() || std::hypot(pos[0] - it->second[0], pos[2] - it->second[2]) < 0.3f) continue;
+                    if (++moved > 12) continue;
+                    std::string comps;
+                    const auto* bits = *reinterpret_cast<const uint64_t**>(records[i] + 0x18);
+                    for (int ty = 0; ty < kEcsTypeBits; ++ty) {
+                        if (!(bits[ty >> 6] >> (ty & 63) & 1)) continue;
+                        uint16_t size = 0;
+                        const uint8_t* c = EcsComponent(records[i], static_cast<uint16_t>(ty), &size);
+                        char one[96];
+                        int n = std::snprintf(one, sizeof(one), " %d:%u", ty, size);
+                        if (c && size > 0 && size <= 16) {
+                            n += std::snprintf(one + n, sizeof(one) - n, "=");
+                            for (uint16_t k = 0; k < size && n < 90; ++k) n += std::snprintf(one + n, sizeof(one) - n, "%02x", c[k]);
+                        }
+                        comps += one;
+                    }
+                    if (g_log) g_log("Mover reg %d id %x at %.1f,%.1f,%.1f moved %.1f m:%s", ri, ids[i], pos[0], pos[1], pos[2],
+                                     std::hypot(pos[0] - it->second[0], pos[2] - it->second[2]), comps.c_str());
+                }
+            }
+        }
+        if (!first) before.clear();
+        if (g_log) g_log("Movers: %s, %d entities within 120 m, %d moved", first ? "first pass" : "second pass", seen, moved);
+    } else if (std::strcmp(action, "creatures") == 0 && client) {
+        // dev: the live creatures within 75 m (row, distance, entity) with their components of up to 32 bytes
+        // (type:size=bytes); value "brief" leaves the components out
+        if (std::strcmp(value, "watch") == 0 || std::strcmp(value, "unwatch") == 0) creature_live::g_watch = value[0] == 'w';
+        float px = 0.0f, pz = 0.0f;
+        std::vector<creature_live::LiveCreature> live;
+        if (LocalPlayerXZ(client, px, pz) && creature_live::Scan(live, px, pz, 75.0f)) {
+            const bool brief = std::strcmp(value, "brief") == 0;
+            for (const auto& c : live) {
+                std::string comps;
+                if (!brief) {
+                    {
+                        auto* reg = static_cast<uint8_t*>(g_waterRegistries[c.registry].load(std::memory_order_relaxed));
+                        creature_live::ForEachEntity(reg, [&](uint32_t id, uint8_t* rec) {
+                            if (id != c.entity) return;
+                            const auto* bits = *reinterpret_cast<const uint64_t**>(rec + 0x18);
+                            for (int ty = 0; ty < kEcsTypeBits; ++ty) {
+                                if (!(bits[ty >> 6] >> (ty & 63) & 1)) continue;
+                                uint16_t size = 0;
+                                const uint8_t* d = EcsComponent(rec, static_cast<uint16_t>(ty), &size);
+                                char one[128];
+                                int n = std::snprintf(one, sizeof(one), " %d:%u", ty, size);
+                                if (d && size > 0 && size <= 32) {
+                                    n += std::snprintf(one + n, sizeof(one) - n, "=");
+                                    for (uint16_t k = 0; k < size && n < 124; ++k) n += std::snprintf(one + n, sizeof(one) - n, "%02x", d[k]);
+                                }
+                                comps += one;
+                            }
+                        });
+                    }
+                }
+                std::string rows;
+                creature_live::ForEachRow(c.model, [&](uint16_t r) { rows += rows.empty() ? "" : " / "; rows += OreName(r); });
+                if (g_log) g_log("Creature %s reg %d id %x at %.1f,%.1f,%.1f (%.0f m):%s", rows.c_str(), c.registry, c.entity,
+                                 c.x, c.y, c.z, std::hypot(c.x - px, c.z - pz), comps.c_str());
+            }
+        }
+        if (g_log) g_log("Creatures: %zu live within 75 m", live.size());
+    } else if (std::strcmp(action, "entdump") == 0 && client) {
+        // dev: every entity within 75 m to the file named by value: per entity "E id reg x y z", then per component
+        // "C type size hex" (up to 512 bytes)
+        float px = 0.0f, pz = 0.0f;
+        FILE* f = nullptr;
+        int ents = 0;
+        if (LocalPlayerXZ(client, px, pz) && fopen_s(&f, value, "w") == 0 && f) {
+            for (int ri = 0; ri < kMaxWaterRegistries; ++ri) {
+                auto* reg = static_cast<uint8_t*>(g_waterRegistries[ri].load(std::memory_order_relaxed));
+                if (!reg) continue;
+                boss_live::RegistryTypes& bt = boss_live::g_types[ri];
+                if (!bt.position) boss_live::DetectTypes(reg, bt, px, pz);
+                if (!bt.position) continue;
+                creature_live::ForEachEntity(reg, [&](uint32_t id, uint8_t* rec) {
+                    float p[3];
+                    if (!EcsPosition(rec, bt.position, p) || (p[0] - px) * (p[0] - px) + (p[2] - pz) * (p[2] - pz) > 75.0f * 75.0f) return;
+                    ++ents;
+                    std::fprintf(f, "E %x %d %.2f %.2f %.2f\n", id, ri, p[0], p[1], p[2]);
+                    const auto* bits = *reinterpret_cast<const uint64_t**>(rec + 0x18);
+                    for (int ty = 0; ty < kEcsTypeBits; ++ty) {
+                        if (!(bits[ty >> 6] >> (ty & 63) & 1)) continue;
+                        uint16_t size = 0;
+                        const uint8_t* d = EcsComponent(rec, static_cast<uint16_t>(ty), &size);
+                        std::fprintf(f, "C %d %u ", ty, size);
+                        for (uint16_t k = 0; d && k < size && k < 4096; ++k) std::fprintf(f, "%02x", d[k]);
+                        std::fputc('\n', f);
+                    }
+                });
+            }
+            std::fclose(f);
+        }
+        if (g_log) g_log("Entity dump: %d entities to %s", ents, value);
+    } else if (std::strcmp(action, "depnear") == 0 && client) {
+        // dev: the creature spawns within 150 m of you and what the World Map's deposit pass makes of each
+        float px = 0.0f, pz = 0.0f;
+        if (LocalPlayerXZ(client, px, pz))
+            for (size_t d = 0; d < kOreDepositCount; ++d) {
+                const OreDeposit& dep = kOreDeposits[d];
+                if (dep.ore < kCreaturesFirst || dep.ore >= kCreaturesFirst + kCreaturesCount) continue;
+                const float dx = dep.x - px, dz = dep.z - pz;
+                if (dx * dx + dz * dz > 150.0f * 150.0f) continue;
+                if (g_log) g_log("Dep %zu %s at %d,%d (y %d): on %d area %d resCat %d explored %d done %d outside %d hallHides %d",
+                                 d, OreName(dep.ore), dep.x, dep.z, dep.topY, g_oreEnabled[dep.ore] ? 1 : 0,
+                                 kOreAreaColors[dep.ore] != 0, IsResourceCategory(kOreCategory[dep.ore]) ? 1 : 0,
+                                 IsPositionExploredByCharacter(client, dep.x, dep.z) ? 1 : 0, KnowledgeDone(d) ? 1 : 0,
+                                 OutsideFocusedRegion(dep.x, dep.z) ? 1 : 0,
+                                 halls::MapHidesAt(dep.x, dep.topY, dep.z, IsKnowledgeDeposit(d)) ? 1 : 0);
+            }
+    } else if (std::strcmp(action, "questat") == 0 && client) {
+        // dev: value "x,z": the markers there and the quests the game has for them, logged in the next map frame
+        float qx = 0, qz = 0;
+        if (sscanf_s(value, "%f,%f", &qx, &qz) == 2) g_questAt[0] = qx, g_questAt[1] = qz, g_questAtPending = true;
+    } else if (std::strcmp(action, "rumors") == 0 && client) {
+        // dev: the markers shown as a quest / rumor "?" (type afce0c5f), their whole 0xA0 bytes as u32 words
+        constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+        int shown = 0;
+        for (size_t a = 0; a < 4 && shown < 12; ++a) {
+            uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[a]);
+            const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[a] + 8);
+            if (!base || count == 0 || count > 10000) continue;
+            for (uint64_t i = 0; i < count && shown < 12; ++i) {
+                const uint8_t* m = base + i * 0xA0;
+                if (*reinterpret_cast<const uint32_t*>(m + 0x30) != 0xafce0c5fu) continue;
+                ++shown;
+                std::string words;
+                for (int w = 0; w < 0xA0; w += 4) {
+                    char one[16];
+                    std::snprintf(one, sizeof(one), "%s%08x", w % 32 ? " " : " |", *reinterpret_cast<const uint32_t*>(m + w));
+                    words += one;
+                }
+                if (g_log) g_log("Rumor a%zu#%llu orig %08x at %d,%d:%s", a, static_cast<unsigned long long>(i), GetMarkerOrigTypeHash(m),
+                                 *reinterpret_cast<const int32_t*>(m + 0x14), *reinterpret_cast<const int32_t*>(m + 0x24), words.c_str());
+            }
+        }
+    } else if (std::strcmp(action, "spires") == 0 && client) {
+        // dev: every spire marker (and its twin) in the log: where, the type drawn, the flags the Alt + click lookup reads
+        constexpr size_t kArrayOffsets[4] = {0x36ea00, 0x396a28, 0x3bea50, 0x3e6a78};
+        for (size_t a = 0; a < 4; ++a) {
+            uint8_t* base = *reinterpret_cast<uint8_t**>(client + kArrayOffsets[a]);
+            const uint64_t count = *reinterpret_cast<uint64_t*>(client + kArrayOffsets[a] + 8);
+            if (!base || count == 0 || count > 10000) continue;
+            for (uint64_t i = 0; i < count; ++i) {
+                const uint8_t* m = base + i * 0xA0;
+                const uint32_t orig = GetMarkerOrigTypeHash(m);
+                if (orig != 0xa17072beu && orig != 0x98b2d65du) continue;
+                if (g_log) g_log("Spire a%zu #%llu at %d,%d orig %08x type30 %08x b48 %u s34 %u s35 %02x hidden %d done %d",
+                                 a, static_cast<unsigned long long>(i), *reinterpret_cast<const int32_t*>(m + 0x14),
+                                 *reinterpret_cast<const int32_t*>(m + 0x24), orig, *reinterpret_cast<const uint32_t*>(m + 0x30),
+                                 m[0x48], m[0x34], m[0x35], MarkerHiddenOnMap(m) ? 1 : 0,
+                                 PlaceMarkedDone(*reinterpret_cast<const int32_t*>(m + 0x14), *reinterpret_cast<const int32_t*>(m + 0x24)) ? 1 : 0);
+            }
+        }
+#endif
     } else if (std::strcmp(action, "hallsmap") == 0 && worldMap && halls::g_mapDungeon >= 0) {
         halls::g_mapOverworld = !halls::g_mapOverworld; // the Dungeon Map / Overworld Map button
         g_worldMapOpenCenterFrames = 2;
@@ -12521,6 +14173,8 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
     } else if (std::strcmp(action, "vanillamm") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
         g_vanillaMinimap = std::strcmp(value, "on") == 0; // Settings > Advanced > Vanilla Minimap
         SaveMinimapConfig();
+    } else if (std::strcmp(action, "dungeonmaps") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
+        SetDungeonMaps(std::strcmp(value, "on") == 0); // Settings > Advanced > Dungeon Maps
     } else if (std::strcmp(action, "gg") == 0 && hud) {
         // G G without the keys: the chests and veins around you
         chest_glow::LightNearbyChests(client);
@@ -12817,8 +14471,18 @@ void UseKeptState(KeptState* kept) {
     g_kept = kept;
 }
 
+uint64_t g_reloadAskedAt = 0;
+bool MapKeyPanelReloadReady() {
+    return chest_glow::g_proxyCount == 0 || GetTickCount64() - g_reloadAskedAt > 2000ULL;
+}
+void ResumeMapKeyPanelAfterFailedReload() { InterlockedExchange(&chest_glow::g_dropProxies, 0); }
+
 void PrepareMapKeyPanelForReload() {
+    InterlockedExchange(&chest_glow::g_dropProxies, 1); // G G's creature copies go with this generation
+    g_reloadAskedAt = GetTickCount64();
     RemoveMapKeyWheelHook();
+    desk::g_edgeStopping = true;
+    desk::HideGameEdge(false); // the game's map edge back
     vein_surface::Stop();
     g_padKeyFocus = false; // the game reads the pad again
     hall_pan::Off(); // the stubs stay in the game; the next generation turns them on again

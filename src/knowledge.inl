@@ -158,8 +158,12 @@ void UpdateKnowledge() {
     if (!ok) g_knownKnowledge.clear();
 }
 
+// Sanctums the game has as visited, marked not done by hand (Ctrl + click: their check mark off; NotDoneAt = x,z;...
+// the marker's position). Defined with the other marks below.
+bool PlaceNotDoneNear(float x, float z);
 // A Flame or Night Sanctum marker near (x, z) that this character has visited (sanctum_spots.h; false while untracked).
-bool SanctumVisitedNear(float x, float z) {
+// As the game has it (raw), or with the marks by hand (not done by hand: not visited).
+bool SanctumVisitedRaw(float x, float z) {
     if (!g_knowledgeValid) return false;
     for (const SanctumSpot& sp : kSanctumSpots) {
         if (std::fabs(sp.x - x) > 6.0f || std::fabs(sp.z - z) > 6.0f) continue;
@@ -169,6 +173,7 @@ bool SanctumVisitedNear(float x, float z) {
     }
     return false;
 }
+bool SanctumVisitedNear(float x, float z) { return SanctumVisitedRaw(x, z) && !PlaceNotDoneNear(x, z); }
 
 bool IsKnowledgeDeposit(size_t d) {
     return d >= kKnowledgeFirstDeposit && d < kKnowledgeFirstDeposit + kKnowledgeSpotCount;
@@ -198,6 +203,20 @@ uint64_t PlaceKey(int32_t x, int32_t z) {
 }
 bool PlaceVisited(int32_t x, int32_t z) {
     return !g_visitedPlaces.empty() && g_visitedPlaces.count(PlaceKey(x, z)) != 0;
+}
+// Places marked done by hand (Ctrl + click a town, camp, sanctum...: the game checks off only the ones a quest
+// finishes): shown with a check mark like the game's completed places, and hidden with Completed Places: Hide.
+// Saved with the marks (DoneAt = x,z;... the marker's position).
+std::unordered_set<uint64_t> g_donePlaces;
+bool PlaceMarkedDone(int32_t x, int32_t z) {
+    return !g_donePlaces.empty() && g_donePlaces.count(PlaceKey(x, z)) != 0;
+}std::unordered_set<uint64_t> g_notDonePlaces;
+bool PlaceNotDoneNear(float x, float z) {
+    for (uint64_t k : g_notDonePlaces) {
+        const float kx = static_cast<float>(static_cast<int32_t>(k >> 32)), kz = static_cast<float>(static_cast<int32_t>(k & 0xffffffffu));
+        if (std::fabs(kx - x) <= 6.0f && std::fabs(kz - z) <= 6.0f) return true;
+    }
+    return false;
 }
 
 bool IsBossSpot(size_t d) {
@@ -252,6 +271,39 @@ void SaveManualBosses() {
                 std::to_string(static_cast<int32_t>(k & 0xffffffffu));
     }
     async_io::IniWrite(section.c_str(), "VisitedAt", text.c_str(), path.c_str());
+    std::vector<uint64_t> done(g_donePlaces.begin(), g_donePlaces.end());
+    std::sort(done.begin(), done.end());
+    text.clear();
+    for (uint64_t k : done) {
+        text += (text.empty() ? "" : ";") + std::to_string(static_cast<int32_t>(k >> 32)) + "," +
+                std::to_string(static_cast<int32_t>(k & 0xffffffffu));
+    }
+    async_io::IniWrite(section.c_str(), "DoneAt", text.c_str(), path.c_str());
+    std::vector<uint64_t> notDone(g_notDonePlaces.begin(), g_notDonePlaces.end());
+    std::sort(notDone.begin(), notDone.end());
+    text.clear();
+    for (uint64_t k : notDone) {
+        text += (text.empty() ? "" : ";") + std::to_string(static_cast<int32_t>(k >> 32)) + "," +
+                std::to_string(static_cast<int32_t>(k & 0xffffffffu));
+    }
+    async_io::IniWrite(section.c_str(), "NotDoneAt", text.c_str(), path.c_str());
+}
+
+// Marks the place at (x, z) done by hand, or clears the mark; false while the character isn't known yet
+bool TogglePlaceDone(int32_t x, int32_t z, bool& nowDone) {
+    if (g_bossCharacter.empty()) return false;
+    const uint64_t k = PlaceKey(x, z);
+    if (SanctumVisitedRaw(static_cast<float>(x), static_cast<float>(z))) {
+        // a sanctum the game has as visited: its check mark comes from that; the click takes it off, or puts it back
+        g_donePlaces.erase(k);
+        nowDone = g_notDonePlaces.erase(k) != 0;
+        if (!nowDone) g_notDonePlaces.insert(k);
+    } else {
+        nowDone = g_donePlaces.insert(k).second;
+        if (!nowDone) g_donePlaces.erase(k);
+    }
+    SaveManualBosses();
+    return true;
 }
 
 // The spot of a kind (boss, unique item, lore note) at (x, z, top y), or -1. A boss can share its place with the item
@@ -321,17 +373,20 @@ void UpdateManualBosses(uint8_t* client) {
     load("UniqueFoundAt", "UniqueFound", IsUniqueSpot, g_uniqueFound);
     load("LoreReadAt", "LoreRead", IsLoreSpot, g_loreRead);
     load("LoreUnreadAt", "LoreUnread", IsLoreSpot, g_loreUnread);
-    g_visitedPlaces.clear();
-    {
+    auto loadPlaces = [&](const char* key, std::unordered_set<uint64_t>& set) {
+        set.clear();
         std::vector<char> text(32768);
-        GetPrivateProfileStringA(section.c_str(), "VisitedAt", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+        GetPrivateProfileStringA(section.c_str(), key, "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
         for (const char* t = text.data(); *t;) {
             int x = 0, z = 0;
-            if (sscanf_s(t, "%d,%d", &x, &z) == 2) g_visitedPlaces.insert(PlaceKey(x, z));
+            if (sscanf_s(t, "%d,%d", &x, &z) == 2) set.insert(PlaceKey(x, z));
             while (*t && *t != ';') ++t;
             if (*t == ';') ++t;
         }
-    }
+    };
+    loadPlaces("VisitedAt", g_visitedPlaces);
+    loadPlaces("DoneAt", g_donePlaces);
+    loadPlaces("NotDoneAt", g_notDonePlaces);
     if (legacy) SaveManualBosses();
     if (g_log)
         g_log("Bosses: character %s, %zu marked defeated by hand, %zu not beaten by hand, %zu unique items found by hand, "

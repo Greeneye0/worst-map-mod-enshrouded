@@ -221,11 +221,17 @@ extern "C" __declspec(dllexport) int MapNativeFilters(const char* action, const 
     LoadMinimapConfig();
     // A click's effect without the mouse, target "x,z,r": ctrlclicklore does what Ctrl + click does to the nearest lore
     // note (the notes are this player's own, nothing goes to other players); altclick what Alt + click hides.
-    if (std::strcmp(action, "ctrlclicklore") == 0 || std::strcmp(action, "altclick") == 0) {
+    // placedone does what Ctrl + click does to the nearest place (marks it done by hand, or clears the mark).
+    if (std::strcmp(action, "ctrlclicklore") == 0 || std::strcmp(action, "altclick") == 0 || std::strcmp(action, "placedone") == 0) {
         float x = 0.0f, z = 0.0f, r = 0.0f;
         if (sscanf_s(target, "%f,%f,%f", &x, &z, &r) != 3) return -3;
         bool done = false;
-        if (action[0] == 'c') {
+        if (action[0] == 'p') {
+            int32_t hx = 0, hz = 0;
+            done = ToggleDonePlaceAt(client, x, z, r, &hx, &hz);
+            if (done) NoteMarkStep(5, static_cast<float>(hx), static_cast<float>(hz), 0, 0, 0, true);
+            g_bridgeRefreshMap = true;
+        } else if (action[0] == 'c') {
             done = ToggleLoreReadNear(x, z, r, 0.0f, 0.0f);
         } else {
             HideRowTarget row;
@@ -239,6 +245,12 @@ extern "C" __declspec(dllexport) int MapNativeFilters(const char* action, const 
             }
         }
         const int n = std::snprintf(out, outCap, "{\"done\":%s}", done ? "true" : "false");
+        return n > 0 && static_cast<uint32_t>(n) < outCap ? 1 : -4;
+    }
+    // Ctrl+Z / Ctrl+Y without the keys (runs on the next map frame)
+    if (std::strcmp(action, "undo") == 0 || std::strcmp(action, "redo") == 0) {
+        g_devHistoryStep = action[0] == 'u' ? 1 : 2;
+        const int n = std::snprintf(out, outCap, "{\"undo\":%zu,\"redo\":%zu,\"markUndo\":%zu,\"markRedo\":%zu}", g_filterUndo.size(), g_filterRedo.size(), g_markUndo.size(), g_markRedo.size());
         return n > 0 && static_cast<uint32_t>(n) < outCap ? 1 : -4;
     }
     // Filter presets: target "apply:N", "save:N", "name:N:text" (empty text: the default's name) or "status"; N is 1-5

@@ -9,7 +9,7 @@
 namespace hall_pan {
 
 struct StubData {
-    uint32_t on;      // +0: a dungeon map shows
+    uint32_t on;      // +0: 1 a dungeon map shows, 2 the overworld on the Map Desk (its terrain drawn)
     float rect[4];    // +4: the bounds on the canvas: x, y (south from the world's north edge), width, height
     uint64_t mapView; // +24 (0x18): the view it is for (the clamp's RSI)
     float lo[2];      // +0x20: the bounds' corners (x, y), for the stub's own clamp of the view's anchors
@@ -57,10 +57,11 @@ void InstallTerrainSkip(uint8_t* page) {
     if (!(target >= page && target < page + 4096)) *gameTarget = reinterpret_cast<uint64_t>(target);
     if (!*gameTarget) return;
     uint8_t* code = page + 0x80;
-    // mov rax, data / cmp dword [rax], 0 / je go / ret / go: mov rax, FUN_140d67fc0 / jmp rax
+    // mov rax, data / cmp dword [rax], 1 / jne go / ret / go: mov rax, FUN_140d67fc0 / jmp rax (1: a dungeon map; 2, the
+    // overworld held on the Map Desk, keeps its terrain)
     uint8_t stub[] = {0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,
-                      0x83, 0x38, 0x00,
-                      0x74, 0x01,
+                      0x83, 0x38, 0x01,
+                      0x75, 0x01,
                       0xC3,
                       0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,
                       0xFF, 0xE0};
@@ -182,13 +183,22 @@ void Update(uint8_t* mapState, const float* rootRect) {
     if (!g_data) return;
     float minX, minZ, maxX, maxZ;
     uint8_t* mapView = mapState ? *reinterpret_cast<uint8_t**>(mapState + 8) : nullptr;
-    if (!mapView || !rootRect || !halls::MapBounds(minX, minZ, maxX, maxZ)) {
+    auto at = [&](int off) { return *reinterpret_cast<float*>(mapView + off); };
+    // The overworld map on the Map Desk: the same rule for the whole world (the game's own keeps only the view's middle
+    // on the map, so zoomed out it slid until its edge reached mid-screen, stopping at a different place every zoom)
+    const bool hall = mapView && rootRect && halls::MapBounds(minX, minZ, maxX, maxZ);
+    const bool deskWorld = !hall && mapView && rootRect && g_mapDesk && !halls::MapActive();
+    if (!hall && !deskWorld) {
         g_data->on = 0;
         return;
     }
-    auto at = [&](int off) { return *reinterpret_cast<float*>(mapView + off); };
     float mapWorldH = at(0x3c);
     if (mapWorldH <= 100.0f) mapWorldH = 10240.0f;
+    if (deskWorld) {
+        minX = 0.0f, minZ = 0.0f;
+        maxX = at(0x38) > 100.0f ? at(0x38) : 10240.0f;
+        maxZ = mapWorldH;
+    }
     const float zoom = at(0x10), px = at(0x1f0) + at(0x18c), py = at(0x1f4) + at(0x190);
     if (!(zoom > 0.0001f) || !std::isfinite(px) || !std::isfinite(py)) {
         g_data->on = 0;
@@ -223,7 +233,7 @@ void Update(uint8_t* mapState, const float* rootRect) {
     g_data->rect[2] = g_data->hi[0] - g_data->lo[0];
     g_data->rect[3] = g_data->hi[1] - g_data->lo[1];
     g_data->mapView = reinterpret_cast<uint64_t>(mapView);
-    g_data->on = 1;
+    g_data->on = hall ? 1 : 2;
 }
 void Off() {
     if (g_data) g_data->on = 0;

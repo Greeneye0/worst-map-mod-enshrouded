@@ -105,8 +105,8 @@ int MapHintKinds(int out[9]) {
     add(0);
     add(4);
     if (!(halls::MapActive() && !halls::g_mapOverworld)) add(1); // Find: not on a dungeon's own map
-    if (!g_filterUndo.empty()) add(5);
-    if (!g_filterRedo.empty()) add(6);
+    if (!g_filterUndo.empty() || !g_markUndo.empty()) add(5); // a filter change or a Ctrl + click mark
+    if (!g_filterRedo.empty() || !g_markRedo.empty()) add(6);
     add(2);
     add(10);
     if (g_minimapShowPosition) add(3);
@@ -193,8 +193,13 @@ void MapHintsHook(MapHintSpan* span, void* options) {
     greeneye::Lease lease;
     auto* client = lease && g_worldMapModded ? GetUiClient() : nullptr;
     if (client && MapScreen(client[0x1cd8]) && WorldMapTabShowing() && !g_findDialogOpen && span && span->data && span->count &&
-        span->count <= 16 && g_originalMapHint)
+        span->count <= 16 && g_originalMapHint) {
+        if (g_deskMapState) { // the map desk first (desk.inl), so the hints' key caps draw over it
+            SafeDeskDraw(g_deskMapState);
+            g_deskHintsTick = GetTickCount64();
+        }
         DrawCombinedMapHints(span, options);
+    }
     else g_originalMapHints(span, options);
 }
 

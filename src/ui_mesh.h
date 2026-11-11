@@ -25,7 +25,8 @@ inline bool Ready(){
         return g_allocate&&g_submit&&g_set;
     }();return valid;
 }
-inline bool Draw(void* widget,const smooth_highlight::Batch& batch){
+// texture: 0 the plain white (silhouettes); else an image the renderer knows (map desk compass, UV 0..1 over it)
+inline bool Draw(void* widget,const smooth_highlight::Batch& batch,uint32_t texture=0){
     if(batch.vertices.empty()||batch.indices.empty()||batch.vertices.size()>60000||batch.indices.size()>60000||!Ready())return false;
     auto handle=Read<void*>(widget,8);if(!handle)return false;
     auto state=Read<void*>(handle,0x50);if(!state)return false;
@@ -34,7 +35,7 @@ inline bool Draw(void* widget,const smooth_highlight::Batch& batch){
     auto set=reinterpret_cast<void(*)(void*,uint32_t,uint8_t)>(g_set);
     auto allocate=reinterpret_cast<bool(*)(Allocation*,void*,uint64_t,uint64_t)>(g_allocate);
     auto submit=reinterpret_cast<void(*)(void*,const Allocation*)>(g_submit);
-    set(renderer,0,0);Allocation allocation{};
+    set(renderer,texture,0);Allocation allocation{};
     if(!allocate(&allocation,renderer,batch.vertices.size(),batch.indices.size())||!allocation.vertices||!allocation.indices)return false;
     if(uint64_t(allocation.base)+batch.vertices.size()>65536)return false;
     float opacity=1;auto count=Read<uint64_t>(renderer,0xc0);

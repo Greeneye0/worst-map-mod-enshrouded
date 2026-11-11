@@ -88,7 +88,16 @@ float* UiOpacityTop(void* widget) {
 
 // A place-name label at `faint` of the current opacity, put back even if drawing it faults (a lowered opacity left
 // behind would fade the whole UI)
+bool MapLayerReady(); // map_key_panel.cpp
 void DrawFaintPlaceName(void* widget, float x, float y, float w, float h, const char* name, float scale, float faint) {
+    // drawn later in the map layer (under the markers): its faintness goes with it as the label's own alpha
+    if (MapLayerReady()) {
+        g_queueOpacity = faint;
+        DrawLabelAbs(x, y, w, h, name, 0xffffffffu, 1.0f, TextAlignH::Center, TextAlignV::Center,
+                     GetUiAssets() ? GetUiAssets() + kMapLocationNameStyleOffset : nullptr, scale);
+        g_queueOpacity = 1.0f;
+        return;
+    }
     float* opacity = UiOpacityTop(widget);
     const float was = opacity ? *opacity : 1.0f;
     if (opacity) *opacity = was * faint;

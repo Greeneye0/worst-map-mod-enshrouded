@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.47
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.48
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -34,7 +34,7 @@ On the right of the world map.
   their sections opened (folded or locked ones too). Esc or the x clears it. From 3 letters it
   also finds places by their name (a lore note, a boss, a place, a pin): the row they're in
   shows with that name after it, even when the row is off. Find (Shift + F) takes you there.
-- REGIONS, under them (with Settings > Advanced > Region Filter on): a row per region in level
+- REGIONS, under them (with Settings > Filters > Region Filter on): a row per region in level
   order (Springlands, Revelwood, Blackmire, Nomad Highlands, Kindlewastes, Albaneve Summits,
   Veilwater Basin, Cinder's Cradle), each with its own ON / OFF, in a drawer + / - folds away.
   Click the row's name to switch them all on or all off; Ctrl + click a region to show only that
@@ -46,9 +46,11 @@ On the right of the world map.
   or down to move the category; the order is remembered.
 - The rows in each category are sorted by name in your language.
 - The mouse wheel or the scroll bar scrolls the list.
+- Mark a place done: Ctrl + left click a town, camp, sanctum, vault or other place for a check
+  mark; again clears it. Marked places follow Completed Places in SETTINGS.
 - Hide a marker's row from the map: Alt + left click the marker. Ctrl+Z undoes a filter change and Ctrl+Y redoes it.
 - Filter presets: the 1 2 3 4 5 buttons under Show All / Hide All. Click one to apply it,
-  Ctrl + click to save your current filters and map settings into it, right click to rename
+  Ctrl + click (or Ctrl+Alt+1 to Ctrl+Alt+5) to save your current filters and map settings into it, right click to rename
   it. Alt+1 to Alt+5 apply them from the map; on a controller LT + Left/Right steps through
   them. They start as Chests, Mining, Exploring, Bosses and Plants.
   On a controller see CONTROLLERS.
@@ -145,6 +147,20 @@ CREATURES category, all off at first, with the game's own names; type a name in 
 search to find it. Spawn points close together make one marker. Creatures also show on the
 minimap. Bosses keep their own Boss row.
 
+Nearby Creatures Only (SETTINGS > Minimap) shows the live creatures within 75 m on the minimap
+instead of their spawn points, each with a height arrow, and a ring while an enemy fights you
+(red) or searches for you (amber). G G then outlines them through walls. Hide on World Map,
+under it, keeps their spawn points off the World Map too, except the creatures Find is looking for.
+
+
+MAP DESK
+--------
+The World Map lies on a painted cartographer's desk that pans and zooms with it: a gold frame,
+a lantern with a soft blue glow, a 3D compass that holds north and swings when you drag the
+map, scrolls, a dish of map pins and two survivor notes in the game's language. With it on,
+panning stops at the map's edges at every zoom. SETTINGS > Look > Map Desk turns it off; it
+starts on only with the game's Ultra graphics preset.
+
 
 FIND ON THE MAP (Shift+F)
 -------------------------
@@ -182,6 +198,7 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
   knows of, places you've discovered, and lore rumor hints. With EXPLORED and HYBRID, a place
   you haven't discovered yet (the game would hide it) is grayed out, on the world map and the
   minimap, even where the fog is cleared; REVEAL ALL shows it in full colour.
+Below FOG and PINS the settings are grouped under WORLD MAP, MINIMAP, LOOK and FILTERS.
 - Custom Marker Size   the size of your own pins.
 - Show Minimap, Minimap Terrain, Minimap Icon (sun/moon or weather).
 - Time Format: 1:00 PM or 13:00 for the minimap's clock (at first it follows Windows).
@@ -195,21 +212,25 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
                        obelisks, cleared vaults) and the Flame and Night Sanctums you've
                        visited. Shown, visited sanctums get a check mark.
 - Filter Locks         how many filters are locked; REMOVE ALL unlocks them.
-- ADVANCED > Position (X, Y, Z), off at first: your position under the minimap (Y is your
+- Nearby Creatures Only (MINIMAP), off at first: see CREATURES. Hide on World Map is under it.
+- Map Desk (LOOK): see MAP DESK.
+- Dungeon Maps (LOOK), on at first: the Hollow Hall, vault and spire maps; off, the map
+  opens on the hall's entrance.
+- Position (X, Y, Z) (MINIMAP), off at first: your position under the minimap (Y is your
   height) and, on the world map, the X and Z under the cursor. Click the copy button (or
   middle click the world map) to copy them, like "X 3215, Z 2051".
-- ADVANCED > Region Filter, off at first: the Map Key's REGIONS row (see above).
-- ADVANCED > Region Names, on at first: each region's name as a faint watermark on the world
+- Region Filter (FILTERS), off at first: the Map Key's REGIONS row (see above).
+- Region Names (WORLD MAP), on at first: each region's name as a faint watermark on the world
   map, in the game's language.
-- ADVANCED > Level Areas, off at first: the world map in the areas of the enemies' levels, each
+- Level Areas (WORLD MAP), off at first: the world map in the areas of the enemies' levels, each
   tinted from green (low) through orange and red to purple and blue (high), with the borders
   between them and each area's level in a badge. Read from the levels the game gives its
   spawners, loot and props. Tint Strength, under it, sets how strongly the colours cover the map
   (10% to 80%, 50% at first); the borders and badges stay.
-- ADVANCED > Vanilla World Map, off at first: the world map exactly as the game draws it, as your
+- Vanilla World Map (LOOK), off at first: the world map exactly as the game draws it, as your
   friends without the mod see it (the game's markers, fog, zoom and filter menu; no Map Key or
   added pins). The minimap stays, and its cog is then the way to Settings.
-- ADVANCED > Vanilla Minimap, under it: the minimap shows only what the game's world map shows,
+- Vanilla Minimap (LOOK), under it: the minimap shows only what the game's world map shows,
   the game's own markers and the players, and none of the mod's chests, resources, lore notes,
   portals and the like.
 Everything is remembered.
@@ -352,6 +373,41 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.48
+- Map Desk: the World Map now lies on a painted cartographer's desk that pans and zooms with
+  it, with a gold frame, a lantern with a soft blue glow, a 3D compass that holds north and
+  swings when you drag the map, and two survivor notes written in the game's language. With
+  it on, panning stops at the map's edges at every zoom. Settings > Look > Map Desk turns it
+  off; it starts on only with the game's Ultra graphics preset.
+- Mark places done: Ctrl + click a town, camp, sanctum, vault or other place to give it a
+  check mark, and again to clear it. Marked places follow Completed Places: Hide, and Ctrl+Z
+  / Ctrl+Y undo and redo marks too. A visited sanctum's check mark can be cleared the same
+  way. Elixir Wells and Roots are left to the game.
+- Nearby Creatures Only (Settings > Minimap): the minimap shows the live creatures within 75
+  m instead of their spawn points, with height arrows and a ring while an enemy fights you
+  (red) or searches for you (amber), and G G outlines them through walls. Hide on World Map,
+  under it, keeps their spawn points off the World Map too, except the creatures Find is
+  looking for. Requested by cutegirl16owo.
+- Hover names on the World Map show on a dark panel so they read on a crowded map. The hover
+  name, Alt + click and Ctrl + click all follow the marker the game itself highlights.
+- A place with both a quest and an unread rumor now shows the quest's name when you hover
+  it: the Sunken Ancient City shows Follow The Melody.
+- Settings are grouped under World Map, Minimap, Look and Filters. New in Look: Dungeon Maps
+  turns the Hollow Hall, vault and spire maps off, and the map then opens on the hall's
+  entrance.
+- Filter presets can be saved from the keyboard with Ctrl+Alt+1 to Ctrl+Alt+5 (SavePreset1
+  to SavePreset5 under [Keys]), and the preset keys no longer also reach the game. Requested
+  by Ykses.
+- Nothing around you is hidden any more: the mod's icons and check marks draw under your
+  arrow and its ring, the key hints and the legend instead of being left out. Creature and
+  resource pins fill in nearest you first when there are more than the map draws at once.
+Reported bugs fixed:
+- Alt + click on an Ancient Spire could hide a nearby ore or chest row instead.
+- Alt + click didn't hide a lore rumor's "?" pin.
+- Ctrl + click on a quest pin marked the place under it done.
+- Long names in the Map Key ran under the padlock and ON / OFF, and the presets' tip ran out
+  of its box.
+
 1.3.47
 - Roads and Surface Water, two new rows under GROUND in the Map Key, on the World Map and
   the minimap. Roads draws every road on the island (dirt, stone, limestone and the

@@ -24,6 +24,10 @@ void UseKeptState(KeptState* kept);
 // Before a newer generation takes over: give back the window procedure and the mouse, and close
 // the Find dialog.
 void PrepareMapKeyPanelForReload();
+// After PrepareMapKeyPanelForReload: true once the render hook has deleted the creature copies (or after 2 s)
+bool MapKeyPanelReloadReady();
+// The reload failed: the creature copies may be made again
+void ResumeMapKeyPanelAfterFailedReload();
 
 // main.cpp: the four marker unlock byte patches on (the mod's bytes) or off (the game's own).
 bool SetMarkerUnlockPatches(bool on); // false: a thread stood in the code every try; unchanged

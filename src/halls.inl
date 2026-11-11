@@ -9,7 +9,7 @@
 // Included by map_key_panel.cpp.
 
 bool LocalPlayerY(uint8_t* client, float& y); // map_key_panel.cpp, below
-void DrawMapHoverTitle(float x, float y, const char* name);
+void DrawMapHoverTitle(float x, float y, const char* name, bool gameTitle = false);
 
 namespace halls {
 

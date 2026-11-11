@@ -333,11 +333,11 @@ const Row kTable[] = {
     // WeatherFog
     {"Fog", "Nebel", "Brouillard", "Nebbia", "Niebla", "Neblina", "Mgła", "Туман", "Туман", "Sis",
      "霧", "안개", "雾", "霧", "หมอก"},
-    // HintClearChest (the map's hint bar, with Ctrl + left click): mark or unmark a chest as looted
-    {"Mark Chest Looted", "Truhe abhaken", "Marquer coffre pillé", "Segna forziere saccheggiato",
-     "Marcar cofre saqueado", "Marcar baú saqueado", "Oznacz otwartą skrzynię", "Отметить сундук открытым",
-     "Позначити скриню відкритою", "Sandığı yağmalandı işaretle", "宝箱を開封済みにする", "상자 획득 표시",
-     "标记已开启宝箱", "標記已開啟寶箱", "ทำเครื่องหมายหีบที่เปิดแล้ว"},
+    // HintClearChest (the map's hint bar, with Ctrl + left click): mark or unmark what's clicked (a chest looted, a note
+    // read, a boss beaten, a place done)
+    {"Mark / Unmark", "Markieren / Aufheben", "Marquer / Démarquer", "Segna / Togli segno", "Marcar / Desmarcar",
+     "Marcar / Desmarcar", "Oznacz / Odznacz", "Отметить / Снять", "Позначити / Зняти", "İşaretle / Kaldır",
+     "マーク / 解除", "표시 / 해제", "标记 / 取消", "標記 / 取消", "ทำเครื่องหมาย / ยกเลิก"},
     // HintToggleKey (Tab): show or hide the Map Key panel
     {"Show/Hide Map Key", "Legende ein/aus", "Afficher/masquer légende", "Mostra/nascondi legenda",
      "Mostrar/ocultar leyenda", "Mostrar/ocultar legenda", "Pokaż/ukryj legendę", "Показать/скрыть легенду",
@@ -449,14 +449,12 @@ const Row kTable[] = {
     {"Hide Filter", "Filter ausblenden", "Masquer le filtre", "Nascondi filtro", "Ocultar filtro",
      "Ocultar filtro", "Ukryj filtr", "Скрыть фильтр", "Приховати фільтр", "Filtreyi gizle",
      "フィルターを隠す", "필터 숨기기", "隐藏筛选", "隱藏篩選", "ซ่อนตัวกรอง"},
-    // HintUndoFilter (the map's hint bar, Ctrl+Z while there is a filter change to undo)
-    {"Undo Filter", "Filter rückgängig", "Annuler filtre", "Annulla filtro", "Deshacer filtro",
-     "Desfazer filtro", "Cofnij filtr", "Отменить фильтр", "Скасувати фільтр", "Filtreyi geri al",
-     "フィルターを元に戻す", "필터 실행 취소", "撤销筛选", "復原篩選", "เลิกทำตัวกรอง"},
-    // HintRedoFilter (the map's hint bar, Ctrl+Y while there is an undone change to redo)
-    {"Redo Filter", "Filter wiederholen", "Rétablir filtre", "Ripeti filtro", "Rehacer filtro",
-     "Refazer filtro", "Ponów filtr", "Вернуть фильтр", "Повторити фільтр", "Filtreyi yinele",
-     "フィルターをやり直す", "필터 다시 실행", "重做筛选", "重做篩選", "ทำตัวกรองซ้ำ"},
+    // HintUndoFilter (the map's hint bar, Ctrl+Z while there is a filter change or a mark to undo)
+    {"Undo", "Rückgängig", "Annuler", "Annulla", "Deshacer", "Desfazer", "Cofnij", "Отменить", "Скасувати", "Geri al",
+     "元に戻す", "실행 취소", "撤销", "復原", "เลิกทำ"},
+    // HintRedoFilter (the map's hint bar, Ctrl+Y while there is an undone change or mark to redo)
+    {"Redo", "Wiederholen", "Rétablir", "Ripeti", "Rehacer", "Refazer", "Ponów", "Вернуть", "Повторити", "Yinele",
+     "やり直す", "다시 실행", "重做", "重做", "ทำซ้ำ"},
     // SearchList: the Map Key's search box (under Show All / Hide All); narrows the panel's rows, not the map
     {"Search this list", "Diese Liste durchsuchen", "Rechercher dans cette liste", "Cerca in questo elenco",
      "Buscar en esta lista", "Pesquisar nesta lista", "Szukaj na tej liście", "Поиск по списку", "Пошук у списку",
@@ -641,6 +639,40 @@ const Row kTable[] = {
      "Введіть назву. Enter зберігає, Esc скасовує.", "Bir ad yazın. Enter kaydeder, Esc iptal eder.",
      "名前を入力。Enterで決定、Escで取り消し。", "이름을 입력하세요. Enter는 저장, Esc는 취소.",
      "输入名称。Enter 确认，Esc 取消。", "輸入名稱。Enter 確認，Esc 取消。", "พิมพ์ชื่อ Enter เพื่อบันทึก Esc เพื่อยกเลิก"},
+    // PlaceDone (a place marked done by hand with Ctrl + click: "Night Sanctum - Done: ON")
+    {"Done", "Erledigt", "Terminé", "Completato", "Hecho", "Concluído", "Zrobione", "Готово", "Готово", "Tamamlandı",
+     "完了", "완료", "完成", "完成", "เสร็จแล้ว"},
+    // DungeonMaps (Settings: the Hollow Halls', vaults' and spires' own maps on the World Map and minimap)
+    {"Dungeon Maps", "Dungeon-Karten", "Cartes des donjons", "Mappe dei dungeon", "Mapas de mazmorras", "Mapas de masmorras",
+     "Mapy lochów", "Карты подземелий", "Карти підземель", "Zindan haritaları", "ダンジョンマップ", "던전 지도", "地下城地图",
+     "地下城地圖", "แผนที่ดันเจี้ยน"},
+    // CantMark (Ctrl + click on a marker that can't be marked: a quest, an Elixir Well the game checks off, an ore)
+    {"Can't be marked", "Nicht markierbar", "Ne peut pas être marqué", "Non contrassegnabile", "No se puede marcar",
+     "Não pode ser marcado", "Nie można oznaczyć", "Нельзя отметить", "Не можна позначити", "İşaretlenemez",
+     "マークできません", "표시할 수 없음", "无法标记", "無法標記", "ทำเครื่องหมายไม่ได้"},
+    // MapDesk (Settings: the World Map lies on a cartographer's desk that pans and zooms with it)
+    {"Map Desk", "Kartentisch", "Table de carte", "Tavolo delle mappe", "Mesa de mapas", "Mesa de mapas", "Stół z mapą",
+     "Стол с картой", "Стіл з мапою", "Harita masası", "マップ机", "지도 책상", "地图桌", "地圖桌", "โต๊ะแผนที่"},
+    // NearbyCreatures (Settings: the creature rows show the live creatures near you on the minimap, not their spawn points)
+    {"Nearby Creatures Only", "Nur Kreaturen in der Nähe", "Créatures proches seulement", "Solo creature vicine",
+     "Solo criaturas cercanas", "Só criaturas próximas", "Tylko pobliskie stworzenia", "Только существа рядом",
+     "Лише істоти поруч", "Yalnızca yakındaki yaratıklar", "近くの生き物のみ", "근처 생물만", "仅附近生物", "僅附近生物",
+     "เฉพาะสิ่งมีชีวิตใกล้ตัว"},
+    // SecMap / SecMinimap / SecLook / SecFilters: the settings card's section headers (the World Map's settings, the
+    // minimap's, how the maps look, the Map Key's filters)
+    {"World Map", "Weltkarte", "Carte du monde", "Mappa del mondo", "Mapa del mundo", "Mapa-múndi", "Mapa świata",
+     "Карта мира", "Мапа світу", "Dünya Haritası", "ワールドマップ", "월드 맵", "世界地图", "世界地圖", "แผนที่โลก"},
+    {"Minimap", "Minikarte", "Mini-carte", "Minimappa", "Minimapa", "Minimapa", "Minimapa", "Мини-карта", "Мінімапа",
+     "Mini harita", "ミニマップ", "미니맵", "小地图", "小地圖", "แผนที่ย่อ"},
+    {"Look", "Aussehen", "Apparence", "Aspetto", "Apariencia", "Aparência", "Wygląd", "Внешний вид", "Вигляд",
+     "Görünüm", "外観", "외형", "外观", "外觀", "รูปลักษณ์"},
+    {"Filters", "Filter", "Filtres", "Filtri", "Filtros", "Filtros", "Filtry", "Фильтры", "Фільтри", "Filtreler",
+     "フィルター", "필터", "筛选", "篩選", "ตัวกรอง"},
+    // HideOnWorldMap: Settings, under Nearby Creatures Only: the creature rows' spawn points off the World Map too
+    {"Hide on World Map", "Auf Weltkarte ausblenden", "Masquer sur la carte du monde", "Nascondi sulla mappa del mondo",
+     "Ocultar en el mapa del mundo", "Ocultar no mapa-múndi", "Ukryj na mapie świata", "Скрыть на карте мира",
+     "Сховати на мапі світу", "Dünya haritasında gizle", "ワールドマップで隠す", "월드 맵에서 숨기기", "在世界地图上隐藏",
+     "在世界地圖上隱藏", "ซ่อนบนแผนที่โลก"},
 };
 // clang-format on
 

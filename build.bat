@@ -45,6 +45,20 @@ copy /y data\roads.bin bin\loader\roads.bin >nul
 if errorlevel 1 exit /b 1
 copy /y data\water.bin bin\loader\water.bin >nul
 if errorlevel 1 exit /b 1
+rem The map desk (tools\resources\make_desk.py)
+if not exist bin\loader\desk mkdir bin\loader\desk
+copy /y data\desk\* bin\loader\desk\ >nul
+if errorlevel 1 exit /b 1
+if not exist bin\loader\desk\hi mkdir bin\loader\desk\hi
+copy /y data\desk\hi\* bin\loader\desk\hi\ >nul
+if errorlevel 1 exit /b 1
+if not exist bin\loader\desk\mid mkdir bin\loader\desk\mid
+copy /y data\desk\mid\* bin\loader\desk\mid\ >nul
+rem the survivor sheets in each language (tools\resources\desk_langs.py)
+if exist data\desk\lang xcopy /e /i /y /q data\desk\lang bin\loader\desk\lang >nul
+rem the props the mod draws itself (tools\resources\desk_props.py)
+if exist data\desk\props xcopy /e /i /y /q data\desk\props bin\loader\desk\props >nul
+if errorlevel 1 exit /b 1
 rem The Hollow Halls' floor textures for the HD dungeon maps (tools\resources\make_halls_hd.py textures)
 if not exist bin\loader\hd mkdir bin\loader\hd
 copy /y data\hd\* bin\loader\hd\ >nul
