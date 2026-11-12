@@ -29,13 +29,13 @@ enum class Str : int {
     Pins, SettingsTitle, PinSize, ShowMinimap, MinimapTerrain, ClockIcon, SunMoon, Weather,
     LootedChests, Hide, GreyedOut, WeatherClear, WeatherRain, WeatherStorm, WeatherSnow, WeatherFog,
     HintClearChest, HintToggleKey, HintFind, CtrlClick, CatMining, CatMaterials, CatPlants, CatBait, CatTrees, CatCreatures,
-    MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar,
+    MinimapBorder, BorderOrnate, BorderThin, MinimapInfoBar, MinimapRotation, NorthUp, HeadingUp,
     FilterLocks, RemoveAllLocks, HoldForLocked, LockExempt, CompletedPlaces, Show, TimeFormat,
     Advanced, ShowPosition, AllRegions, Dim, HintCopyPosition, RegionFilter, LevelAreas, TownPortals, HintHideFilter, HintUndoFilter, HintRedoFilter, SearchList, NoListMatches, WoodChest, WoodSarcophagus,
     VanillaWorldMap, VanillaMinimap, DungeonMap, OverworldMap, CatGround, RegionNames, DungeonSpoils, RangerChest, MageChest, WarriorChest,
     PadOpenKey, PadKeyNav, LevelTint, Container, MarkRefilled, MarkRespawned, HintTeleport, Floor, TeleportPair, OneWayTeleport, SpikeTrap, FireTrap, ElectricTrap, TrapRail, LockedDoor, ClosedDoor, OpenDoor, PressurePlate, ButtonLever, ShootSwitch, MagicBarrier,
     Presets, PresetChests, PresetMining, PresetExploring, PresetBosses, PresetPlants, PresetTip, PresetApplied, PresetSaved,
-    PresetRenameHint, PlaceDone, DungeonMaps, CantMark, MapDesk, NearbyCreatures, SecMap, SecMinimap, SecLook, SecFilters, HideOnWorldMap,
+    PresetRenameHint, PlaceDone, DungeonMaps, CantMark, MapDesk, NearbyCreatures, SecMap, SecMinimap, SecLook, SecFilters, HideOnWorldMap, ExactMatch, ExactHiddenFmt,
     Count
 };
 

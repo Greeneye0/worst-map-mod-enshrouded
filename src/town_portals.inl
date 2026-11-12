@@ -185,7 +185,7 @@ void DrawTownPortalsOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapSt
             hoveredSy = sy;
         }
     }
-    if (hoveredName) DrawMapHoverTitle(hoveredSx + h * 0.5f + 10.0f, hoveredSy, hoveredName);
+    if (hoveredName) NoteModHoverIcon(hoveredSx, hoveredSy), DrawMapHoverTitle(hoveredSx + h * 0.5f + 10.0f, hoveredSy, hoveredName);
 }
 
 // Minimap: like the other players, a portal beyond the map's edge is held at the edge, a little smaller
@@ -198,6 +198,7 @@ void DrawTownPortalsOnMinimap(void* widgetRaw, float vcx, float vcy, float playe
         const TownPortalMarker& m = portals[i];
         if (RegionHidesAt(m.x, m.z)) continue;
         float dxM = m.x - playerX, dzM = m.z - playerZ;
+        MmRotate(dxM, dzM); // (a turned minimap)
         bool isClamped = false;
         const float maxAxis = std::max(std::abs(dxM), std::abs(dzM));
         if (maxAxis > clampLimit && maxAxis > 0.001f) {

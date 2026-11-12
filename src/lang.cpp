@@ -382,6 +382,17 @@ const Row kTable[] = {
      "Barra de info del minimapa", "Barra de info do minimapa", "Pasek info minimapy", "Инфопанель миникарты",
      "Інфопанель мінімапи", "Mini Harita Bilgi Çubuğu", "ミニマップ情報バー", "미니맵 정보 표시줄", "小地图信息栏",
      "小地圖資訊列", "แถบข้อมูลแผนที่ย่อ"},
+    // MinimapRotation: north always up, or the map turning so the way you face is up
+    {"Minimap Rotation", "Minikarte Drehung", "Rotation minicarte", "Rotazione minimappa", "Rotación del minimapa",
+     "Rotação do minimapa", "Obrót minimapy", "Вращение миникарты", "Обертання мінімапи", "Mini Harita Dönüşü",
+     "ミニマップの回転", "미니맵 회전", "小地图旋转", "小地圖旋轉", "การหมุนแผนที่ย่อ"},
+    // NorthUp
+    {"North Up", "Norden oben", "Nord en haut", "Nord in alto", "Norte arriba", "Norte acima", "Północ u góry",
+     "Север сверху", "Північ угорі", "Kuzey yukarı", "北が上", "북쪽 위", "北朝上", "北朝上", "ทิศเหนือขึ้น"},
+    // HeadingUp
+    {"Facing Up", "Blickrichtung", "Direction en haut", "Direzione in alto", "Dirección arriba", "Direção acima",
+     "Kierunek u góry", "По взгляду", "За поглядом", "Yön yukarı", "向きが上", "방향 위", "朝向朝上", "朝向朝上",
+     "ทิศที่หันขึ้น"},
     // FilterLocks: the settings row for the Map Key's padlocks
     {"Filter Locks", "Filtersperren", "Verrous de filtre", "Blocchi filtri", "Bloqueos de filtros",
      "Bloqueios de filtro", "Blokady filtrów", "Блокировка фильтров", "Блокування фільтрів", "Filtre kilitleri",
@@ -673,6 +684,17 @@ const Row kTable[] = {
      "Ocultar en el mapa del mundo", "Ocultar no mapa-múndi", "Ukryj na mapie świata", "Скрыть на карте мира",
      "Сховати на мапі світу", "Dünya haritasında gizle", "ワールドマップで隠す", "월드 맵에서 숨기기", "在世界地图上隐藏",
      "在世界地圖上隱藏", "ซ่อนบนแผนที่โลก"},
+    // ExactMatch: the Find box's checkbox, only names holding the whole text (Find's own wording)
+    {"Exact match", "Genaue Suche", "Correspondance exacte", "Corrispondenza esatta", "Coincidencia exacta",
+     "Correspondência exata", "Dokładne dopasowanie", "Точное совпадение", "Точний збіг", "Tam eşleşme", "完全一致",
+     "정확히 일치", "精确匹配", "精確比對", "ตรงทั้งหมด"},
+    // ExactHiddenFmt (%d): Exact match left nothing; how many it hides (the number last: no plural forms)
+    {"Exact match hides %d results.", "Genaue Suche blendet Treffer aus: %d", "Résultats masqués par la correspondance exacte : %d",
+     "Risultati nascosti dalla corrispondenza esatta: %d", "Resultados ocultos por la coincidencia exacta: %d",
+     "Resultados ocultos pela correspondência exata: %d", "Ukryte przez dokładne dopasowanie: %d",
+     "Скрыто точным совпадением: %d", "Приховано точним збігом: %d", "Tam eşleşmenin gizlediği sonuçlar: %d",
+     "完全一致で非表示: %d件", "정확히 일치로 숨김: %d개", "精确匹配隐藏的结果: %d", "精確比對隱藏的結果: %d",
+     "ผลลัพธ์ที่ซ่อนโดยการตรงทั้งหมด: %d"},
 };
 // clang-format on
 

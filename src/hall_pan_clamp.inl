@@ -18,6 +18,10 @@ struct StubData {
 static_assert(sizeof(StubData) == 48, "stub data layout");
 
 StubData* g_data = nullptr;
+// The Map Desk's ease back: how far past the resting bounds they still reach (canvas units, x / y), the last time the
+// map was dragged further out, and the last frame
+float g_extra[2] = {}, g_prevOver[2] = {};
+uint64_t g_lastOut = 0, g_lastUpdate = 0;
 
 // The stub's page: allocated near the call (a rel32 call has to reach it), once per game run (kept)
 uint8_t* NearPage(uint8_t* close) {
@@ -83,6 +87,78 @@ void InstallTerrainSkip(uint8_t* page) {
         FlushInstructionCache(GetCurrentProcess(), call, 5);
     }
     if (g_log) g_log("Dungeon map: the overworld's terrain and edge frame stay off under a dungeon map");
+}
+
+// The view's centre off the world's canvas, on the Map Desk: before the clamp call above, FUN_140d7ffd0 holds the view's
+// position (+0x20 / +0x24) to [0, +0x38 / +0x3c] (maxss xmm1/xmm0 with xmm9 = 0, minss with xmm2 / xmm3), so the
+// world's edge never went past mid-screen. Those four go through a stub (page +0x300) that skips them while the flag at
+// page +0x40 is set for this view (the overworld on the Map Desk: the mod's bounds at the clamp call then hold it);
+// otherwise it clamps as the game does. The bytes between (movups xmm2, [rsp+0x40] / shufps) go along.
+uint32_t* g_canvasFree = nullptr; // page +0x40
+void InstallCanvasFree(uint8_t* page) {
+    // movss xmm1,[rsi+20] / movss xmm0,[rsi+24] / maxss xmm1,xmm9 / maxss xmm0,xmm9 / minss xmm1,xmm2 /
+    // movups xmm2,[rsp+40] / minss xmm0,xmm3 / shufps xmm2,xmm2,d2 / movss [rsi+20],xmm1
+    const uint8_t original[27] = {0xF3, 0x41, 0x0F, 0x5F, 0xC9, 0xF3, 0x41, 0x0F, 0x5F, 0xC1, 0xF3, 0x0F, 0x5D, 0xCA,
+                                  0x0F, 0x10, 0x54, 0x24, 0x40, 0xF3, 0x0F, 0x5D, 0xC3, 0x0F, 0xC6, 0xD2, 0xD2};
+    uint8_t* hit = FindUnique("F3 0F 10 4E 20 F3 0F 10 46 24 F3 41 0F 5F C9 F3 41 0F 5F C1 F3 0F 5D CA 0F 10 54 24 40 "
+                              "F3 0F 5D C3 0F C6 D2 D2 F3 0F 11 4E 20");
+    if (!hit) hit = FindUnique("F3 0F 10 4E 20 F3 0F 10 46 24 E9 ?? ?? ?? ?? 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 "
+                               "90 90 90 90 90 90 90 F3 0F 11 4E 20"); // an earlier generation's patch
+    if (!hit) {
+        if (g_log) g_log("Map desk panning: the game's canvas clamp was not found; the map's edge stops mid-screen");
+        return;
+    }
+    uint8_t* site = hit + 10;
+    uint8_t* back = site + sizeof(original);
+    g_canvasFree = reinterpret_cast<uint32_t*>(page + 0x40);
+    *g_canvasFree = 0;
+    uint8_t* code = page + 0x300;
+    std::vector<uint8_t> s = {0x50,                                   // push rax
+                              0x48, 0xB8, 0, 0, 0, 0, 0, 0, 0, 0,     // mov rax, page
+                              0x83, 0x78, 0x40, 0x00,                 // cmp dword [rax+0x40], 0
+                              0x74, 0x0A,                             // je clamp
+                              0x48, 0x3B, 0x70, 0x18,                 // cmp rsi, [rax+0x18]
+                              0x75, 0x04,                             // jne clamp
+                              0x58,                                   // pop rax
+                              0xEB, 0x15,                             // jmp tail
+                              0x90,                                   // (pad)
+                              // clamp:
+                              0x58,                                   // pop rax
+                              0xF3, 0x41, 0x0F, 0x5F, 0xC9,           // maxss xmm1, xmm9
+                              0xF3, 0x41, 0x0F, 0x5F, 0xC1,           // maxss xmm0, xmm9
+                              0xF3, 0x0F, 0x5D, 0xCA,                 // minss xmm1, xmm2
+                              0xF3, 0x0F, 0x5D, 0xC3,                 // minss xmm0, xmm3
+                              0x90, 0x90,
+                              // tail:
+                              0x0F, 0x10, 0x54, 0x24, 0x40,           // movups xmm2, [rsp+0x40]
+                              0x0F, 0xC6, 0xD2, 0xD2,                 // shufps xmm2, xmm2, 0xd2
+                              0xFF, 0x25, 0, 0, 0, 0,                 // jmp [rip]
+                              0, 0, 0, 0, 0, 0, 0, 0};
+    const uint64_t pageAddr = reinterpret_cast<uint64_t>(page), backAddr = reinterpret_cast<uint64_t>(back);
+    std::memcpy(s.data() + 3, &pageAddr, 8);
+    std::memcpy(s.data() + s.size() - 8, &backAddr, 8);
+    // the jumps' targets: "jmp tail" from after it (offset 26) to tail; "je clamp" from 17 to clamp (27)
+    const size_t clampAt = 27, tailAt = s.size() - 23;
+    s[16] = static_cast<uint8_t>(clampAt - 17);
+    s[22] = static_cast<uint8_t>(clampAt - 23);
+    s[25] = static_cast<uint8_t>(tailAt - 26);
+    std::memcpy(code, s.data(), s.size());
+    FlushInstructionCache(GetCurrentProcess(), code, s.size());
+    const int64_t toStub = reinterpret_cast<int64_t>(code) - reinterpret_cast<int64_t>(site + 5);
+    if (toStub > INT32_MAX || toStub < INT32_MIN) return;
+    uint8_t patch[sizeof(original)];
+    std::memset(patch, 0x90, sizeof(patch));
+    patch[0] = 0xE9;
+    const int32_t rel32 = static_cast<int32_t>(toStub);
+    std::memcpy(patch + 1, &rel32, 4);
+    if (std::memcmp(site, patch, sizeof(patch)) != 0) {
+        DWORD old = 0;
+        if (!VirtualProtect(site, sizeof(patch), PAGE_EXECUTE_READWRITE, &old)) return;
+        std::memcpy(site, patch, sizeof(patch));
+        VirtualProtect(site, sizeof(patch), old, &old);
+        FlushInstructionCache(GetCurrentProcess(), site, sizeof(patch));
+    }
+    if (g_log) g_log("Map desk panning: the map can be dragged out over the desk");
 }
 
 bool Install() {
@@ -171,6 +247,7 @@ bool Install() {
     }
     if (g_log) g_log("Dungeon map panning: the game's pan clamp holds the dungeon map to its hall");
     InstallTerrainSkip(page);
+    InstallCanvasFree(page);
     return true;
 }
 
@@ -190,6 +267,7 @@ void Update(uint8_t* mapState, const float* rootRect) {
     const bool deskWorld = !hall && mapView && rootRect && g_mapDesk && !halls::MapActive();
     if (!hall && !deskWorld) {
         g_data->on = 0;
+        if (g_canvasFree) *g_canvasFree = 0;
         return;
     }
     float mapWorldH = at(0x3c);
@@ -202,6 +280,7 @@ void Update(uint8_t* mapState, const float* rootRect) {
     const float zoom = at(0x10), px = at(0x1f0) + at(0x18c), py = at(0x1f4) + at(0x190);
     if (!(zoom > 0.0001f) || !std::isfinite(px) || !std::isfinite(py)) {
         g_data->on = 0;
+        if (g_canvasFree) *g_canvasFree = 0;
         return;
     }
     const float left = rootRect[0], right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
@@ -211,18 +290,56 @@ void Update(uint8_t* mapState, const float* rootRect) {
     // stop comes early (2026-11-01: the box's right edge stopped at 3/4 of the screen, its left went to the edge). With
     // the whole box on the screen, its play is then the same both ways from the middle: as far as the short side
     // allows. Zoomed in, the screen's edges still stop at the box's
+    const uint64_t now = GetTickCount64();
+    const float dt = std::clamp(static_cast<float>(now - g_lastUpdate) / 1000.0f, 0.0f, 0.1f);
+    g_lastUpdate = now;
+    const float decay = std::exp(-dt * 2.0f); // a slow float back: about a second and a half to settle
+    const bool mouseDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+    if (g_canvasFree) *g_canvasFree = deskWorld ? 1u : 0u;
     auto range = [&](float lo, float hi, float p, float screenLo, float screenHi, int axis) {
         const float a = lo + (p - screenLo) / zoom, b = hi + (p - screenHi) / zoom;
         const float canvas = at(axis ? 0x3c : 0x38) > 100.0f ? at(axis ? 0x3c : 0x38) : 10240.0f;
         // A fifth of the screen's slack past the box's edges: with the box about the screen's size, edge to edge left
         // no room to pan at all (2026-11-01, 3x zoom), and its east side stayed under the Map Key
-        const float slack = 0.2f * (screenHi - screenLo) / zoom;
-        float from = std::max(0.0f, std::min(a, b) - slack), to = std::min(canvas, std::max(a, b) + slack);
-        if (a > b) { // the box fits: centred, and an even play each way
-            const float mid = (a + b) * 0.5f, play = std::max(0.0f, std::min(mid - from, to - mid));
-            from = mid - play, to = mid + play;
+        // The overworld on the Map Desk: half a screen, so a place at the world's edge can be brought to the middle
+        // (2026-11-12, zoom 3: a fifth stopped it short)
+        auto bounds = [&](float share, bool onCanvas, float& from, float& to) {
+            const float slack = share * (screenHi - screenLo) / zoom;
+            from = std::min(a, b) - slack, to = std::max(a, b) + slack;
+            if (onCanvas) from = std::max(0.0f, from), to = std::min(canvas, to);
+            if (a > b) { // the box fits: centred, and an even play each way
+                const float mid = (a + b) * 0.5f, play = std::max(0.0f, std::min(mid - from, to - mid));
+                from = mid - play, to = mid + play;
+            }
+            if (to - from < 1.0f) from = (from + to) * 0.5f - 0.5f, to = from + 1.0f;
+        };
+        float from = 0.0f, to = 0.0f;
+        bounds(deskWorld ? 0.5f : 0.2f, true, from, to);
+        if (deskWorld && g_canvasFree) {
+            // Out over the desk while you drag (up to most of a screen past the edge); still for a moment, the bounds
+            // ease back in and the game's clamp brings the map back with them
+            float hardFrom = 0.0f, hardTo = 0.0f;
+            bounds(0.9f, false, hardFrom, hardTo);
+            const float anchor = at(axis ? 0x1b4 : 0x1b0);
+            const float over = std::max({0.0f, from - anchor, anchor - to}); // past the resting bounds now
+            // dragging: the mouse held, or the map moved further out in the last second (the ease back only moves it in)
+            if (mouseDown || over > g_prevOver[axis] + 0.01f) g_lastOut = now;
+            g_prevOver[axis] = over;
+            const bool active = now - g_lastOut < 1000;
+            if (active) g_extra[axis] = over;
+            else g_extra[axis] = std::min(g_extra[axis], over) * decay;
+            if (active) from = hardFrom, to = hardTo;
+            else {
+                from = std::max(hardFrom, from - g_extra[axis]), to = std::min(hardTo, to + g_extra[axis]);
+                // The view's other copies of where it is (the pan's target +0x30, the smoothing's +0x1a8) float in with
+                // it: a click while it floated took the map back out to where the drag had left them (2026-11-12)
+                float& target = *reinterpret_cast<float*>(mapView + 0x30 + axis * 4);
+                if (std::isfinite(target)) target = std::clamp(target, from, to);
+                // +0x1a8 kept the last drag's spot even inside the bounds (y 8843 with the map at 6530, zoomed out), and
+                // the next click went on from there: with no drag going, it is where the map is
+                if (!mouseDown) *reinterpret_cast<float*>(mapView + 0x1a8 + axis * 4) = at(axis ? 0x1b4 : 0x1b0);
+            }
         }
-        if (to - from < 1.0f) from = (from + to) * 0.5f - 0.5f, to = from + 1.0f;
         g_data->lo[axis] = from;
         g_data->hi[axis] = to;
     };
@@ -237,6 +354,7 @@ void Update(uint8_t* mapState, const float* rootRect) {
 }
 void Off() {
     if (g_data) g_data->on = 0;
+    if (g_canvasFree) *g_canvasFree = 0;
 }
 
 } // namespace hall_pan

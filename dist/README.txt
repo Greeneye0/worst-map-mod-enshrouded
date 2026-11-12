@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.48
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.49
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -46,6 +46,8 @@ On the right of the world map.
   or down to move the category; the order is remembered.
 - The rows in each category are sorted by name in your language.
 - The mouse wheel or the scroll bar scrolls the list.
+- Click one of the mod's own icons (a collectible, an ore, a Wooden Chest) for Send Ping and
+  Set as Waypoint. Press on a pin and drag to pan the map.
 - Mark a place done: Ctrl + left click a town, camp, sanctum, vault or other place for a check
   mark; again clears it. Marked places follow Completed Places in SETTINGS.
 - Hide a marker's row from the map: Alt + left click the marker. Ctrl+Z undoes a filter change and Ctrl+Y redoes it.
@@ -169,6 +171,9 @@ On the world map, press Shift+F or click FIND. Type a name or a kind of place ("
 and [Locked] if you haven't unlocked it yet. Click a result twice, double-click it, or press
 Enter, and the map moves to show it. "All Matching Places - Zoom to fit" (or Enter with
 nothing selected) shows every match at once.
+- Words in any order: "chest gold" finds the Gold Chests. Names holding the whole text come first,
+  then every word, then only some of them. Enter with nothing selected shows the best matches.
+- Exact match (Ctrl+E or the controller's Y) keeps only names holding the whole text.
 - F2 (or Ctrl+F) switches whether Find skips marker types you've hidden with the filters.
   Pick a result a filter hides and the Map Key opens its row and flashes it.
 - Lore notes and bosses are found by their own names.
@@ -201,6 +206,8 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
 Below FOG and PINS the settings are grouped under WORLD MAP, MINIMAP, LOOK and FILTERS.
 - Custom Marker Size   the size of your own pins.
 - Show Minimap, Minimap Terrain, Minimap Icon (sun/moon or weather).
+- Minimap Rotation: NORTH UP, or FACING UP (the minimap turns with your character; the N
+  shows where north is).
 - Time Format: 1:00 PM or 13:00 for the minimap's clock (at first it follows Windows).
 - Minimap Border: ORNATE or THIN (a fine line, so the map takes less room).
 - Minimap Info Bar: off hides the bar under the minimap; the cog moves to the map's
@@ -373,6 +380,36 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.49
+- Minimap Rotation (Settings > Minimap): Facing Up turns the minimap with your character, so
+  the way you face is always up and the N shows where north is. North Up keeps it as before.
+- Find on the map matches like Find's own search: words in any order ("chest gold" finds the
+  Gold Chests), then names with only some of the words. Enter with nothing selected shows
+  only the best matches. Exact match (Ctrl+E or the controller's Y; FindExactMatch under
+  [Keys]) keeps only names holding the whole text; with a newer Find it is also a checkbox
+  in the box.
+- Click one of the mod's own icons (a collectible, a lore note, an ore, a Wooden Chest, a
+  Town Portal) for the game's Send Ping and Set as Waypoint. A rumor's "?" the game keeps
+  hidden shows its name and opens its menu with Go to Journal.
+- F on a Journal entry turns its Map Key row back on when it was off, so what you asked to
+  see shows.
+- Quests another player finished but you haven't (the Journal's Missed list) show again
+  under Main Quest or Side Quest.
+- Roads are read from the finer terrain, so a road under a little dirt or moss shows, and on
+  the Map Desk they draw under every pin and menu.
+- Map Desk: drag the map out over the desk; let go and it floats back until the map's edge
+  is mid-screen, so a place at the world's edge can be brought to the middle.
+- Press on a pin and drag, and the map pans, on a crowded map too; letting go doesn't open
+  the pin's menu.
+- Hover names always draw over the pins and never over an open marker menu, and a quest
+  pin's name shows on the same dark panel. An icon inside a quest's search circle keeps its
+  own name.
+Reported bugs fixed:
+- With Looted / Read / Beaten on Grayed Out, beaten bosses were so faint they looked gone:
+  they now keep a gray ring, their size and the check mark. Reported by izisot.
+- Gold and Silver Chest pins offered Remove Marker.
+- Clicking an icon inside a quest's search circle opened the quest's menu.
+
 1.3.48
 - Map Desk: the World Map now lies on a painted cartographer's desk that pans and zooms with
   it, with a gold frame, a lantern with a soft blue glow, a 3D compass that holds north and

@@ -57,6 +57,7 @@ The World Map lies on a painted cartographer's desk that pans and zooms with it:
 [*]Click a category header to switch the whole category; [b]+ / -[/b] folds it, and it stays folded the next time you play. [b]Drag a category header[/b] up or down to move the category; the order is remembered.
 [*]The rows in each category are sorted by name in your language.
 [*]The mouse wheel or the scroll bar scrolls the list.
+[*][b]Click one of the mod's own icons[/b] (a collectible, an ore, a Wooden Chest) for Send Ping and Set as Waypoint. Press on a pin and drag to pan the map.
 [*][b]Mark a place done[/b]: [b]Ctrl + left click[/b] a town, camp, sanctum, vault or other place for a check mark; again clears it. Marked places follow Completed Places in Settings.
 [*][b]Hide a marker's row from the map[/b]: [b]Alt + left click[/b] the marker, or [b]Ctrl + left click[/b] one that can't be marked. [b]Ctrl+Z[/b] undoes a filter change and [b]Ctrl+Y[/b] redoes it. A message names the filter and ON or OFF.
 [*][b]Rebind anything[/b]: [Keys] in minimap_config.ini holds every key and controller button.
@@ -139,6 +140,8 @@ On the world map, press [b]Shift+F[/b] or click [b]FIND[/b]. Type a name or a ki
 [list]
 [*]Click a result twice, double-click it or press [b]Enter[/b], and the map moves to show it.
 [*][b]All Matching Places - Zoom to fit[/b] shows every match at once.
+[*]Words in any order: [i]chest gold[/i] finds the Gold Chests. Names holding the whole text come first, then every word, then only some of them. [b]Enter[/b] with nothing selected shows the best matches.
+[*][b]Exact match[/b] ([b]Ctrl+E[/b] or the controller's Y) keeps only names holding the whole text.
 [*][b]F2[/b] (or [b]Ctrl+F[/b]) switches whether Find skips marker types you've hidden with the filters. Pick a result a filter hides and the Map Key opens its row and flashes it.
 [*]Lore notes and bosses are found by their own names.
 [*]Items the game always puts in one chest or container are found by their names too: type [i]ghost glider[/i] and the result is the chest it's in; picking it turns on that chest's row. Random chest loot isn't known ahead.
@@ -159,7 +162,7 @@ The [b]cog[/b] on the Map Key (and the one under the minimap) opens Settings:
 [*][b]FOG:[/b] [b]EXPLORED[/b] is the game's own fog, [b]HYBRID[/b] draws the whole map with unexplored land under a light fog, [b]REVEAL ALL[/b] has no fog.
 [*][b]PINS:[/b] [b]EXPLORED[/b] shows pins only where you've been, [b]HYBRID[/b] grays out pins in unexplored land, [b]REVEAL ALL[/b] shows every pin. EXPLORED also keeps everything the game itself shows in land still fogged: places it knows of, places you've discovered, and lore rumor hints. With EXPLORED and HYBRID, a place you haven't discovered yet (the game would hide it) is grayed out, even where the fog is cleared; REVEAL ALL shows it in full colour.
 [*][b]World Map[/b]: [b]Custom Marker Size[/b] (your own pins); [b]Looted / Read / Beaten[/b] (hide looted chests, read lore notes and beaten bosses, or gray them out with a check mark); [b]Completed Places[/b] (show or hide the places the game marks done, like cleared roots, used obelisks and cleared vaults, the Flame and Night Sanctums you've visited and the places you've marked done with Ctrl + click); [b]Region Names[/b] (on at first: each region's name as a faint watermark, in the game's language); [b]Level Areas[/b] (off at first: the world map in the areas of the enemies' levels, tinted from green through orange and red to purple and blue, with the borders and each area's level in a badge) and [b]Tint Strength[/b] under it.
-[*][b]Minimap[/b]: [b]Show Minimap[/b], [b]Minimap Info Bar[/b] (off hides the bar under the minimap; the cog moves to the map's bottom-left corner), [b]Minimap Terrain[/b], [b]Minimap Border[/b] (ORNATE or THIN), [b]Minimap Icon[/b] (sun/moon or weather), [b]Time Format[/b] (1:00 PM or 13:00), [b]Position (X, Y, Z)[/b] (off at first: your position under the minimap and the X and Z under the cursor on the world map, with a copy button; requested by Loling91), and [b]Nearby Creatures Only[/b] (off at first: the minimap shows the live creatures within 75 m instead of their spawn points; see Creatures) with [b]Hide on World Map[/b] under it.
+[*][b]Minimap[/b]: [b]Show Minimap[/b], [b]Minimap Info Bar[/b] (off hides the bar under the minimap; the cog moves to the map's bottom-left corner), [b]Minimap Terrain[/b], [b]Minimap Rotation[/b] (North Up, or Facing Up: the minimap turns with your character), [b]Minimap Border[/b] (ORNATE or THIN), [b]Minimap Icon[/b] (sun/moon or weather), [b]Time Format[/b] (1:00 PM or 13:00), [b]Position (X, Y, Z)[/b] (off at first: your position under the minimap and the X and Z under the cursor on the world map, with a copy button; requested by Loling91), and [b]Nearby Creatures Only[/b] (off at first: the minimap shows the live creatures within 75 m instead of their spawn points; see Creatures) with [b]Hide on World Map[/b] under it.
 [*][b]Look[/b]: [b]Map Desk[/b] (see Map Desk), [b]Dungeon Maps[/b] (on at first: the Hollow Hall, vault and spire maps; off, the map opens on the hall's entrance), [b]Vanilla World Map[/b] (off at first: the world map exactly as the game draws it, as your friends without the mod see it; the minimap stays, and its cog is then the way to Settings; requested by menelothar) and [b]Vanilla Minimap[/b] under it (the minimap with the game's own markers only).
 [*][b]Filters[/b]: [b]Region Filter[/b] (off at first: the Map Key's REGIONS row) and [b]Filter Locks[/b] (how many filters are locked; Remove All unlocks them).
 [/list]
@@ -265,6 +268,25 @@ If something doesn't work, please post these files with your report. Both are in
 
 [size=4][b]Changelog[/b][/size]
 
+[b]1.3.49[/b]
+[list]
+[*]Minimap Rotation (Settings > Minimap): Facing Up turns the minimap with your character, so the way you face is always up and the N shows where north is. North Up keeps it as before.
+[*]Find on the map matches like Find's own search: words in any order ("chest gold" finds the Gold Chests), then names with only some of the words. Enter with nothing selected shows only the best matches. Exact match (Ctrl+E or the controller's Y; FindExactMatch under [Keys]) keeps only names holding the whole text; with a newer Find it is also a checkbox in the box.
+[*]Click one of the mod's own icons (a collectible, a lore note, an ore, a Wooden Chest, a Town Portal) for the game's Send Ping and Set as Waypoint. A rumor's "?" the game keeps hidden shows its name and opens its menu with Go to Journal.
+[*]F on a Journal entry turns its Map Key row back on when it was off, so what you asked to see shows.
+[*]Quests another player finished but you haven't (the Journal's Missed list) show again under Main Quest or Side Quest.
+[*]Roads are read from the finer terrain, so a road under a little dirt or moss shows, and on the Map Desk they draw under every pin and menu.
+[*]Map Desk: drag the map out over the desk; let go and it floats back until the map's edge is mid-screen, so a place at the world's edge can be brought to the middle.
+[*]Press on a pin and drag, and the map pans, on a crowded map too; letting go doesn't open the pin's menu.
+[*]Hover names always draw over the pins and never over an open marker menu, and a quest pin's name shows on the same dark panel. An icon inside a quest's search circle keeps its own name.
+[/list]
+Reported bugs fixed:
+[list]
+[*]With Looted / Read / Beaten on Grayed Out, beaten bosses were so faint they looked gone: they now keep a gray ring, their size and the check mark. Reported by izisot.
+[*]Gold and Silver Chest pins offered Remove Marker.
+[*]Clicking an icon inside a quest's search circle opened the quest's menu.
+[/list]
+
 [b]1.3.48[/b]
 [list]
 [*]Map Desk: the World Map now lies on a painted cartographer's desk that pans and zooms with it, with a gold frame, a lantern with a soft blue glow, a 3D compass that holds north and swings when you drag the map, and two survivor notes written in the game's language. With it on, panning stops at the map's edges at every zoom. Settings > Look > Map Desk turns it off; it starts on only with the game's Ultra graphics preset.
@@ -365,18 +387,6 @@ Reported bugs fixed:
 [*]Hovering the empty Hollow Halls corner of the overworld map showed tips for the hidden markers there.
 [*]Tome of Agony, and two other pins, showed in the wrong Hollow Hall.
 [*]Undiscovered Ancient Spires couldn't be hidden with a click.
-[/list]
-
-[b]1.3.39[/b]
-[list]
-[*]Picking a large group of hidden places in Find on the map, such as every Saffron patch, no longer freezes the game.
-[*]The map's logs and settings saves now really run in the background: the game no longer waits each frame for them to reach the disk. This may help the freezes HadToRegister reported.
-[*]New Bait row: Moth, in every language. Moths only come out at night, so its spots show where they can appear.
-[/list]
-Reported bugs fixed:
-[list]
-[*]Moth bait missing from the Bait rows (reported by LordKeiran).
-[*]The game froze after picking many hidden places in Find on the map.
 [/list]
 
 Older versions: the README in the download, or [url=https://github.com/Greeneye0/worst-map-mod-enshrouded/releases]the releases on GitHub[/url].

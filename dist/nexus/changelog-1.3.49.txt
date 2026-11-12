@@ -1,0 +1,13 @@
+- Minimap Rotation (Settings > Minimap): Facing Up turns the minimap with your character, so the way you face is always up and the N shows where north is. North Up keeps it as before.
+- Find on the map matches like Find's own search: words in any order ("chest gold" finds the Gold Chests), then names with only some of the words. Enter with nothing selected shows only the best matches. Exact match (Ctrl+E or the controller's Y; FindExactMatch under [Keys]) keeps only names holding the whole text; with a newer Find it is also a checkbox in the box.
+- Click one of the mod's own icons (a collectible, a lore note, an ore, a Wooden Chest, a Town Portal) for the game's Send Ping and Set as Waypoint. A rumor's "?" the game keeps hidden shows its name and opens its menu with Go to Journal.
+- F on a Journal entry turns its Map Key row back on when it was off, so what you asked to see shows.
+- Quests another player finished but you haven't (the Journal's Missed list) show again under Main Quest or Side Quest.
+- Roads are read from the finer terrain, so a road under a little dirt or moss shows, and on the Map Desk they draw under every pin and menu.
+- Map Desk: drag the map out over the desk; let go and it floats back until the map's edge is mid-screen, so a place at the world's edge can be brought to the middle.
+- Press on a pin and drag, and the map pans, on a crowded map too; letting go doesn't open the pin's menu.
+- Hover names always draw over the pins and never over an open marker menu, and a quest pin's name shows on the same dark panel. An icon inside a quest's search circle keeps its own name.
+Reported bugs fixed:
+- With Looted / Read / Beaten on Grayed Out, beaten bosses were so faint they looked gone: they now keep a gray ring, their size and the check mark. Reported by izisot.
+- Gold and Silver Chest pins offered Remove Marker.
+- Clicking an icon inside a quest's search circle opened the quest's menu.
