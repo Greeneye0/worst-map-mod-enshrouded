@@ -35,7 +35,7 @@ enum class Str : int {
     VanillaWorldMap, VanillaMinimap, DungeonMap, OverworldMap, CatGround, RegionNames, DungeonSpoils, RangerChest, MageChest, WarriorChest,
     PadOpenKey, PadKeyNav, LevelTint, Container, MarkRefilled, MarkRespawned, HintTeleport, Floor, TeleportPair, OneWayTeleport, SpikeTrap, FireTrap, ElectricTrap, TrapRail, LockedDoor, ClosedDoor, OpenDoor, PressurePlate, ButtonLever, ShootSwitch, MagicBarrier,
     Presets, PresetChests, PresetMining, PresetExploring, PresetBosses, PresetPlants, PresetTip, PresetApplied, PresetSaved,
-    PresetRenameHint, PlaceDone, DungeonMaps, CantMark, MapDesk, NearbyCreatures, SecMap, SecMinimap, SecLook, SecFilters, HideOnWorldMap, ExactMatch, ExactHiddenFmt,
+    PresetRenameHint, PlaceDone, DungeonMaps, CantMark, MapDesk, NearbyCreatures, SecMap, SecMinimap, SecLook, SecFilters, HideOnWorldMap, ExactMatch, ExactHiddenFmt, NearbyCreaturesTip, Ok, DontShowAgain, NearbyCreaturesTrackedFmt, SpreadPins,
     Count
 };
 

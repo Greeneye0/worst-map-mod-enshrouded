@@ -50,7 +50,8 @@ const inp::Binding& EmbervaleTravelBinding() {
 }
 
 // Kinds: 0 mark a chest (click), 1 Find, 2 the panel, 3 copy the position, 4 hide a row (click), 5 undo, 6 redo;
-// while the controller steers the Map Key, 7 move, 8 select, 9 back; 10 Embervale Teleport's hold.
+// while the controller steers the Map Key, 7 move, 8 select, 9 back; 10 Embervale Teleport's hold; 11 the dungeon /
+// overworld map switch (in a hall, vault or spire).
 // What each shows: its current keys, and its controller button if it has one.
 inp::Binding MapHintBinding(int kind) {
     inp::Binding b;
@@ -85,12 +86,13 @@ inp::Binding MapHintBinding(int kind) {
     case 8: b = g_keys.padClick; break;
     case 9: b = g_keys.padBack; break;
     case 10: b = EmbervaleTravelBinding(); break;
+    case 11: b = g_keys.dungeonToggle; break;
     }
     return b;
 }
 // The map's hints for the device the game is showing: Find, the panel and the rest with a binding on it.
 // Undo and redo while there is a change to take back; the copy with Settings > Advanced > Position on
-int MapHintKinds(int out[9]) {
+int MapHintKinds(int out[10]) {
     int n = 0;
     const bool pad = greeneye::hints::PadInUse() || g_padKeyFocus;
     auto add = [&](int kind) {
@@ -105,6 +107,7 @@ int MapHintKinds(int out[9]) {
     add(0);
     add(4);
     if (!(halls::MapActive() && !halls::g_mapOverworld)) add(1); // Find: not on a dungeon's own map
+    if (halls::g_mapDungeon >= 0) add(11); // the Overworld Map / Dungeon Map button's key
     if (!g_filterUndo.empty() || !g_markUndo.empty()) add(5); // a filter change or a Ctrl + click mark
     if (!g_filterRedo.empty() || !g_markRedo.empty()) add(6);
     add(2);
@@ -113,11 +116,11 @@ int MapHintKinds(int out[9]) {
     return n;
 }
 int MapHintCount() {
-    int kinds[9];
+    int kinds[10];
     return MapHintKinds(kinds);
 }
 int MapHintKind(int i) {
-    int kinds[9];
+    int kinds[10];
     return i < MapHintKinds(kinds) ? kinds[i] : 3;
 }
 
@@ -170,7 +173,8 @@ void DrawCombinedMapHints(MapHintSpan* span, void* options) {
         uint8_t* e = entries + i * kMapHintSize;
         std::memcpy(e, model, kMapHintSize);
         const int kind = MapHintKind(i);
-        UiText text = MakeUiText(kind == 10 ? umm_lang::T(umm_lang::Str::HintTeleport)
+        UiText text = MakeUiText(kind == 11 ? umm_lang::T(halls::g_mapOverworld ? umm_lang::Str::DungeonMap : umm_lang::Str::OverworldMap)
+                                 : kind == 10 ? umm_lang::T(umm_lang::Str::HintTeleport)
                                  : kind >= 7 ? MapKeyNavLabel(kind - 7) : umm_lang::T(labels[kind]));
         std::memcpy(e + 0x20, &text, sizeof(text));
         e[0x1b] = 1;
@@ -185,8 +189,9 @@ void DrawCombinedMapHints(MapHintSpan* span, void* options) {
 
 // The screen stays 5 on the menu's other tabs (Skills, Backpack...): the map's hints only while the World Map itself
 // draws (its filter menu, DrawMapFilterMenuHook, within the last few frames)
+// (or the Map Key's panel: a dungeon's own map draws no filter menu, and its bar got none of the mod's hints, 2026-11-14)
 bool WorldMapTabShowing() {
-    return GetTickCount64() - g_mapMenuDrawnTick < 200;
+    return GetTickCount64() - g_mapMenuDrawnTick < 200 || (halls::MapActive() && GetTickCount64() - g_mapKeyLastFrameTick < 200);
 }
 
 void MapHintsHook(MapHintSpan* span, void* options) {

@@ -2106,11 +2106,15 @@ void DrawMapPlan(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
     if (!LevelMapView(mapState, zoom, originX, originY, mapWorldH)) return;
     const float left = rootRect[0], top = rootRect[1] + 114.0f; // below the menu banner
     const float right = rootRect[0] + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
-    const float bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f) - 64.0f; // above the key hints
+    // above the key hints: both rows (64 up covered the upper one, the mod's hints, and the whole bar once they took
+    // one row, 2026-11-14)
+    const float bottom = rootRect[1] + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f) - 150.0f; // (120 still cut the upper row on 16:10)
     // Like the overworld map: the screen around it in the menu's grey (from the banner's gold line, 88 down, to the key
     // hints), the hall's box dark, framed in the world map's edge line (126, 117, 101) with its soft shadow outside
     const float areaTop = rootRect[1] + 88.0f;
     DrawSolidRectAbs(widgetRaw, left, areaTop, right - left, bottom - areaTop, 0xff2b2b2bu, 1.0f);
+    // (and the bottom-left corner on down, left of the key hints: the game's stats peeked out there, 2026-11-14)
+    DrawSolidRectAbs(widgetRaw, left, bottom, 440.0f, 86.0f, 0xff2b2b2bu, 1.0f);
     float bx0, bz0, bx1, bz1;
     if (MapBounds(bx0, bz0, bx1, bz1)) {
         const float sx0 = originX + bx0 * zoom, sx1 = originX + bx1 * zoom;
@@ -2323,13 +2327,25 @@ HhpLink* HhpBlock() {
     return block;
 }
 
+// The number a Hollow Halls beacon is shown with: halls.bin keeps Hollow Halls Progression's stored order (its saved
+// progress, chat lines and the link above use it), and where that differs from the order you reach them on foot the
+// number shown differs too. A copy of its halls.h kShownNumber: Albaneve Summits (dungeon 4) shows its stored beacons
+// 1, 2, 3 as 3, 1, 2 (2026-11-12).
+uint32_t ShownBeaconNumber(int dungeon, uint32_t i) {
+    static constexpr uint32_t kAlbaneve[] = {3, 1, 2};
+    if (dungeon == 4 && i < 3) return kAlbaneve[i];
+    return i + 1;
+}
+
 // Over the markers: each Return Beacon's number on a badge beside it (in Hollow Halls Progression's order), and you.
 // With Hollow Halls Progression a beacon you've reached is bright and a click travels there; one you haven't is grey.
 // Returns true while a badge is under the mouse.
 // The way your character faces, from its own entity's CurrentTransform (a player entity, id under 0x400, standing where
 // you are): forward = +z turned by its rotation quaternion {x, y, z, w} at +0x18. The entity's slot is remembered;
 // looked for again at most twice a second.
-bool PlayerFacingInner(uint8_t* reg, int posType, float px, float pz, float& fx, float& fz) {
+// The character's own transform: the entity nearest your spot, by height too when it is known (in a vault, first match by
+// x and z was a statue a floor below, facing north: Facing Up stopped turning there, 2026-11-14)
+bool PlayerFacingInner(uint8_t* reg, int posType, float px, float py, float pz, bool haveY, float& fx, float& fz) {
     static uint64_t s_slot = ~0ull, s_lastSearch = 0;
     static void* s_reg = nullptr;
     uint8_t* map = reg + 0x148;
@@ -2338,35 +2354,51 @@ bool PlayerFacingInner(uint8_t* reg, int posType, float px, float pz, float& fx,
     auto* ids = *reinterpret_cast<uint32_t**>(map + 0x28);
     auto* records = *reinterpret_cast<uint8_t***>(reg + 0x188);
     if (!used || !ids || !records || capacity > (1u << 22)) return false;
-    auto read = [&](uint64_t i) -> bool {
-        if (i >= capacity || !(used[i >> 6] >> (i & 63) & 1) || ids[i] == 0 || ids[i] >= 0x400 || !records[i]) return false;
+    // distance squared from your spot (-1: not a candidate), and its facing
+    auto read = [&](uint64_t i, float& ox, float& oz) -> double {
+        if (i >= capacity || !(used[i >> 6] >> (i & 63) & 1) || ids[i] == 0 || ids[i] >= 0x400 || !records[i]) return -1.0;
         uint16_t sz = 0;
         const uint8_t* ct = EcsComponent(records[i], static_cast<uint16_t>(posType), &sz);
-        if (!ct || sz != 0x38) return false;
+        if (!ct || sz != 0x38) return -1.0;
         const double ex = reinterpret_cast<const int64_t*>(ct)[0] / 4294967296.0 - px;
+        const double ey = haveY ? reinterpret_cast<const int64_t*>(ct)[1] / 4294967296.0 - py : 0.0;
         const double ez = reinterpret_cast<const int64_t*>(ct)[2] / 4294967296.0 - pz;
-        if (ex * ex + ez * ez > 1.5 * 1.5) return false;
+        if (ex * ex + ez * ez > 1.5 * 1.5 || ey * ey > 2.0 * 2.0) return -1.0;
         const float* q = reinterpret_cast<const float*>(ct + 0x18);
         const float x = 2.0f * (q[0] * q[2] + q[3] * q[1]), z = 1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]);
         const float len = std::sqrt(x * x + z * z);
-        if (!std::isfinite(len) || len < 0.2f) return false;
-        fx = x / len;
-        fz = z / len;
-        return true;
+        if (!std::isfinite(len) || len < 0.2f) return -1.0;
+        ox = x / len;
+        oz = z / len;
+        return ex * ex + ey * ey + ez * ez;
     };
-    if (s_reg == reg && read(s_slot)) return true;
-    const uint64_t now = GetTickCount64();
-    if (now - s_lastSearch < 500ULL) return false;
-    s_lastSearch = now;
-    s_reg = reg;
-    for (uint64_t i = 0; i < capacity; ++i)
-        if (used[i >> 6] >> (i & 63) & 1 && ids[i] < 0x400 && read(i)) {
-            s_slot = i;
+    float ox = 0.0f, oz = 0.0f;
+    // the one found before, while it stays on your spot (you are the entity at it; something else only passes by)
+    if (s_reg == reg) {
+        const double d = read(s_slot, ox, oz);
+        if (d >= 0.0 && d < 0.3 * 0.3) {
+            fx = ox, fz = oz;
             return true;
         }
-    return false;
+    }
+    const uint64_t now = GetTickCount64();
+    if (now - s_lastSearch < 500ULL) {
+        const double d = s_reg == reg ? read(s_slot, ox, oz) : -1.0;
+        if (d < 0.0) return false;
+        fx = ox, fz = oz;
+        return true;
+    }
+    s_lastSearch = now;
+    s_reg = reg;
+    double best = -1.0;
+    for (uint64_t i = 0; i < capacity; ++i) {
+        if (!(used[i >> 6] >> (i & 63) & 1) || ids[i] >= 0x400) continue;
+        const double d = read(i, ox, oz);
+        if (d >= 0.0 && (best < 0.0 || d < best)) best = d, s_slot = i, fx = ox, fz = oz;
+    }
+    return best >= 0.0;
 }
-bool PlayerFacing(float px, float pz, float& fx, float& fz) {
+bool PlayerFacing(float px, float py, float pz, bool haveY, float& fx, float& fz) {
     auto* reg = static_cast<uint8_t*>(g_waterRegistry.load(std::memory_order_relaxed));
     for (int r = 0; !reg && r < kMaxWaterRegistries; ++r) reg = static_cast<uint8_t*>(g_waterRegistries[r].load(std::memory_order_relaxed));
     if (!reg) return false;
@@ -2377,7 +2409,7 @@ bool PlayerFacing(float px, float pz, float& fx, float& fz) {
             s_typesReg = reg;
             s_pos = EcsTypeByName(reg, "CurrentTransform");
         }
-        return s_pos >= 0 && PlayerFacingInner(reg, s_pos, px, pz, fx, fz);
+        return s_pos >= 0 && PlayerFacingInner(reg, s_pos, px, py, pz, haveY, fx, fz);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }
@@ -2508,13 +2540,13 @@ bool DrawMapBeacons(void* widgetRaw, const float* rootRect, uint8_t* mapState, b
         DrawAssetRectAbs(widgetRaw, kCirclePrimitive, sx - kBadge * 0.5f, sy - kBadge * 0.5f, kBadge, kBadge, 0xff0a0e10u,
                          hovered ? 0.92f : 0.92f * level);
         char num[8];
-        std::snprintf(num, sizeof(num), "%u", i + 1);
+        std::snprintf(num, sizeof(num), "%u", ShownBeaconNumber(g_mapDungeon, i));
         DrawLabelAbs(sx - kBadge * 0.5f, sy - kBadge * 0.5f, kBadge, kBadge, num, travel && !reached ? 0xffb4b4b4u : 0xffffffffu,
                      (travel && !reached ? 0.7f : 1.0f) * (hovered ? 1.0f : level), TextAlignH::Center, TextAlignV::Center);
         if (hovered) {
             anyHovered = true;
             char title[128];
-            std::snprintf(title, sizeof(title), "%s %u", OreName(kBeaconsFirst), i + 1);
+            std::snprintf(title, sizeof(title), "%s %u", OreName(kBeaconsFirst), ShownBeaconNumber(g_mapDungeon, i));
             DrawMapHoverTitle(sx + kBadge * 0.5f + 10.0f, sy, title);
             if (clicked && reached) InterlockedExchange(&hhp->request, static_cast<LONG>(0x80000000u | g_mapDungeon << 8 | i));
         }

@@ -138,7 +138,18 @@ void DrawLevelBordersOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapS
             carry = std::fmod(carry + len, spacing);
         }
     }
-    // The levels: a dark badge per area piece, on its point deepest inside, its frame in the area's colour
+
+}
+
+// The levels: a dark badge per area piece, on its point deepest inside, its frame in the area's colour. Drawn after the
+// mod's icons (with the borders, under them, wooden chests covered the numbers, 2026-11-14)
+void DrawLevelBadgesOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
+    if (!g_levelAreas || !widgetRaw) return;
+    float zoom = 0.0f, originX = 0.0f, originY = 0.0f, mapWorldH = 0.0f;
+    if (!LevelMapView(mapState, zoom, originX, originY, mapWorldH)) return;
+    const float left = rootRect[0], top = rootRect[1];
+    const float right = left + (rootRect[2] > 100.0f ? rootRect[2] : 1920.0f);
+    const float bottom = top + (rootRect[3] > 100.0f ? rootRect[3] : 1080.0f);
     for (size_t i = 0; i < kLevelLabelCount; ++i) {
         const LevelLabel& l = kLevelLabels[i];
         const float x = originX + l.x * zoom, y = originY + (mapWorldH - l.z) * zoom;

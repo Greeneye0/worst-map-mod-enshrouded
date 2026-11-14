@@ -24,7 +24,9 @@ void DrawMapCursorPosition(void* widgetRaw, const float* rootRect, uint8_t* mapS
     const float rootH = rootRect[3] > 100.0f ? rootRect[3] : 1080.0f;
     constexpr float kPlateH = 26.0f, kCellW = 92.0f, kCheckW = 26.0f, kLetterW = 13.0f;
     const float plateW = kCellW * 2.0f + 8.0f + kCheckW;
-    const float plateX = left + rootW * 0.5f - plateW * 0.5f, plateY = top + rootH - 92.0f;
+    // (top centre, under the menu banner: at the bottom it sat on the key hints, which take two or three rows,
+    // 2026-11-14)
+    const float plateX = left + rootW * 0.5f - plateW * 0.5f, plateY = top + (halls::g_mapDungeon >= 0 ? 260.0f : 124.0f);
     const bool overPlate = haveCursor && mx >= plateX && mx <= plateX + plateW && my >= plateY && my <= plateY + kPlateH;
     const float copyX = plateX + plateW - 4.0f - kCheckW;
     const bool overCopy = overPlate && mx >= copyX;

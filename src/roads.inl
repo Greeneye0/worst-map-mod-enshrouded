@@ -134,7 +134,9 @@ void Compose(Tile& t, int level, int tx, int tz) {
                 Cover(l, static_cast<int>(xLeft / m), static_cast<int>((xLeft + mpp) / m), static_cast<int>((zTop - mpp) / m),
                       static_cast<int>(zTop / m), in, beside, cells);
                 const float share = cells ? static_cast<float>(in) / static_cast<float>(cells) : 0.0f;
-                ra = in ? std::min(0.9f, 0.45f + share * 1.6f) : (beside && mpp / m >= 1.0f ? 0.22f : 0.0f);
+                // as strong as the share of the pixel the road covers, nothing beside it: a road was drawn 1.5 to 3 times
+                // its width (a pixel it clipped painted near full, a faint pixel either side; complaints, 2026-11-14)
+                ra = in ? std::min(0.9f, 0.1f + share * 1.3f) : 0.0f;
             }
             if (ra <= 0.0f && wa <= 0.0f) continue;
             float k = 1.0f;
@@ -202,7 +204,8 @@ void Draw(void* widgetRaw, float x0, float yNorth, float ppm, float left, float 
             const float sy0 = yNorth + tz * tileScreen, sy1 = sy0 + tileScreen;
             const float cx0 = std::max(sx0, left), cx1 = std::min(sx1, right), cy0 = std::max(sy0, top), cy1 = std::min(sy1, bottom);
             if (cx1 <= cx0 || cy1 <= cy0) continue;
-            const uint64_t key = (view ^ (static_cast<uint64_t>((level * 64 + tz) * 64 + tx + 1) * 0x9e3779b97f4a7c15ull)) | 1;
+            // (salted: the thinner roads' tiles, not the image pool's older ones)
+            const uint64_t key = (view ^ 0x7d1c000000000000ull ^ (static_cast<uint64_t>((level * 64 + tz) * 64 + tx + 1) * 0x9e3779b97f4a7c15ull)) | 1;
             Tile* t = Find(key);
             if (!t) {
                 if (painted >= 4) continue;

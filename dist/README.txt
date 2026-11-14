@@ -203,6 +203,8 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
   knows of, places you've discovered, and lore rumor hints. With EXPLORED and HYBRID, a place
   you haven't discovered yet (the game would hide it) is grayed out, on the world map and the
   minimap, even where the fog is cleared; REVEAL ALL shows it in full colour.
+Alt+Shift+M (or LB + D-pad Down on a controller; OpenSettings under [Keys]) opens SETTINGS while
+you play, even with the minimap and its info bar off.
 Below FOG and PINS the settings are grouped under WORLD MAP, MINIMAP, LOOK and FILTERS.
 - Custom Marker Size   the size of your own pins.
 - Show Minimap, Minimap Terrain, Minimap Icon (sun/moon or weather).
@@ -229,6 +231,8 @@ Below FOG and PINS the settings are grouped under WORLD MAP, MINIMAP, LOOK and F
 - Region Filter (FILTERS), off at first: the Map Key's REGIONS row (see above).
 - Region Names (WORLD MAP), on at first: each region's name as a faint watermark on the world
   map, in the game's language.
+- Stacked Pins List (WORLD MAP), off at first: rest the cursor on pins on top of each other and
+  a card beside them lists every one; a row lights its pin, a click opens its menu.
 - Level Areas (WORLD MAP), off at first: the world map in the areas of the enemies' levels, each
   tinted from green (low) through orange and red to purple and blue (high), with the borders
   between them and each area's level in a badge. Read from the levels the game gives its
@@ -295,8 +299,9 @@ Inside a Hollow Hall the World Map shows that hall alone, seen from above in the
 textures: the floor you're on bright, the hall's other levels dimmed. It opens with the whole
 hall in view, in a frame of its own. Its Return Beacons are numbered in the order you reach
 them; the end room's chests are Dungeon Spoils (hover one for its name and the Ectoplasm it
-takes to open). Overworld Map at the top switches to the world, centred on
-the hall's entrance, and back; C centres the hall on you.
+takes to open). Overworld Map at the top (or Ctrl+D, LB + D-pad Up on a controller;
+DungeonMapToggle under [Keys]) switches to the world, centred on the hall's entrance, and
+back; C centres the hall on you.
 Ancient Vaults and Spires get the same maps, a floor at a time: teleporters split them into
 floors, and - Floor n / m + on the map (or Ctrl+Up/Down) picks one. Traps show live
 (fireballs and sparks moving, spikes glowing as they come out, plates their switch turned
@@ -380,6 +385,47 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.50
+- Waypoint on the minimap: your waypoint shows where it is, and at the minimap's edge,
+  pointing its way, when it's further off. Requested by harag.
+- Alt+Shift+M (LB + D-pad Down on a controller; OpenSettings under [Keys]) opens Settings
+  while you play, on the World Map, and from the game's own map with Vanilla World Map on.
+  Requested by MaZyGer.
+- Switching Nearby Creatures Only on shows a notice with the creatures it tracks, or that none
+  are on, with Don't show again.
+- Dungeon maps show the dungeon's name at the top (a Hollow Hall with its region). Ctrl+D (LB
+  + D-pad Up on a controller; DungeonMapToggle under [Keys]) switches between the dungeon's
+  map and the overworld's, with its hint in the key bar. Requested by JudgeHellboy.
+- In an Ancient Spire, its top, where its teleport lands you, shows the overworld on the World
+  Map and the minimap; past its first teleporter, the spire's own map.
+- Stacked Pins List (Settings, off by default): rest the cursor on pins on top of each other
+  and a card lists them all; a row lights its pin and a click opens its menu.
+- Find on the map also finds a place by its unread rumor ("hope set" finds the Sunken Ancient
+  City) and by the quest it is shown for, and one click on a result goes there.
+- A place with an unread rumor shows the rumor's line under its name, as on the game's own
+  map.
+- Roads draw closer to their real width. Requested by Maxos5000.
+- Opened from a quest's "show on map" prompt, the World Map stays on the quest instead of
+  centring on you, and a controller button still held from the prompt no longer opens the Map
+  Key. Reported by True2Kozy.
+- Esc with Settings open closes Settings and keeps the map open. The Map Key stays folded or
+  unfolded as you left it. The cursor's position plate sits at the top, clear of the key
+  hints.
+- The mod's pins draw under a quest's or rumor's card (with the Map Desk) and under the level
+  numbers.
+Reported bugs fixed:
+- A Night Sanctum or other place inside a quest's search circle disappeared under the quest's
+  pin: it keeps its own icon. Reported by Ykses.
+- With Facing Up, the minimap in a vault or Hollow Hall stopped turning or turned round the
+  wrong spot. Reported by Ykses.
+- The Sunken Ancient City showed as Follow The Melody, or as an empty diamond: it shows under
+  its own name, follows the Ancient Vault row and is found by Find.
+- A dungeon's map had none of the mod's key hints, and the dungeon's map covered the game's
+  upper row of hints.
+- With Vanilla World Map on and the minimap's info bar off, nothing on a keyboard opened
+  Settings. Reported by MaZyGer.
+- A Gold Chest inside a quest's search circle showed plain text instead of its name panel.
+
 1.3.49
 - Minimap Rotation (Settings > Minimap): Facing Up turns the minimap with your character, so
   the way you face is always up and the N shows where north is. North Up keeps it as before.
