@@ -269,6 +269,12 @@ If something doesn't work, please post these files with your report. Both are in
 
 [size=4][b]Changelog[/b][/size]
 
+[b]1.3.51[/b]
+Reported bugs fixed:
+[list]
+[*]Looted chests lost their check marks after logging back in, mostly on a server: the mod chose the world before its Flame Altars had loaded, started a second record for the same world, and from then on each session used whichever record the loaded altars matched. It now waits for the altars to load, and a world's split records are joined into one the first time you join with its altars loaded, keeping every check mark. Check marks made in a session that saw only one altar stay in that session's own record.
+[/list]
+
 [b]1.3.50[/b]
 [list]
 [*]Waypoint on the minimap: your waypoint shows where it is, and at the minimap's edge, pointing its way, when it's further off. Requested by harag.
@@ -392,12 +398,6 @@ Reported bugs fixed:
 [*]Fixed: a World Map opened from the controller's menu showed none of the mod's tips at the bottom.
 [*]With Embervale Teleport installed, the map's tips show its Teleport button, and follow a rebind.
 [*]Should fix the Map Key missing controller presses at high frame rates. Reported by Ykses.
-[/list]
-
-[b]1.3.41[/b]
-[list]
-[*]New Plants rows, so the map and its Find box can find them: Date (palms showing fruit) and Yucca Fruit, in every language.
-[*]The Find box's list can be hovered and clicked again, and Tab no longer types a space. This came from Find 1.2.9: update Find to 1.2.10 as well.
 [/list]
 
 [line]

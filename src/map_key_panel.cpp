@@ -3393,6 +3393,80 @@ size_t SavedAltarsHere(const std::vector<std::pair<int32_t, int32_t>>& saved, co
     return n;
 }
 
+// Folds another saved record's chests into the current state and deletes that record. Opened (the check marks) is always
+// the union. Looted chests and dead bosses are taken only from a record not older than the one kept (current): an older
+// record's loot has refilled since, as a world's chests do 30 min after everyone left (11-11 loot came back looted on
+// 11-14 when it was taken). A chest looted in both keeps the later loot. Built water is found again in the world.
+// Same-world records split when the world was matched before its altars had loaded (one altar near the start matched
+// no record, so a new one began, and the next session picked whichever record its altars matched): looted marks seemed
+// to vanish on relog (reported 2026-11-14).
+void FoldLootRecord(const char* name, const std::string& path, bool current, bool erase = true) {
+    std::vector<char> text(64 * 1024);
+    GetPrivateProfileStringA(name, "Looted", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+    size_t idx = 0, looted = 0, opened = 0;
+    int secs = 0, used = 0;
+    for (const char* t = text.data(); *t && sscanf_s(t, "%zu:%d%n", &idx, &secs, &used) == 2;) {
+        if (idx < kTotalChestCount && !current) {
+            g_chestLootStates[idx].everLooted = true;
+            ++looted;
+        } else if (idx < kTotalChestCount) {
+            ChestLootState& st = g_chestLootStates[idx];
+            const double s = static_cast<double>(std::max(0, secs));
+            if (!st.looted) {
+                st.looted = true;
+                st.elapsedOutOfBuildZoneSec = s;
+            } else if (s < st.elapsedOutOfBuildZoneSec) {
+                st.elapsedOutOfBuildZoneSec = s;
+            }
+            st.everLooted = true;
+            ++looted;
+        }
+        t += used;
+        if (*t == ';') ++t;
+    }
+    GetPrivateProfileStringA(name, "Opened", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+    for (const char* t = text.data(); *t && sscanf_s(t, "%zu%n", &idx, &used) == 1;) {
+        if (idx < kTotalChestCount) {
+            g_chestLootStates[idx].everLooted = true;
+            ++opened;
+        }
+        t += used;
+        if (*t == ';') ++t;
+    }
+    GetPrivateProfileStringA(name, "Bosses", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+    if (!current) text[0] = 0;
+    unsigned spot = 0;
+    for (const char* t = text.data(); *t && sscanf_s(t, "%u:%d%n", &spot, &secs, &used) == 2;) {
+        const double s = static_cast<double>(std::max(0, secs));
+        auto it = g_bossDead.find(static_cast<uint16_t>(spot));
+        if (it == g_bossDead.end()) g_bossDead[static_cast<uint16_t>(spot)] = s;
+        else if (s < it->second) it->second = s;
+        t += used;
+        if (*t == ';') ++t;
+    }
+    GetPrivateProfileStringA(name, "Altars", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+    for (const auto& p : ParseAltars(text.data())) {
+        if (!SavedAltarsHere({p}, g_lootAltars)) g_lootAltars.push_back(p);
+    }
+    if (erase) {
+        async_io::Flush();
+        WritePrivateProfileStringA(name, nullptr, nullptr, path.c_str()); // the whole record
+    }
+    g_chestLootDirty = true;
+    if (g_log) g_log("Looted chests: record %s folded into %s (%zu looted%s, %zu opened)", name, g_lootSection.c_str(), looted,
+                     current ? "" : " kept as opened only: played before", opened);
+}
+
+// Strong enough to fold two records into one: three shared altars, or at least half of a record of two or more. One
+// shared altar never is: a new world's first altar is often where an old world's was (FWSWBN).
+bool LootRecordsSameWorld(size_t here, size_t saved) {
+    return here >= 3 || (saved >= 2 && here * 2 >= saved);
+}
+
+bool g_lootSectionIsNew = false; // this session started the current record (no saved one matched when it joined)
+size_t g_lootSettleCount = 0;      // altars seen at the last match attempt, and since when that count held
+uint64_t g_lootSettleSince = 0, g_lootFirstAltarTick = 0;
+
 // Finds this world's saved record (or starts one) and merges its looted chests into the current state.
 // A record is this world when at least half its altars stand here, or three of them do (a base moved since). One altar
 // in a common spot isn't enough: a new world's first altar is often put where an old world's was, near the start,
@@ -3405,6 +3479,8 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
     DWORD len = GetPrivateProfileSectionNamesA(names.data(), static_cast<DWORD>(names.size()), path.c_str());
     std::string best;
     double bestScore = 0.0;
+    long long bestPlayed = 0;
+    std::vector<std::string> sameWorld; // records strong enough to be folded into the one picked
     for (const char* name = names.data(); len && *name; name += std::strlen(name) + 1) {
         std::vector<char> text(64 * 1024);
         GetPrivateProfileStringA(name, "Altars", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
@@ -3414,9 +3490,13 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
             if (here && g_log) g_log("Looted chests: %s shares %zu of its %zu altars only; not this world", name, here, saved.size());
             continue;
         }
+        if (LootRecordsSameWorld(here, saved.size())) sameWorld.push_back(name);
         const double score = static_cast<double>(here) / static_cast<double>(saved.size()) + 0.001 * static_cast<double>(here);
-        if (score > bestScore) {
+        // Equal scores (two records of the same world): the one played last, whose clock and timers are current
+        const long long played = GetPrivateProfileIntA(name, "LastPlayed", 0, path.c_str());
+        if (score > bestScore + 1e-9 || (score > bestScore - 1e-9 && played > bestPlayed)) {
             bestScore = score;
+            bestPlayed = played;
             best = name;
         }
     }
@@ -3459,7 +3539,16 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
             t += used;
             if (*t == ';') ++t;
         }
+        // Earlier splits of this world: one record again
+        if (LootRecordsSameWorld(SavedAltarsHere(saved, altars), saved.size())) {
+            for (const auto& other : sameWorld) {
+                if (other == best) continue;
+                const long long played = GetPrivateProfileIntA(other.c_str(), "LastPlayed", 0, path.c_str());
+                FoldLootRecord(other.c_str(), path, played >= bestPlayed);
+            }
+        }
     }
+    g_lootSectionIsNew = g_lootSection.empty();
     if (g_lootSection.empty()) {
         char name[32];
         std::snprintf(name, sizeof(name), "World_%08X%04X", static_cast<unsigned>(altars[0].first * 2654435761u),
@@ -3467,11 +3556,11 @@ void MatchLootWorld(const std::vector<std::pair<int32_t, int32_t>>& altars) {
         g_lootSection = name;
     }
     for (const auto& p : altars) {
-        if (std::find(g_lootAltars.begin(), g_lootAltars.end(), p) == g_lootAltars.end()) g_lootAltars.push_back(p);
+        if (!SavedAltarsHere({p}, g_lootAltars)) g_lootAltars.push_back(p);
     }
     g_chestLootDirty = true;
     SaveLootedChests();
-    if (g_log) g_log("Looted chests: world %s", g_lootSection.c_str());
+    if (g_log) g_log("Looted chests: world %s%s (%zu altars seen)", g_lootSection.c_str(), g_lootSectionIsNew ? ", new" : "", altars.size());
 }
 
 size_t NearestChestTo(float px, float py, float pz) {
@@ -3633,6 +3722,43 @@ void ResetLootWorld(const char* why) {
     g_bossDead.clear();
     g_chestLootDirty = true;
     g_lootLastMatchTick = 0;
+    g_lootSectionIsNew = false;
+    g_lootSettleCount = 0;
+    g_lootSettleSince = g_lootFirstAltarTick = 0;
+}
+
+// The world matched before its altars had all loaded started its own record: once more altars show, the saved record
+// they match is this world. Its chests are folded in and the current state carries on under its name.
+void AdoptOlderLootRecord(const std::vector<std::pair<int32_t, int32_t>>& altars) {
+    async_io::Flush();
+    const std::string path = GetLootedChestsPath();
+    std::vector<char> names(64 * 1024);
+    DWORD len = GetPrivateProfileSectionNamesA(names.data(), static_cast<DWORD>(names.size()), path.c_str());
+    std::string best;
+    double bestScore = 0.0;
+    for (const char* name = names.data(); len && *name; name += std::strlen(name) + 1) {
+        if (g_lootSection == name) continue;
+        std::vector<char> text(64 * 1024);
+        GetPrivateProfileStringA(name, "Altars", "", text.data(), static_cast<DWORD>(text.size()), path.c_str());
+        const auto saved = ParseAltars(text.data());
+        const size_t here = SavedAltarsHere(saved, altars);
+        if (!LootRecordsSameWorld(here, saved.size())) continue;
+        const double score = static_cast<double>(here) / static_cast<double>(saved.size()) + 0.001 * static_cast<double>(here);
+        if (score > bestScore) {
+            bestScore = score;
+            best = name;
+        }
+    }
+    if (best.empty()) return;
+    const std::string young = g_lootSection;
+    g_lootSection = best;
+    // Its check marks into the state (its loot is older than this session's); the record is rewritten below
+    FoldLootRecord(best.c_str(), path, false, false);
+    WritePrivateProfileStringA(young.c_str(), nullptr, nullptr, path.c_str());
+    g_lootSectionIsNew = false;
+    SaveLootedChests();
+    if (g_log) g_log("Looted chests: %s was started before this world's altars loaded; it is %s (%zu altars seen)",
+                     young.c_str(), best.c_str(), altars.size());
 }
 
 #include "chest_live.inl"
@@ -3668,18 +3794,44 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
     }
     if (!g_lootSection.empty()) ApplySharedChestStates();
 
-    // A matched world whose altars are all gone is another world
+    // A matched world whose altars are all gone is another world. Altars that loaded since are added to its record,
+    // and a record this session started too early is matched again with them.
     if (!g_lootSection.empty() && screen == 1 && nowTick - g_lootLastAltarCheckTick > 5000ULL) {
         g_lootLastAltarCheckTick = nowTick;
         std::vector<std::pair<int32_t, int32_t>> altars;
         CollectAltarPositions(client, altars);
-        if (!altars.empty() && !AltarsShared(altars, g_lootAltars)) ResetLootWorld("altars differ");
+        if (!altars.empty() && !AltarsShared(altars, g_lootAltars)) {
+            ResetLootWorld("altars differ");
+        } else if (!altars.empty()) {
+            size_t added = 0;
+            for (const auto& p : altars) {
+                if (!SavedAltarsHere({p}, g_lootAltars)) {
+                    g_lootAltars.push_back(p);
+                    ++added;
+                }
+            }
+            if (added) {
+                g_lootSaveDirty = true;
+                if (g_lootSectionIsNew) AdoptOlderLootRecord(altars);
+            }
+        }
     }
-    if (g_lootSection.empty() && nowTick - g_lootLastMatchTick > 2000ULL) {
+    // Matched once the altars have loaded: their count unchanged for 8 s, or 45 s after the first one showed. On a
+    // server they arrive a few at a time, and one altar near the start matches no record (see FoldLootRecord).
+    if (g_lootSection.empty() && nowTick - g_lootLastMatchTick > 1000ULL) {
         g_lootLastMatchTick = nowTick;
         std::vector<std::pair<int32_t, int32_t>> altars;
         CollectAltarPositions(client, altars);
         if (!altars.empty()) {
+            if (!g_lootFirstAltarTick) g_lootFirstAltarTick = nowTick;
+            if (altars.size() != g_lootSettleCount) {
+                g_lootSettleCount = altars.size();
+                g_lootSettleSince = nowTick;
+            }
+        }
+        const bool settled = !altars.empty() &&
+                             (nowTick - g_lootSettleSince >= 8000ULL || nowTick - g_lootFirstAltarTick >= 45000ULL);
+        if (settled) {
             MatchLootWorld(altars);
             SyncLinkedResourceRows(client);
             ApplyLockedStates(client); // the world is up: its filters are the game's, put the locked ones back

@@ -385,6 +385,15 @@ If something doesn't work, please post these files with your report (all in the 
 
 CHANGES
 -------
+1.3.51
+Reported bugs fixed:
+- Looted chests lost their check marks after logging back in, mostly on a server: the mod
+  chose the world before its Flame Altars had loaded, started a second record for the same
+  world, and from then on each session used whichever record the loaded altars matched. It
+  now waits for the altars to load, and a world's split records are joined into one the
+  first time you join with its altars loaded, keeping every check mark. Check marks made
+  in a session that saw only one altar stay in that session's own record.
+
 1.3.50
 - Waypoint on the minimap: your waypoint shows where it is, and at the minimap's edge,
   pointing its way, when it's further off. Requested by harag.
