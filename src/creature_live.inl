@@ -14,6 +14,7 @@ struct LiveCreature {
     int16_t model;  // kCreatureModels index of the model's first entry (its other rows follow it)
     uint32_t slot;  // its slot in the registry's entity map (to read where it is now)
     uint8_t state = 0, awareness = 0; // an enemy's NetworkEnemy: keen::enemy01::State / AwarenessState (0: none)
+    bool dead = false; // a corpse: NetworkEnemy state Dead or NetworkHealth health 0 (see Dead below)
 };
 
 // An enemy's NetworkEnemy component (8 bytes, enemies only, not wildlife): {State state u8, AwarenessState
@@ -26,6 +27,31 @@ bool LooksLikeNetworkEnemy(const uint8_t* c) {
     float awareness;
     std::memcpy(&awareness, c + 4, 4);
     return c[0] >= 1 && c[0] <= 29 && c[1] <= 2 && c[2] == 0 && c[3] == 0 && awareness >= 0.0f && awareness <= 1.0f;
+}
+
+// keen::ecs::NetworkHealth (8 bytes, reflected; enemies and wildlife): {uint32 health, uint32 healthMax}. health 0 is a
+// corpse (it lies there until it despawns). Its type number is found by its data: the 8-byte type (not NetworkEnemy)
+// all of whose values on the live creatures read as health <= healthMax with healthMax 1..10,000,000, held by the most.
+uint16_t g_healthType[kMaxWaterRegistries] = {};
+bool LooksLikeNetworkHealth(const uint8_t* c) {
+    uint32_t health, max;
+    std::memcpy(&health, c, 4);
+    std::memcpy(&max, c + 4, 4);
+    return max >= 1 && max <= 10000000u && health <= max;
+}
+
+// keen::enemy01::State Dead (3) or NetworkHealth health 0 (record of the registry's types).
+bool RecordDead(int ri, uint8_t* rec) {
+    uint16_t size = 0;
+    if (g_enemyType[ri]) {
+        const uint8_t* enemy = EcsComponent(rec, g_enemyType[ri], &size);
+        if (enemy && size == 8 && enemy[0] == 3) return true;
+    }
+    if (g_healthType[ri]) {
+        const uint8_t* health = EcsComponent(rec, g_healthType[ri], &size);
+        if (health && size == 8 && LooksLikeNetworkHealth(health) && *reinterpret_cast<const uint32_t*>(health) == 0) return true;
+    }
+    return false;
 }
 
 constexpr int16_t kNotCreature = -1, kUnresolved = -2;
@@ -115,6 +141,34 @@ void DetectEnemyType(int ri, uint8_t** records, std::vector<LiveCreature>& out) 
     if (g_log) g_log("Live creatures: registry %d enemy state type %d (%d creatures)", ri, best, ok[best]);
 }
 
+// The registry's NetworkHealth type, likewise (at least three creatures holding it, every value a plausible one, some
+// alive).
+void DetectHealthType(int ri, uint8_t** records, std::vector<LiveCreature>& out) {
+    static int has[kEcsTypeBits], ok[kEcsTypeBits], alive[kEcsTypeBits];
+    std::memset(has, 0, sizeof(has));
+    std::memset(ok, 0, sizeof(ok));
+    std::memset(alive, 0, sizeof(alive));
+    for (const LiveCreature& c : out) {
+        if (c.registry != ri) continue;
+        uint8_t* rec = records[c.slot];
+        const auto* bits = *reinterpret_cast<const uint64_t**>(rec + 0x18);
+        for (int ty = 1; ty < kEcsTypeBits; ++ty) {
+            if (ty == g_enemyType[ri] || ty == boss_live::g_types[ri].position || !(bits[ty >> 6] >> (ty & 63) & 1)) continue;
+            uint16_t size = 0;
+            const uint8_t* d = EcsComponent(rec, static_cast<uint16_t>(ty), &size);
+            if (!d || size != 8) continue;
+            ++has[ty];
+            if (LooksLikeNetworkHealth(d)) ++ok[ty], alive[ty] += *reinterpret_cast<const uint32_t*>(d) != 0;
+        }
+    }
+    int best = 0;
+    for (int ty = 1; ty < kEcsTypeBits; ++ty)
+        if (has[ty] >= 3 && ok[ty] == has[ty] && alive[ty] > 0 && ok[ty] > ok[best]) best = ty;
+    if (!best) return;
+    g_healthType[ri] = static_cast<uint16_t>(best);
+    if (g_log) g_log("Live creatures: registry %d health type %d (%d creatures)", ri, best, ok[best]);
+}
+
 // Game thread, g_lock held: the known creatures within range; the entities not seen yet are queued for the render hook.
 void ScanInner(std::vector<LiveCreature>& out, float px, float pz, float range, uint64_t now) {
     for (int ri = 0; ri < kMaxWaterRegistries; ++ri) {
@@ -142,6 +196,7 @@ void ScanInner(std::vector<LiveCreature>& out, float px, float pz, float range, 
                 uint16_t size = 0;
                 const uint8_t* enemy = g_enemyType[ri] ? EcsComponent(records[i], g_enemyType[ri], &size) : nullptr;
                 if (enemy && size == 8) c.state = enemy[0], c.awareness = enemy[1];
+                c.dead = RecordDead(ri, records[i]);
                 out.push_back(c);
             } else if (e.model == kUnresolved) {
                 // not drawn yet (a model handle without an instance): asked again for a while, then given up on
@@ -150,6 +205,7 @@ void ScanInner(std::vector<LiveCreature>& out, float px, float pz, float range, 
             }
         }
         if (!g_enemyType[ri]) DetectEnemyType(ri, records, out);
+        if (!g_healthType[ri]) DetectHealthType(ri, records, out); // NetworkEnemy values never pass its test (awareness float)
     }
     // what left the range a while ago is forgotten (its id may come back as another entity)
     for (auto it = g_cache.begin(); it != g_cache.end();) {
@@ -199,6 +255,28 @@ bool Position(const LiveCreature& c, float out[3]) {
         return PositionInner(c, out);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
+    }
+}
+
+// Whether the creature has died (or is gone) since it was found: read from its record now.
+bool DeadInner(const LiveCreature& c) {
+    auto* reg = static_cast<uint8_t*>(g_waterRegistries[c.registry].load(std::memory_order_relaxed));
+    if (!reg) return true;
+    uint8_t* map = reg + 0x148;
+    const uint64_t capacity = *reinterpret_cast<uint64_t*>(map + 0x10);
+    auto* used = *reinterpret_cast<uint64_t**>(map + 0x08);
+    auto* ids = *reinterpret_cast<uint32_t**>(map + 0x28);
+    auto* records = *reinterpret_cast<uint8_t***>(reg + 0x188);
+    if (!used || !ids || !records || c.slot >= capacity || !(used[c.slot >> 6] >> (c.slot & 63) & 1) ||
+        ids[c.slot] != c.entity || !records[c.slot])
+        return true;
+    return RecordDead(c.registry, records[c.slot]);
+}
+bool Dead(const LiveCreature& c) {
+    __try {
+        return DeadInner(c);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return true;
     }
 }
 

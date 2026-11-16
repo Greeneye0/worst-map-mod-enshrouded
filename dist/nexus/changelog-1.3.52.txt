@@ -1,0 +1,22 @@
+Minimap Opacity (Settings > Minimap): how see-through the minimap and its info bar are, 20% to 100%. Holding Shift+Alt to use the minimap draws it solid. Requested by Meagermean.
+Alt+Shift+H (LB + D-pad Right on a controller; ToggleMinimap under [Keys]) hides the minimap and its info bar for screenshots, and brings them back. Requested by yassifecade.
+Minimap Rotation has a third choice, Camera Up: the minimap turns with the camera, so what's ahead on screen is up. Requested by Ykses.
+Off the minimap, your waypoint and the quest you track in the Journal show on its edge, pointing their way; with Facing Up the N rides the square edge too. Requested by Ykses.
+Chests on World Map (Settings > World Map): Hide keeps the chests and Dungeon Spoils off the World Map; they still show on the minimap, with G G and on dungeon maps. Requested by TheAzathos.
+Fog Reveal Radius (Settings > World Map): how far round you the map's fog clears as you travel, 50% to 500% of the game's own. What it clears stays cleared. Requested by izisot.
+The catacombs under Fort Kelvin get a dungeon map on the World Map and the minimap. Requested by HadToRegister.
+Settings: click a group's bar to fold or unfold it, and the search box at the top finds a setting by name. While you type, the game and the other Greeneye mods' keys ignore the keyboard. Opened while you play, the card sits above the hotbar, and Esc closes it.
+Hover Name Backgrounds (Settings > World Map, off by default): the dark panel behind a pin's name. Off, the name is plain text with a faint shadow. Requested by rakeri1.
+G G no longer lights dead creatures, and a creature it lit stops glowing when it dies.
+On a controller, B closes the Nearby Creatures notice first, then Settings, then the Map Key.
+Reported bugs fixed:
+- For the first seconds after joining, every chest looked unlooted until the Flame Altars had loaded. Reported by izisot.
+- Some filter locks were lost after restarting the game once many rows were locked. Reported by izisot.
+- A pin's name stayed on screen after the cursor left it, and two names could flicker in turn. Reported by izisot, rakeri1 and GillzaSVD.
+- With Facing Up, the frame rate dropped inside Hollow Halls and dungeons: the minimap now draws at most the newest 400 footprints. Reported by Ykses.
+- Settings opened with Alt+Shift+M and the Nearby Creatures notice didn't take controller focus. Reported by Ykses.
+- The Map Key's icons and ON/OFF badges vanished while a nearby quest pin was hovered.
+- An Ancient Spire's hover label showed its region over its name; it now shows like the game's own, and the mod's pins go under it.
+- A pin hidden by its filter still showed its name on hover.
+- Unique items marked found couldn't be unmarked.
+- Town Portals' names drew over the Settings card while playing.

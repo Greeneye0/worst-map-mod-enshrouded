@@ -52,6 +52,7 @@ struct Target {
     float dist = 0.0f;  // a note's / boss's: how far it stands from the note's spot (m, across); chests: 0
     bool follow = false; // a live creature: lit wherever it goes (no check that it still stands at its spot)
     uint8_t copyGroup = 0; // a live creature: its copy's highlight group (kGroup, or the aggro groups below)
+    creature_live::LiveCreature creature{}; // a live creature: which one (to see whether it has died)
 };
 
 // The creature copies' highlight by aggro: HighlightColorIndex Group1 (4) red while fighting, Group2 (5) amber while
@@ -765,14 +766,22 @@ float* AlertColourHook(float* out, uint32_t colour) {
     return g_alertNext[Site](out, colour);
 }
 
-// The lit creatures' copy groups from their aggro now (game thread, every frame: creature_live's list is read four
-// times a second while the minimap shows them).
+// The lit creatures' copy groups from their aggro now, and the ones that died since G G let go of (game thread, every
+// frame: creature_live's list is read four times a second while the minimap shows them; death is read from each lit
+// creature's own record, so a corpse stops glowing on the next frame whether or not the minimap shows creatures).
 void RefreshCreatureAggro() {
-    if (!g_proxyCount) return;
+    if (!g_count) return;
+    const uint64_t now = GetTickCount64();
     AcquireSRWLockExclusive(&g_lock);
     for (unsigned i = 0; i < g_count; ++i) {
         Target& t = g_targets[i];
-        if (!t.follow) continue;
+        if (!t.follow || t.until <= now) continue;
+        if (creature_live::Dead(t.creature)) {
+            t.until = 0; // Apply lets go of it: its copy deleted, its highlight put back
+            if (g_log) g_log("Chest glow: creature %x died; no longer lit", t.entity);
+            continue;
+        }
+        if (!g_proxyCount) continue;
         for (const creature_live::LiveCreature& c : creature_live::g_near) {
             if (c.entity != t.entity) continue;
             const int aggro = creature_live::Aggro(c);
@@ -905,6 +914,7 @@ void FillTargets(uint8_t* reg, const NearChest* chests, size_t chestCount, uint6
             if (!n.isCreature) continue;
             Target t{n.creature.entity, {n.x, n.y, n.z}, until, n.colour, static_cast<uint32_t>(c), 0.0f, 0.0f};
             t.follow = true;
+            t.creature = n.creature;
             const int aggro = creature_live::Aggro(n.creature);
             t.copyGroup = aggro == 2 ? kFightGroup : aggro == 1 ? kAlertGroup : kGroup;
             g_targets[g_count++] = t;
@@ -1009,7 +1019,7 @@ void LightNearbyChests(uint8_t* client) {
         });
         for (const auto& c : live) {
             const int row = creature_live::ShownRow(c.model);
-            if (row < 0 || creatureCount >= kMaxCreatures) continue;
+            if (row < 0 || c.dead || creatureCount >= kMaxCreatures) continue; // corpses are not lit
             NearChest n{c.x, c.y, c.z, kTotalChestCount, kOreDepositCount, kCreatureRed};
             n.isCreature = true;
             n.creature = c;
@@ -1124,7 +1134,7 @@ void DrawMarkersInner(uint8_t* client, void* widgetRaw) {
         if (c.isCreature) {
             if (ProxiesReady() && g_proxyCount) continue; // drawn by their copies
             float p[3];
-            if (!creature_live::Position(c.creature, p)) continue; // gone (killed, despawned)
+            if (!creature_live::Position(c.creature, p) || creature_live::Dead(c.creature)) continue; // gone or dead
             c.x = p[0], c.y = p[1] + 0.6f, c.z = p[2];
         } else if (c.chest < kTotalChestCount ? IsChestCurrentlyCleared(c.chest) : !c.questRow && KnowledgeDone(c.deposit)) {
             continue;

@@ -189,6 +189,9 @@ std::unordered_set<uint16_t> g_manualBosses;
 std::unordered_set<uint16_t> g_notBeatenBosses;
 // Unique items not in a chest the mod tracks (barrels, crates, lying in the world): marked found by hand (UniqueFoundAt)
 std::unordered_set<uint16_t> g_uniqueFound;
+// ... or marked not found where the game has it picked up (UniqueNotFoundAt): without it a Ctrl + click on a found item
+// changed nothing, its check mark stayed (Elevated Sea Urchin, 2026-11-16)
+std::unordered_set<uint16_t> g_uniqueNotFound;
 // Lore notes marked read by hand (LoreReadAt), or not read where the game has them read (LoreUnreadAt): Ctrl + left
 // click clears a note off the map once you're done with it (requested by reminder86)
 std::unordered_set<uint16_t> g_loreRead;
@@ -261,6 +264,7 @@ void SaveManualBosses() {
     save("BossesAt", "Bosses", g_manualBosses);
     save("NotBeatenAt", "NotBeaten", g_notBeatenBosses);
     save("UniqueFoundAt", "UniqueFound", g_uniqueFound);
+    save("UniqueNotFoundAt", "UniqueNotFound", g_uniqueNotFound);
     save("LoreReadAt", "LoreRead", g_loreRead);
     save("LoreUnreadAt", "LoreUnread", g_loreUnread);
     std::vector<uint64_t> places(g_visitedPlaces.begin(), g_visitedPlaces.end());
@@ -371,6 +375,7 @@ void UpdateManualBosses(uint8_t* client) {
     load("BossesAt", "Bosses", IsBossSpot, g_manualBosses);
     load("NotBeatenAt", "NotBeaten", IsBossSpot, g_notBeatenBosses);
     load("UniqueFoundAt", "UniqueFound", IsUniqueSpot, g_uniqueFound);
+    load("UniqueNotFoundAt", "UniqueNotFound", IsUniqueSpot, g_uniqueNotFound);
     load("LoreReadAt", "LoreRead", IsLoreSpot, g_loreRead);
     load("LoreUnreadAt", "LoreUnread", IsLoreSpot, g_loreUnread);
     auto loadPlaces = [&](const char* key, std::unordered_set<uint64_t>& set) {
@@ -407,8 +412,9 @@ bool KnowledgeDoneInGame(size_t d) {
 // dropped, or a loot mod took, too; reported by FWSWBN), once its chest is looted, or once marked found by hand.
 bool KnowledgeDone(size_t d) {
     if (IsUniqueSpot(d)) {
-        if (KnowledgeDoneInGame(d)) return true;
         const size_t i = d - kKnowledgeFirstDeposit;
+        if (g_uniqueNotFound.count(static_cast<uint16_t>(i))) return false;
+        if (KnowledgeDoneInGame(d)) return true;
         const uint16_t chest = kKnowledgeChest[i];
         if (chest < kTotalChestCount) return g_chestLootStates[chest].everLooted;
         return g_uniqueFound.count(static_cast<uint16_t>(i)) != 0;
@@ -897,8 +903,11 @@ bool ToggleUniqueFoundNear(float wx, float wz, float maxRadiusMeters, float shif
         return true;
     }
     const auto s = static_cast<uint16_t>(bestSpot);
-    const bool found = g_uniqueFound.erase(s) == 0;
-    if (found) g_uniqueFound.insert(s);
+    // flipped from what it shows now: a mark by hand only where it differs from the game's answer
+    const bool found = !KnowledgeDone(kKnowledgeFirstDeposit + bestSpot);
+    g_uniqueFound.erase(s);
+    g_uniqueNotFound.erase(s);
+    if (found != KnowledgeDoneInGame(kKnowledgeFirstDeposit + bestSpot)) (found ? g_uniqueFound : g_uniqueNotFound).insert(s);
     SaveManualBosses();
     AnnounceMark(KnowledgeSpotName(kKnowledgeFirstDeposit + bestSpot), 0, found);
     if (g_log) g_log("Unique items: spot %u marked %s by hand", s, found ? "found" : "not found");

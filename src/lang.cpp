@@ -738,6 +738,29 @@ const Row kTable[] = {
      "Lista de marcadores apilados", "Lista de marcadores empilhados", "Lista nałożonych znaczników", "Список наложенных меток",
      "Список накладених міток", "Üst üste işaret listesi", "重なったピンの一覧", "겹친 핀 목록", "重叠图钉列表", "重疊圖釘列表",
      "รายการหมุดที่ซ้อนกัน"},
+    // HoverPanels: Settings, the dark panel behind a name shown when hovering a pin on the World Map (off: the text alone)
+    {"Hover Name Backgrounds", "Hintergrund der Namen beim Zeigen", "Fond des noms au survol", "Sfondo dei nomi al passaggio",
+     "Fondo de los nombres al pasar", "Fundo dos nomes ao passar", "Tło nazw po najechaniu", "Фон названий при наведении",
+     "Тло назв під час наведення", "Üzerine gelince ad arka planı", "ホバー時の名前の背景", "마우스 오버 이름 배경",
+     "悬停名称背景", "懸停名稱背景", "พื้นหลังชื่อเมื่อชี้"},
+    // MinimapOpacity: Settings > Minimap, how see-through the minimap and its info bar are (20 to 100 %)
+    {"Minimap Opacity", "Deckkraft der Minikarte", "Opacité de la mini-carte", "Opacità della minimappa",
+     "Opacidad del minimapa", "Opacidade do minimapa", "Krycie minimapy", "Непрозрачность миникарты",
+     "Непрозорість мінікарти", "Mini harita opaklığı", "ミニマップの不透明度", "미니맵 불투명도", "小地图不透明度",
+     "小地圖不透明度", "ความทึบของแผนที่ย่อ"},
+    // CameraUp: Settings > Minimap Rotation, the minimap turned so the way the camera looks is up (Ykses)
+    {"Camera Up", "Kamera oben", "Caméra en haut", "Camera in alto", "Cámara arriba", "Câmera acima", "Kamera u góry",
+     "По камере", "За камерою", "Kamera yukarı", "カメラが上", "카메라 위", "镜头朝上", "鏡頭朝上", "กล้องขึ้น"},
+    // ChestsOnWorldMap: Settings > World Map, the chests on the World Map (Hide: the minimap and G G only; TheAzathos)
+    {"Chests on World Map", "Truhen auf der Weltkarte", "Coffres sur la carte du monde", "Forzieri sulla mappa del mondo",
+     "Cofres en el mapa del mundo", "Baús no mapa-múndi", "Skrzynie na mapie świata", "Сундуки на карте мира",
+     "Скрині на карті світу", "Dünya haritasında sandıklar", "ワールドマップの宝箱", "월드맵의 상자", "世界地图上的宝箱",
+     "世界地圖上的寶箱", "หีบบนแผนที่โลก"},
+    // FogReveal: Settings > World Map, how far round you the map's fog clears as you go (100 % the game's; izisot)
+    {"Fog Reveal Radius", "Aufdeckradius des Nebels", "Rayon de révélation du brouillard", "Raggio di rivelazione della nebbia",
+     "Radio de revelación de la niebla", "Raio de revelação da névoa", "Promień odkrywania mgły", "Радиус открытия тумана",
+     "Радіус відкриття туману", "Sis açma yarıçapı", "霧が晴れる半径", "안개 걷힘 반경", "迷雾揭示半径", "迷霧揭示半徑",
+     "รัศมีการเปิดหมอก"},
 };
 // clang-format on
 

@@ -442,11 +442,39 @@ inline const TestOverlay* Overlay()
 }
 #endif
 
+// A mod's text box has the keyboard (the map mod's Settings search, typed over the HUD): every mod's keyboard hotkeys stay
+// off meanwhile, so typing "chest" no longer opened a town portal (2026-11-16). One shared u64 per game process,
+// Local\GreeneyeTyping.<pid>: the tick it was last refreshed; the box refreshes it every frame, so it lapses on its own.
+inline volatile uint64_t* TypingTickSlot()
+{
+    static volatile uint64_t* slot = nullptr;
+    static bool tried = false;
+    if (slot || tried) return slot;
+    tried = true;
+    wchar_t name[64];
+    swprintf_s(name, L"Local\GreeneyeTyping.%lu", static_cast<unsigned long>(GetCurrentProcessId()));
+    HANDLE m = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(uint64_t), name);
+    if (m) slot = static_cast<volatile uint64_t*>(MapViewOfFile(m, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(uint64_t)));
+    return slot;
+}
+// The box with the keyboard calls this every frame while it has the focus
+inline void NoteTyping()
+{
+    if (volatile uint64_t* s = TypingTickSlot()) *s = GetTickCount64();
+}
+inline bool SomeoneTyping()
+{
+    const volatile uint64_t* s = TypingTickSlot();
+    return s && *s && GetTickCount64() - *s < 250;
+}
+
 inline bool KeyDown(int vk)
 {
 #ifdef GREENEYE_INPUT_TEST
     if (const TestOverlay* o = Overlay(); o && vk >= 0 && vk < 256 && o->keys[vk]) return true;
 #endif
+    // (the mouse buttons stay: a click leaves the box)
+    if (vk > VK_XBUTTON2 && SomeoneTyping()) return false;
     return (GetAsyncKeyState(vk) & 0x8000) != 0;
 }
 

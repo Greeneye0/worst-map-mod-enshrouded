@@ -205,11 +205,21 @@ The cog on the Map Key (and the one under the minimap) opens SETTINGS:
   minimap, even where the fog is cleared; REVEAL ALL shows it in full colour.
 Alt+Shift+M (or LB + D-pad Down on a controller; OpenSettings under [Keys]) opens SETTINGS while
 you play, even with the minimap and its info bar off.
-Below FOG and PINS the settings are grouped under WORLD MAP, MINIMAP, LOOK and FILTERS.
+Alt+Shift+H (or LB + D-pad Right; ToggleMinimap under [Keys]) hides the minimap and its info bar
+while you play, for screenshots, and brings them back. It isn't saved: the next start shows them.
+Below FOG and PINS the settings are grouped under WORLD MAP, MINIMAP, LOOK and FILTERS; click a
+group's bar (- / +) to fold or unfold it. Folded groups stay folded.
+The search box at the top narrows SETTINGS to the settings whose name holds what you type,
+folded groups included; Esc clears it. While you type, the game and the other Greeneye mods
+ignore the keyboard.
 - Custom Marker Size   the size of your own pins.
 - Show Minimap, Minimap Terrain, Minimap Icon (sun/moon or weather).
-- Minimap Rotation: NORTH UP, or FACING UP (the minimap turns with your character; the N
-  shows where north is).
+- Minimap Opacity, under Show Minimap: how see-through the minimap and its info bar are, 20% to
+  100% (100% at first). While you hold Shift+Alt to use the minimap it is drawn solid.
+- Minimap Rotation: NORTH UP, FACING UP (the minimap turns with your character; the N
+  shows where north is), or CAMERA UP (it turns with the camera, so what's ahead on screen is up).
+- Off the minimap: your waypoint and the quest you track in the Journal show on the minimap's
+  edge, pointing their way, until they come into range (with FACING UP, the N rides the edge too).
 - Time Format: 1:00 PM or 13:00 for the minimap's clock (at first it follows Windows).
 - Minimap Border: ORNATE or THIN (a fine line, so the map takes less room).
 - Minimap Info Bar: off hides the bar under the minimap; the cog moves to the map's
@@ -229,10 +239,16 @@ Below FOG and PINS the settings are grouped under WORLD MAP, MINIMAP, LOOK and F
   height) and, on the world map, the X and Z under the cursor. Click the copy button (or
   middle click the world map) to copy them, like "X 3215, Z 2051".
 - Region Filter (FILTERS), off at first: the Map Key's REGIONS row (see above).
+- Chests on World Map (WORLD MAP), Show at first: Hide keeps the gold, silver and wooden chests and
+  Dungeon Spoils off the world map; they still show on the minimap, with G G and on dungeon maps.
+- Fog Reveal Radius (WORLD MAP), 100% at first: how far round you the map's fog clears as you
+  travel, 50% to 500% of the game's own (300 m across). What it clears stays cleared.
 - Region Names (WORLD MAP), on at first: each region's name as a faint watermark on the world
   map, in the game's language.
 - Stacked Pins List (WORLD MAP), off at first: rest the cursor on pins on top of each other and
   a card beside them lists every one; a row lights its pin, a click opens its menu.
+- Hover Name Backgrounds (WORLD MAP), off at first: the dark panel behind a pin's name when you
+  hover it. Off: the name alone, as plain text with a faint shadow.
 - Level Areas (WORLD MAP), off at first: the world map in the areas of the enemies' levels, each
   tinted from green (low) through orange and red to purple and blue (high), with the borders
   between them and each area's level in a badge. Read from the levels the game gives its
@@ -301,7 +317,7 @@ hall in view, in a frame of its own. Its Return Beacons are numbered in the orde
 them; the end room's chests are Dungeon Spoils (hover one for its name and the Ectoplasm it
 takes to open). Overworld Map at the top (or Ctrl+D, LB + D-pad Up on a controller;
 DungeonMapToggle under [Keys]) switches to the world, centred on the hall's entrance, and
-back; C centres the hall on you.
+back; C centres the hall on you. The catacombs under Fort Kelvin have one too.
 Ancient Vaults and Spires get the same maps, a floor at a time: teleporters split them into
 floors, and - Floor n / m + on the map (or Ctrl+Up/Down) picks one. Traps show live
 (fireballs and sparks moving, spikes glowing as they come out, plates their switch turned
@@ -382,9 +398,56 @@ If something doesn't work, please post these files with your report (all in the 
 - greeneye\unlock-map-markers\unlock_map_markers.old.log  the log's earlier part, if there is one
 - greeneye\loader.log                                  what the Greeneye Loader did
 
+Nothing loads and greeneye\loader.log doesn't exist? Windows 11's Smart App Control blocks the
+Greeneye Loader (dbgcore.dll) because it isn't code-signed; Windows shows "part of this app has
+been blocked". The mods only run with Smart App Control off (Windows Security > App & browser
+control > Smart App Control). Windows can't turn it back on later without a reinstall, so
+decide before you switch it off.
+
 
 CHANGES
 -------
+1.3.52
+- Minimap Opacity (Settings > Minimap): how see-through the minimap and its info bar are, 20% to
+  100%. Holding Shift+Alt to use the minimap draws it solid. Requested by Meagermean.
+- Alt+Shift+H (LB + D-pad Right on a controller; ToggleMinimap under [Keys]) hides the minimap
+  and its info bar for screenshots, and brings them back. Requested by yassifecade.
+- Minimap Rotation has a third choice, Camera Up: the minimap turns with the camera, so what's
+  ahead on screen is up. Requested by Ykses.
+- Off the minimap, your waypoint and the quest you track in the Journal show on its edge,
+  pointing their way; with Facing Up the N rides the square edge too. Requested by Ykses.
+- Chests on World Map (Settings > World Map): Hide keeps the chests and Dungeon Spoils off the
+  World Map; they still show on the minimap, with G G and on dungeon maps. Requested by
+  TheAzathos.
+- Fog Reveal Radius (Settings > World Map): how far round you the map's fog clears as you
+  travel, 50% to 500% of the game's own. What it clears stays cleared. Requested by izisot.
+- The catacombs under Fort Kelvin get a dungeon map on the World Map and the minimap. Requested
+  by HadToRegister.
+- Settings: click a group's bar to fold or unfold it, and the search box at the top finds a
+  setting by name. While you type, the game and the other Greeneye mods' keys ignore the
+  keyboard. Opened while you play, the card sits above the hotbar, and Esc closes it.
+- Hover Name Backgrounds (Settings > World Map, off by default): the dark panel behind a pin's
+  name. Off, the name is plain text with a faint shadow. Requested by rakeri1.
+- G G no longer lights dead creatures, and a creature it lit stops glowing when it dies.
+- On a controller, B closes the Nearby Creatures notice first, then Settings, then the Map Key.
+Reported bugs fixed:
+- For the first seconds after joining, every chest looked unlooted until the Flame Altars had
+  loaded. Reported by izisot.
+- Some filter locks were lost after restarting the game once many rows were locked. Reported by
+  izisot.
+- A pin's name stayed on screen after the cursor left it, and two names could flicker in turn.
+  Reported by izisot, rakeri1 and GillzaSVD.
+- With Facing Up, the frame rate dropped inside Hollow Halls and dungeons: the minimap now draws
+  at most the newest 400 footprints. Reported by Ykses.
+- Settings opened with Alt+Shift+M and the Nearby Creatures notice didn't take controller focus.
+  Reported by Ykses.
+- The Map Key's icons and ON/OFF badges vanished while a nearby quest pin was hovered.
+- An Ancient Spire's hover label showed its region over its name; it now shows like the game's
+  own, and the mod's pins go under it.
+- A pin hidden by its filter still showed its name on hover.
+- Unique items marked found couldn't be unmarked.
+- Town Portals' names drew over the Settings card while playing.
+
 1.3.51
 Reported bugs fixed:
 - Looted chests lost their check marks after logging back in, mostly on a server: the mod

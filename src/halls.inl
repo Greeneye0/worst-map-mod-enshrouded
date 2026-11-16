@@ -65,18 +65,27 @@ float g_minY[kMaxDungeons]{}, g_maxY[kMaxDungeons]{}; // each dungeon's floor he
 bool IsVault(int d) { return d >= static_cast<int>(kHallCount) && d < static_cast<int>(g_dungeonCount); }
 int FloorCount(int d);
 int FloorAt(int d, float y); // a vault's or spire's floors (below)
-constexpr uint32_t kVaultCount = 6; // dungeons 6-11 the Ancient Vaults, from 12 the Ancient Spires (make_halls.py)
+constexpr uint32_t kVaultCount = 6; // dungeons 6-11 the Ancient Vaults, 12-18 the Ancient Spires (make_halls.py)
+constexpr uint32_t kSpireCount = 7;
+// From 19 other underground sites, drawn like a vault: the catacombs under Fort Kelvin (requested by HadToRegister)
+constexpr uint32_t kOtherFirst = kHallCount + kVaultCount + kSpireCount;
 int VaultAt(float x, float y, float z);
 // In an Ancient Spire: the minimap zooms on its own, closer scale (a spire is some 70 m across)
 bool InSpire(float x, float y, float z) {
-    return VaultAt(x, y, z) >= static_cast<int>(kHallCount + kVaultCount); // none while halls.bin isn't loaded
+    const int d = VaultAt(x, y, z); // none while halls.bin isn't loaded
+    return d >= static_cast<int>(kHallCount + kVaultCount) && d < static_cast<int>(kOtherFirst);
 }
 // The vault whose box holds this spot: 12 m round its floors, 20 m under the lowest and 25 m over the highest; -1 none
 int VaultAt(float x, float y, float z) {
     for (uint32_t d = kHallCount; d < g_dungeonCount; ++d) {
         const Dungeon& v = g_dungeons[d];
+        // (a site from kOtherFirst lies just under the ground with buildings over it, the Fort Kelvin catacombs under
+        // the fort's rooms at 778 m: inside only from 3 m under its lowest floor to under 1 m over its highest; the fort
+        // above showed the catacombs' plan, 2026-11-16)
+        const bool other = d >= kOtherFirst;
+        const float below = other ? 3.0f : 20.0f, above = other ? 0.9f : 25.0f;
         if (x >= v.minX - 12.0f && x <= v.maxX + 12.0f && z >= v.minZ - 12.0f && z <= v.maxZ + 12.0f &&
-            y >= g_minY[d] - 20.0f && y <= g_maxY[d] + 25.0f)
+            y >= g_minY[d] - below && y <= g_maxY[d] + above)
             return static_cast<int>(d);
     }
     return -1;
@@ -1156,10 +1165,23 @@ void Draw(void* widgetRaw, float vx, float vy, float vw, float vh, float vcx, fl
         myFloor = FloorAt(vaultHere, py);
         floorCount = FloorCount(vaultHere);
     }
-    for (size_t i = 0; i < g_steps.size(); ++i) {
+    // At most the newest kMaxDrawnSteps in view (the bright end of the trail): a long run left thousands of 6-dot
+    // footprints to draw, and with Facing Up to turn, every frame; frames dropped by 10 and more in a hall (Ykses,
+    // 1.3.51). Found newest first, drawn oldest first as before.
+    constexpr size_t kMaxDrawnSteps = 400;
+    static std::vector<uint32_t> shown;
+    shown.clear();
+    for (size_t i = g_steps.size(); i-- > 0 && shown.size() < kMaxDrawnSteps;) {
         const Step& s = g_steps[i];
         if (s.side > 1 || stepAlpha[i] <= 0.0f || (g_curDungeon >= 0 && !NearDungeon(s.x, s.z, g_curDungeon))) continue;
         if (floorCount && FloorAt(vaultHere, s.y) != myFloor) continue;
+        const float qx = vcx + (s.x - px) * pxPerMeterX, qy = vcy - (s.z - pz) * pxPerMeterY;
+        if (qx < vx || qx > vx + vw || qy < vy || qy > vy + vh) continue;
+        shown.push_back(static_cast<uint32_t>(i));
+    }
+    for (size_t k = shown.size(); k-- > 0;) {
+        const size_t i = shown[k];
+        const Step& s = g_steps[i];
         // Across the path: perpendicular to the way to the next step (or from the last one)
         const Step& a = i > 0 && g_steps[i - 1].side <= 1 ? g_steps[i - 1] : s;
         const Step& b = i + 1 < g_steps.size() && g_steps[i + 1].side <= 1 ? g_steps[i + 1] : s;
