@@ -1,0 +1,1 @@
+With Embervale Teleport 1.1.13 or newer, a map teleport held on a pin lands you at the pin itself, at its height: inside a vault or cave, beside a chest or a collectible. The mod tells it which pin is under the cursor, its own icons included.

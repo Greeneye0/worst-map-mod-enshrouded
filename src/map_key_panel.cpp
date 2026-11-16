@@ -1709,6 +1709,28 @@ bool GameIconUnderCursor(int32_t* x = nullptr, int32_t* z = nullptr) {
         return false;
     }
 }
+// Embervale Teleport: the world position (x, y, z in metres) of the pin under the cursor, so a map teleport on it lands
+// at its height (a vault, a cave, a chest inside a ruin) instead of on the ground above. The mod picks the hovered pin
+// itself and clears the game's hover field, so this answers for both: the game's marker it gives the hover to
+// (GameIconUnderCursor), else its own icon with a known height (NoteModHoverPosition). 0 when neither (a waypoint has
+// no height). Game thread only (the map's frame).
+bool ModIconHeight(double* xyz);
+extern "C" __declspec(dllexport) int MapHoveredIcon(double* xyz) {
+    if (!xyz) return 0;
+    if (GameIconUnderCursor()) {
+        __try {
+            const int64_t x = *reinterpret_cast<const int64_t*>(g_hoveredGameMarker + 0x10);
+            const int64_t y = *reinterpret_cast<const int64_t*>(g_hoveredGameMarker + 0x18);
+            const int64_t z = *reinterpret_cast<const int64_t*>(g_hoveredGameMarker + 0x20);
+            if (y <= 0) return 0;
+            xyz[0] = x / 4294967296.0, xyz[1] = y / 4294967296.0, xyz[2] = z / 4294967296.0;
+            return 1;
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            return 0;
+        }
+    }
+    return ModIconHeight(xyz) ? 1 : 0;
+}
 // The game's "People & Places" legend at the top left (its row of icons under the title): the same
 DrawExclusion g_legendBox;
 // The players' locators on the World Map (the game's pins, drawn under the mod's icons): no mod icon over them
@@ -7784,9 +7806,22 @@ struct ModHoverIcon {
     std::string name;
     bool hasWorld = false; // a spread pin (drawn off its spot): its own spot
     float wx = 0.0f, wz = 0.0f;
+    bool hasHeight = false; // its world position with height (a chest's spot, a deposit's top): MapHoveredIcon
+    double px = 0.0, py = 0.0, pz = 0.0;
 } g_modHoverIcon;
 void NoteModHoverIcon(float sx, float sy) {
     g_modHoverIcon.sx = sx, g_modHoverIcon.sy = sy, g_modHoverIcon.tick = GetTickCount64(), g_modHoverIcon.hasWorld = false;
+    g_modHoverIcon.hasHeight = false;
+}
+void NoteModHoverPosition(double x, double y, double z) {
+    g_modHoverIcon.hasHeight = y > 0.0, g_modHoverIcon.px = x, g_modHoverIcon.py = y, g_modHoverIcon.pz = z;
+}
+// The mod's own icon under the cursor in the last 150 ms, with its height (MapHoveredIcon)
+bool ModIconHeight(double* xyz) {
+    const ModHoverIcon& h = g_modHoverIcon;
+    if (!h.hasHeight || GetTickCount64() - h.tick > 150ULL) return false;
+    xyz[0] = h.px, xyz[1] = h.py, xyz[2] = h.pz;
+    return true;
 }
 bool SpreadBlocksMapInput();
 bool StackListShowing();
@@ -8326,6 +8361,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     const char* hoveredName = hovered >= kOreDepositCount ? nullptr
                               : IsKnowledgeDeposit(hovered)  ? KnowledgeSpotName(hovered)
                                                              : OreName(kOreDeposits[hovered].ore);
+    bool depositNamed = hoveredName != nullptr; // (a water source under the cursor takes the name: no height)
     if (g_oreEnabled[kWaterFirst]) {
         for (const auto& w : g_builtWater) { // a handful: never capped, like the other point rows
             const float sx = originX + w.x * zoom;
@@ -8346,6 +8382,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
                 hoveredSx = sx;
                 hoveredSy = sy;
                 g_hoveredDepositRow = OreHash(kWaterFirst);
+                depositNamed = false;
             }
         }
     }
@@ -8354,6 +8391,8 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     const bool beaconOnDungeonMap = halls::MapActive() && hovered < kOreDepositCount && kOreDeposits[hovered].ore == kBeaconsFirst;
     if (hoveredName && !beaconOnDungeonMap) {
         NoteModHoverIcon(hoveredSx, hoveredSy);
+        if (depositNamed && hovered < kOreDepositCount)
+            NoteModHoverPosition(kOreDeposits[hovered].x, kOreDeposits[hovered].topY, kOreDeposits[hovered].z);
         if (g_iconSpreadHover.on && g_iconSpreadHover.sx == hoveredSx && g_iconSpreadHover.sy == hoveredSy)
             g_modHoverIcon.hasWorld = true, g_modHoverIcon.wx = g_iconSpreadHover.wx, g_modHoverIcon.wz = g_iconSpreadHover.wz;
         DrawMapHoverTitle(hoveredSx + half + 10.0f, hoveredSy, hoveredName);
@@ -8574,6 +8613,10 @@ void DrawWoodChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client
     if (hovered < kTotalChestCount) {
         if (!g_hoveredDepositRow) g_hoveredDepositRow = ChestTypeHash(hovered); // Alt + click hides the row
         NoteModHoverIcon(hoveredSx, hoveredSy);
+        {
+            const ChestSpawn& spot = kChestSpawns[hovered];
+            NoteModHoverPosition(spot.px1 + spot.px0 / 65536.0, spot.py1 + spot.py0 / 65536.0, spot.pz1 + spot.pz0 / 65536.0);
+        }
         if (hovered >= kEndChestFirst) {
             DrawSpoilsHover(hovered, hoveredSx + half + 10.0f, hoveredSy);
         } else {

@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.49
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.53
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -407,6 +407,11 @@ decide before you switch it off.
 
 CHANGES
 -------
+1.3.53
+- With Embervale Teleport 1.1.13 or newer, a map teleport held on a pin lands you at the pin
+  itself, at its height: inside a vault or cave, beside a chest or a collectible. The mod tells
+  it which pin is under the cursor, its own icons included.
+
 1.3.52
 - Minimap Opacity (Settings > Minimap): how see-through the minimap and its info bar are, 20% to
   100%. Holding Shift+Alt to use the minimap draws it solid. Requested by Meagermean.
