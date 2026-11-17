@@ -1,0 +1,1 @@
+With Find 1.2.14 or newer, what a Find search lights (chests, crafting stations, placed things) shows as gold stars on the World Map and the minimap, held at the minimap's edge when out of range. They go when the search ends. With an older Find they don't show.

@@ -8627,6 +8627,7 @@ void DrawWoodChestsOnMap(void* widgetRaw, const float* rootRect, uint8_t* client
 }
 
 #include "town_portals.inl"
+#include "find_pins.inl"
 
 // What a marker row is called in the panel. Rows whose game name is exactly the row's meaning use
 // the game's official translation while the mod follows the game's language; every other row (and
@@ -10696,6 +10697,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         if ((g_woodChestEnabled || halls::MapActive()) && ChestsOnThisMap()) DrawWoodChestsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my);
         DrawGraveHeightsOnMap(root.raw, rootRect, client, mapState);
         if (g_townPortalsEnabled) DrawTownPortalsOnMap(root.raw, rootRect, mapState, haveCursor, mx, my); // Town Portal's open portals
+        DrawFindPinsOnMap(root.raw, rootRect, mapState); // Find's search results
         // a quest's place pin under the cursor: the quest's name on the tooltip panel (its card blanked: HideRumorsInner)
         if (g_questTitleFor && g_questTitleFor == g_hoveredGameMarker && GetTickCount64() - g_questTitleTick < 150ULL && g_questTitle[0])
             DrawMapHoverTitle(g_hoveredIcon[0] + g_hoveredIcon[2] * 0.65f + 26.0f, g_hoveredIcon[1], g_questTitle, true);
@@ -15282,6 +15284,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         // Town Portal's open portals (town_portals.inl), under the players
         if (!vanillaData && g_townPortalsEnabled)
             DrawTownPortalsOnMinimap(anchor.raw, vcx, vcy, playerX, playerZ, radiusMeters, pxPerMeterX, pxPerMeterY, btnScale);
+        // Find's search results (find_pins.inl)
+        if (!vanillaData) DrawFindPinsOnMinimap(anchor.raw, vcx, vcy, playerX, playerZ, radiusMeters, pxPerMeterX, pxPerMeterY, btnScale);
 
         // Draw other players in multiplayer from client + 0x4642c0 (count at +0x4642c8, stride 0x240); the game's
         // World Map always shows them

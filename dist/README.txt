@@ -387,6 +387,8 @@ GOOD TO KNOW
 - Made for the current game version. If a game update changes the code it patches, it
   skips that part instead of crashing, and the log says so.
 - With the Find mod installed, Find on the map uses Find's own search box.
+  With Find 1.2.14 or newer, what a Find search lights shows as gold stars on the World Map
+  and the minimap until the search ends.
 - Ctrl + Shift + F12 switches the whole mod off and on, to compare with the game as it is
   (best with the world map open).
 
@@ -407,6 +409,11 @@ decide before you switch it off.
 
 CHANGES
 -------
+1.3.54
+- With Find 1.2.14 or newer, what a Find search lights (chests, crafting stations, placed
+  things) shows as gold stars on the World Map and the minimap, held at the minimap's edge when
+  out of range. They go when the search ends. With an older Find they don't show.
+
 1.3.53
 - With Embervale Teleport 1.1.13 or newer, a map teleport held on a pin lands you at the pin
   itself, at its height: inside a vault or cave, beside a chest or a collectible. The mod tells
