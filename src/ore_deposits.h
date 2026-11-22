@@ -267,15 +267,16 @@ enum class Ore : uint16_t { // Count is 256: no longer fits a byte
     YuccaFruit,
     Roads,
     SurfaceWater,
+    Pearl,
     Count
 };
 
 // Map Key category of each row (0 Quests, 1 Fast Travel, 2 Shroud, 3 World, 5 Mining, 6 Materials, 7 Plants,
 // 8 Bait, 9 Trees, 10 Creatures, 11 Ground).
-constexpr uint8_t kOreCategory[] = {5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 2, 3, 3, 0, 3, 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 3, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 7, 7, 7, 8, 7, 7, 11, 11};
+constexpr uint8_t kOreCategory[] = {5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 2, 3, 3, 0, 3, 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 3, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 7, 7, 7, 8, 7, 7, 11, 11, 6};
 
 // English row names (other languages use the game's text from kOreNameLocaIds where it has one).
-constexpr const char* kOreLabels[] = {"Flintstone", "Salt", "Copper", "Clay", "Amber", "Tin", "Limestone", "Fossilized Bone", "Sulfur", "Iron", "Lapis Lazuli", "Coal", "Silver", "Amethyst", "Obsidian", "Gold", "Aquamarine", "Mother of Pearl", "Red Marble", "Diamond", "Celesthium", "Farm Soil", "Fertilised Farm Soil", "Flower Soil", "Twigs", "Bones", "Tar", "Toxic Slime", "Luminous Growth", "Underwater Luminous Growth", "Ice", "Gold Coins", "Archaic Essence", "Corncob", "Aureolin Flower", "Strawberry", "Forest Beet", "Flax", "Chamomile", "Stinging Nettle", "Indigo Plant", "Hazelnut", "Rooibos", "Bell Pepper", "Sage Leaves", "Sugar Cane", "Aloe", "Saffron", "Grapple Plant", "Shadowbloom", "Wolfsbane", "Gentian", "Taro", "Ginger", "Shiitake Mushroom", "Papyrus", "Algae", "Daylily", "Thyme", "Aurora Beans", "Prickle Pearl", "Grandleaf Cabbage", "Bloomheart Fruit", "Fire Fly", "Grasshoppers", "Scarab", "Pillbug", "Frog", "Maggots", "Springlands Trees", "Resin Trees", "Hornbeam", "Revelwood Trees", "Giant Trees", "Highlands Trees", "Date Palms", "Albaneve Trees", "Juniper", "Mountain Pine", "Birch", "Deadwood", "Veilwater Trees", "Mangrove", "Coconut Palms", "Licuala Palms", "Bamboo", "Coffee Trees", "Return Beacon", "Water Well", "Water Barrel", "Lore Note", "Boss", "Unique Weapons", "Unique Equipment", "Collectibles", "Fell Summoning Stone", "Gloomberry", "Midnight Lily", "Calla Luna", "Glimmer Gentian", "Stapelia Starflower", "Passionflower", "Gleam Root", "Capybara", "Common Goat", "Dune Armadillo", "Fae Deer", "Flightless Redtail", "Frizzy Goat", "Hophare", "Round-Billed Sailer", "Yak", "Bat", "Boar", "Crab", "Crocodile", "Cyclops", "Draconian Vulture", "Electric Bat", "Explosive Will-o'-the-Wisp", "Flaming Scorpion", "Frozen Will-o'-the-Wisp", "Fungal Friend", "Rat", "Raven", "Sabertooth", "Snow Sabertooth", "Spider", "Spider Mama", "Spitting Spider", "Stinger", "Summit Bat", "Summit Spider", "Summit Spider Mama", "Summit Spitting Spider", "Venomous Scorpion", "Venomous Stinger", "Vicious Vine", "Wasp Swarm", "Whitewing Vulture", "Wolf", "Armored Fell Thunderbrute", "Fell Banshee", "Fell Black Knight", "Fell Boar", "Fell Commander", "Fell Crab", "Fell Crimson Critter Queen", "Fell Critter", "Fell Critter Hatchling", "Fell Crusader", "Fell Cyclops", "Fell Defender I", "Fell Defender II", "Fell Exploding Critter", "Fell Flying Critter", "Fell Fungal Friend", "Fell Lancer", "Fell Marksman", "Fell Monstrosity", "Fell Scout", "Fell Scout II", "Fell Sentinel", "Fell Shackled Banshee", "Fell Sicklescythe", "Fell Soldier I", "Fell Soldier II", "Fell Soldier III", "Fell Spitting Critter", "Fell Sporehead", "Fell Squire", "Fell Striker", "Fell Thunderbrute", "Fell Vine", "Fell Vinebloom", "Fell Vulture", "Large Shroud Depthdweller", "Shroud Depthdweller", "Shroud Flayer", "Shroud Gazer", "Shroud Muck", "Shroud Stalker", "Scavenger Arsonist", "Scavenger Ballisteer", "Scavenger Blaster", "Scavenger Bully", "Scavenger Butcher", "Scavenger Cannoneer", "Scavenger Gorger Matron", "Scavenger Grizzler Matron", "Scavenger Hound", "Scavenger Miner", "Scavenger Pyreblade", "Scavenger Raven", "Scavenger Scab", "Scavenger Scalper", "Scavenger Scrapshield", "Scavenger Snow Sabertooth", "Scavenger Strayshooter", "Scavenger Summit Cannoneer", "Scavenger Summit Strayshooter", "Scavenger Tyrant", "Vukah", "Vukah Beastmaster Shaman", "Vukah Bonebreaker", "Vukah Bonehunter", "Vukah Brawler", "Vukah Lightning Shaman", "Vukah Ranger", "Vukah Sage", "Vukah Totem Shaman", "Drak'Dal Broodwarden", "Drak'Dal Chieftain", "Drak'Dal Hunter", "Drak'Dal Priest", "Drak'Dal Spearfisher", "Hydrak'Dal", "Hollow Cyclops", "Hollow Damned", "Hollow Hound", "Hollow Necromancer", "Hollow Reaper", "Hollow Skull", "Hollow Summoner", "Hollow Titan", "Hollow Wretch", "Ancient B.L.D.R. Construct", "Ancient C.R.T.R. Construct", "Ancient G.A.R.D. Construct (Burner)", "Ancient G.A.R.D. Construct (Dozer)", "Ancient G.A.R.D. Construct (Slicer)", "Ancient G.T.H.R. Construct I", "Ancient G.T.H.R. Construct II", "Ancient G.U.N.R. Construct I", "Ancient G.U.N.R. Construct II", "Ancient M.I.N.R. Construct", "Ancient S.I.R.N. Construct (Mobile)", "Ancient S.I.R.N. Construct (Static)", "Ancient S.P.D.R. Construct", "Cosmetics", "Granite", "Basalt", "Cinder Rock", "Shell Limestone", "Sandstone", "Revelwood Stone", "Blackmire Stone", "Fine Sand", "Sand", "Veilwater Basin Sand", "Cinder's Cradle Sand", "Moss", "Chanterelle", "Raw Rice", "Banana / Plantain", "Moth", "Date", "Yucca Fruit", "Roads", "Surface Water"};
+constexpr const char* kOreLabels[] = {"Flintstone", "Salt", "Copper", "Clay", "Amber", "Tin", "Limestone", "Fossilized Bone", "Sulfur", "Iron", "Lapis Lazuli", "Coal", "Silver", "Amethyst", "Obsidian", "Gold", "Aquamarine", "Mother of Pearl", "Red Marble", "Diamond", "Celesthium", "Farm Soil", "Fertilised Farm Soil", "Flower Soil", "Twigs", "Bones", "Tar", "Toxic Slime", "Luminous Growth", "Underwater Luminous Growth", "Ice", "Gold Coins", "Archaic Essence", "Corncob", "Aureolin Flower", "Strawberry", "Forest Beet", "Flax", "Chamomile", "Stinging Nettle", "Indigo Plant", "Hazelnut", "Rooibos", "Bell Pepper", "Sage Leaves", "Sugar Cane", "Aloe", "Saffron", "Grapple Plant", "Shadowbloom", "Wolfsbane", "Gentian", "Taro", "Ginger", "Shiitake Mushroom", "Papyrus", "Algae", "Daylily", "Thyme", "Aurora Beans", "Prickle Pearl", "Grandleaf Cabbage", "Bloomheart Fruit", "Fire Fly", "Grasshoppers", "Scarab", "Pillbug", "Frog", "Maggots", "Springlands Trees", "Resin Trees", "Hornbeam", "Revelwood Trees", "Giant Trees", "Highlands Trees", "Date Palms", "Albaneve Trees", "Juniper", "Mountain Pine", "Birch", "Deadwood", "Veilwater Trees", "Mangrove", "Coconut Palms", "Licuala Palms", "Bamboo", "Coffee Trees", "Return Beacon", "Water Well", "Water Barrel", "Lore Note", "Boss", "Unique Weapons", "Unique Equipment", "Collectibles", "Fell Summoning Stone", "Gloomberry", "Midnight Lily", "Calla Luna", "Glimmer Gentian", "Stapelia Starflower", "Passionflower", "Gleam Root", "Capybara", "Common Goat", "Dune Armadillo", "Fae Deer", "Flightless Redtail", "Frizzy Goat", "Hophare", "Round-Billed Sailer", "Yak", "Bat", "Boar", "Crab", "Crocodile", "Cyclops", "Draconian Vulture", "Electric Bat", "Explosive Will-o'-the-Wisp", "Flaming Scorpion", "Frozen Will-o'-the-Wisp", "Fungal Friend", "Rat", "Raven", "Sabertooth", "Snow Sabertooth", "Spider", "Spider Mama", "Spitting Spider", "Stinger", "Summit Bat", "Summit Spider", "Summit Spider Mama", "Summit Spitting Spider", "Venomous Scorpion", "Venomous Stinger", "Vicious Vine", "Wasp Swarm", "Whitewing Vulture", "Wolf", "Armored Fell Thunderbrute", "Fell Banshee", "Fell Black Knight", "Fell Boar", "Fell Commander", "Fell Crab", "Fell Crimson Critter Queen", "Fell Critter", "Fell Critter Hatchling", "Fell Crusader", "Fell Cyclops", "Fell Defender I", "Fell Defender II", "Fell Exploding Critter", "Fell Flying Critter", "Fell Fungal Friend", "Fell Lancer", "Fell Marksman", "Fell Monstrosity", "Fell Scout", "Fell Scout II", "Fell Sentinel", "Fell Shackled Banshee", "Fell Sicklescythe", "Fell Soldier I", "Fell Soldier II", "Fell Soldier III", "Fell Spitting Critter", "Fell Sporehead", "Fell Squire", "Fell Striker", "Fell Thunderbrute", "Fell Vine", "Fell Vinebloom", "Fell Vulture", "Large Shroud Depthdweller", "Shroud Depthdweller", "Shroud Flayer", "Shroud Gazer", "Shroud Muck", "Shroud Stalker", "Scavenger Arsonist", "Scavenger Ballisteer", "Scavenger Blaster", "Scavenger Bully", "Scavenger Butcher", "Scavenger Cannoneer", "Scavenger Gorger Matron", "Scavenger Grizzler Matron", "Scavenger Hound", "Scavenger Miner", "Scavenger Pyreblade", "Scavenger Raven", "Scavenger Scab", "Scavenger Scalper", "Scavenger Scrapshield", "Scavenger Snow Sabertooth", "Scavenger Strayshooter", "Scavenger Summit Cannoneer", "Scavenger Summit Strayshooter", "Scavenger Tyrant", "Vukah", "Vukah Beastmaster Shaman", "Vukah Bonebreaker", "Vukah Bonehunter", "Vukah Brawler", "Vukah Lightning Shaman", "Vukah Ranger", "Vukah Sage", "Vukah Totem Shaman", "Drak'Dal Broodwarden", "Drak'Dal Chieftain", "Drak'Dal Hunter", "Drak'Dal Priest", "Drak'Dal Spearfisher", "Hydrak'Dal", "Hollow Cyclops", "Hollow Damned", "Hollow Hound", "Hollow Necromancer", "Hollow Reaper", "Hollow Skull", "Hollow Summoner", "Hollow Titan", "Hollow Wretch", "Ancient B.L.D.R. Construct", "Ancient C.R.T.R. Construct", "Ancient G.A.R.D. Construct (Burner)", "Ancient G.A.R.D. Construct (Dozer)", "Ancient G.A.R.D. Construct (Slicer)", "Ancient G.T.H.R. Construct I", "Ancient G.T.H.R. Construct II", "Ancient G.U.N.R. Construct I", "Ancient G.U.N.R. Construct II", "Ancient M.I.N.R. Construct", "Ancient S.I.R.N. Construct (Mobile)", "Ancient S.I.R.N. Construct (Static)", "Ancient S.P.D.R. Construct", "Cosmetics", "Granite", "Basalt", "Cinder Rock", "Shell Limestone", "Sandstone", "Revelwood Stone", "Blackmire Stone", "Fine Sand", "Sand", "Veilwater Basin Sand", "Cinder's Cradle Sand", "Moss", "Chanterelle", "Raw Rice", "Banana / Plantain", "Moth", "Date", "Yucca Fruit", "Roads", "Surface Water", "Pearl"};
 
 // Each row's icon (an item GUID, which is also its inventory icon, or a UI texture); zero for trees (drawn as
 // coloured areas).
@@ -540,14 +541,15 @@ constexpr uint8_t kOreIcons[][16] = {
     {0xf0, 0x2d, 0x9b, 0x67, 0x05, 0x9d, 0xbc, 0x47, 0xa9, 0xd5, 0x3d, 0xe7, 0x7b, 0x26, 0x8a, 0x0f},
     {0x2f, 0x1e, 0xe6, 0x08, 0xbc, 0x91, 0x88, 0x42, 0xbd, 0x47, 0x70, 0x1e, 0xad, 0x1a, 0xea, 0x20},
     {0x8f, 0x18, 0xc9, 0x69, 0xa6, 0xc3, 0x9d, 0x4d, 0x9d, 0x61, 0x74, 0x9b, 0xbd, 0xff, 0xbf, 0x0b},
+    {0xd4, 0xb3, 0x3e, 0x6b, 0xfc, 0x49, 0xb1, 0x4a, 0x8a, 0xb3, 0x2f, 0xe5, 0x85, 0x12, 0x92, 0xe3},
 };
 
 // Each row's name as a loca id (the FNV-1a of the item's name tag, ItemInfo +0x48, or the game text's id);
 // zero where the row has no single item.
-constexpr uint32_t kOreNameLocaIds[] = {0x23cd6322u, 0x873d2e8fu, 0x205a4eddu, 0xfe04f8f6u, 0x243434a7u, 0x0b6966e5u, 0xb1f1479bu, 0x7a0a7302u, 0x1c7005a7u, 0x0fb86a3du, 0x27e041c8u, 0x104004c3u, 0x0cf9b16du, 0x41ec1cc0u, 0x7ab37a10u, 0x947ca184u, 0x391ce0fbu, 0x60049343u, 0xe9ae881cu, 0x9eedc44au, 0x682c85aau, 0x79fcbc2cu, 0x8a700c24u, 0x9f20f60bu, 0xa811d792u, 0xb8328c48u, 0x13aa4b6cu, 0xa61f438au, 0x1fd3573eu, 0xcb9a03d7u, 0xaddc2617u, 0x6f163768u, 0x00000000u, 0xb94538edu, 0x8bb4408bu, 0x3cccad83u, 0x21804047u, 0x8a67b0e7u, 0x2fa840f5u, 0x18859331u, 0x94ab111au, 0xe5bdf999u, 0x46bfc0e1u, 0x2d145603u, 0x69af8800u, 0xf79e6a72u, 0xf610afe1u, 0x88acddc0u, 0x431100deu, 0x75779fa1u, 0x67c0fc43u, 0xe5037890u, 0x00000000u, 0x4e3b1728u, 0x7d63192du, 0x00000000u, 0x6ddc980fu, 0xf187fabdu, 0xb8dba1deu, 0xf483cd27u, 0x631d3ec5u, 0x079a21c2u, 0xd9a5995du, 0x745acf17u, 0x00000000u, 0x31fc9bacu, 0x5c6b07aau, 0x01ec0c84u, 0x92a259a7u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x8a0eeeccu, 0x7311a861u, 0xa30a8d80u, 0x00000000u, 0x00000000u, 0x00000000u, 0xb4fa3fbeu, 0xc24a877au, 0x00000000u, 0xb1a4e99cu, 0xb4b68442u, 0xb1a2a01fu, 0x11c7e120u, 0x87518efau, 0xf21efc7fu, 0xf3d6e2b1u, 0x218248c9u, 0x5642f65fu, 0xd4e56752u, 0x4211ed47u, 0xa0f6d80cu, 0x69e4d91du, 0x2fc1032fu, 0x3fcfaef8u, 0x94663d6du, 0xe635cc85u, 0xee681e57u, 0x0053f041u, 0x00000000u, 0x7b6ee000u, 0x636f66ebu, 0xd62efd42u, 0x7b512e8bu, 0xb9f2d562u, 0xd661d805u, 0x296cd0c5u, 0x2b867eecu, 0xcac174dfu, 0x33af8360u, 0xaefca653u, 0xc33cf73eu, 0x7e1bb4c3u, 0xf59a7869u, 0xa58ddffau, 0x2c532881u, 0xc2055e40u, 0x993e2591u, 0x3f31c1efu, 0x601f3549u, 0x94e88c79u, 0x8f438f3eu, 0x00000000u, 0x6692e9a6u, 0x456e56aeu, 0xd3c4af08u, 0x5a7e91c8u, 0xd4268548u, 0xffde0843u, 0xa844e820u, 0x061e96adu, 0x1056bb3au, 0x20365c77u, 0xc0391c95u, 0x6b8f74d8u, 0x231d4192u, 0x8672a3f2u, 0x6a403ec9u, 0xa2f11dacu, 0x3054fadfu, 0x3d8e106bu, 0x5e496345u, 0x8cc10115u, 0x2a52f262u, 0xafaec60au, 0x5f701f5fu, 0x5490523du, 0xad9bed89u, 0x3c347932u, 0x7c50e770u, 0xacc2879au, 0x28b79f6fu, 0x43712aefu, 0x507960bau, 0x6356582cu, 0xaf88ada6u, 0xf64307dfu, 0x0b73e5b7u, 0xaf761360u, 0xfc778f3cu, 0x12d29e29u, 0xa993363au, 0x23c73e49u, 0xd3868360u, 0xc0528f3eu, 0x41bcf61fu, 0xab8acbfcu, 0xb16de1ccu, 0xe02d0bdau, 0xdad942d9u, 0x78980755u, 0x7e334392u, 0x5a92669du, 0xa8208b0cu, 0x37d7626du, 0x31761e29u, 0x8896a327u, 0x0720fb60u, 0x0b1499afu, 0xb362c568u, 0x7e7000d7u, 0xd9c9f912u, 0xc0e5c00eu, 0x88f3f227u, 0xa1d8bac5u, 0x875a0d52u, 0x41f3fe21u, 0xb14d429fu, 0xb4b7fa3du, 0x8094de6au, 0x198d694fu, 0xf07a93f8u, 0x4c078c62u, 0x344ced56u, 0x17563fbau, 0xe4b4178cu, 0x76ab2838u, 0x93730a2cu, 0xfe4dc90fu, 0x1ac20b52u, 0xac12ea51u, 0xf85abcdau, 0x17a91cb3u, 0xe5af30e6u, 0xa34bd9b5u, 0x6298c73fu, 0xca12b27du, 0xe182f156u, 0x69377284u, 0xba6ca603u, 0x725ea091u, 0xed8923e6u, 0x8bdbd0c4u, 0xb47cf8dbu, 0x00199733u, 0xe3c1352fu, 0x8ced99c3u, 0x36eb442fu, 0x0f788067u, 0x10dee8aeu, 0x21fa3598u, 0x4ec45affu, 0x4416e89bu, 0xfe0a58f5u, 0x1648abb0u, 0x36796364u, 0x884ab0c2u, 0x32e45a4eu, 0x44fa2bb2u, 0xd0057999u, 0xf65122d8u, 0x80342da4u, 0x9c1e9adau, 0xde742bbdu, 0x2337c06fu, 0xccc9feb5u, 0x86c3ea70u, 0x183aff42u, 0x00000000u, 0x02fd92ebu, 0xb5195a83u, 0x8d8f073bu, 0x00000000u, 0x00000000u};
+constexpr uint32_t kOreNameLocaIds[] = {0x23cd6322u, 0x873d2e8fu, 0x205a4eddu, 0xfe04f8f6u, 0x243434a7u, 0x0b6966e5u, 0xb1f1479bu, 0x7a0a7302u, 0x1c7005a7u, 0x0fb86a3du, 0x27e041c8u, 0x104004c3u, 0x0cf9b16du, 0x41ec1cc0u, 0x7ab37a10u, 0x947ca184u, 0x391ce0fbu, 0x60049343u, 0xe9ae881cu, 0x9eedc44au, 0x682c85aau, 0x79fcbc2cu, 0x8a700c24u, 0x9f20f60bu, 0xa811d792u, 0xb8328c48u, 0x13aa4b6cu, 0xa61f438au, 0x1fd3573eu, 0xcb9a03d7u, 0xaddc2617u, 0x6f163768u, 0x00000000u, 0xb94538edu, 0x8bb4408bu, 0x3cccad83u, 0x21804047u, 0x8a67b0e7u, 0x2fa840f5u, 0x18859331u, 0x94ab111au, 0xe5bdf999u, 0x46bfc0e1u, 0x2d145603u, 0x69af8800u, 0xf79e6a72u, 0xf610afe1u, 0x88acddc0u, 0x431100deu, 0x75779fa1u, 0x67c0fc43u, 0xe5037890u, 0x00000000u, 0x4e3b1728u, 0x7d63192du, 0x00000000u, 0x6ddc980fu, 0xf187fabdu, 0xb8dba1deu, 0xf483cd27u, 0x631d3ec5u, 0x079a21c2u, 0xd9a5995du, 0x745acf17u, 0x00000000u, 0x31fc9bacu, 0x5c6b07aau, 0x01ec0c84u, 0x92a259a7u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x8a0eeeccu, 0x7311a861u, 0xa30a8d80u, 0x00000000u, 0x00000000u, 0x00000000u, 0xb4fa3fbeu, 0xc24a877au, 0x00000000u, 0xb1a4e99cu, 0xb4b68442u, 0xb1a2a01fu, 0x11c7e120u, 0x87518efau, 0xf21efc7fu, 0xf3d6e2b1u, 0x218248c9u, 0x5642f65fu, 0xd4e56752u, 0x4211ed47u, 0xa0f6d80cu, 0x69e4d91du, 0x2fc1032fu, 0x3fcfaef8u, 0x94663d6du, 0xe635cc85u, 0xee681e57u, 0x0053f041u, 0x00000000u, 0x7b6ee000u, 0x636f66ebu, 0xd62efd42u, 0x7b512e8bu, 0xb9f2d562u, 0xd661d805u, 0x296cd0c5u, 0x2b867eecu, 0xcac174dfu, 0x33af8360u, 0xaefca653u, 0xc33cf73eu, 0x7e1bb4c3u, 0xf59a7869u, 0xa58ddffau, 0x2c532881u, 0xc2055e40u, 0x993e2591u, 0x3f31c1efu, 0x601f3549u, 0x94e88c79u, 0x8f438f3eu, 0x00000000u, 0x6692e9a6u, 0x456e56aeu, 0xd3c4af08u, 0x5a7e91c8u, 0xd4268548u, 0xffde0843u, 0xa844e820u, 0x061e96adu, 0x1056bb3au, 0x20365c77u, 0xc0391c95u, 0x6b8f74d8u, 0x231d4192u, 0x8672a3f2u, 0x6a403ec9u, 0xa2f11dacu, 0x3054fadfu, 0x3d8e106bu, 0x5e496345u, 0x8cc10115u, 0x2a52f262u, 0xafaec60au, 0x5f701f5fu, 0x5490523du, 0xad9bed89u, 0x3c347932u, 0x7c50e770u, 0xacc2879au, 0x28b79f6fu, 0x43712aefu, 0x507960bau, 0x6356582cu, 0xaf88ada6u, 0xf64307dfu, 0x0b73e5b7u, 0xaf761360u, 0xfc778f3cu, 0x12d29e29u, 0xa993363au, 0x23c73e49u, 0xd3868360u, 0xc0528f3eu, 0x41bcf61fu, 0xab8acbfcu, 0xb16de1ccu, 0xe02d0bdau, 0xdad942d9u, 0x78980755u, 0x7e334392u, 0x5a92669du, 0xa8208b0cu, 0x37d7626du, 0x31761e29u, 0x8896a327u, 0x0720fb60u, 0x0b1499afu, 0xb362c568u, 0x7e7000d7u, 0xd9c9f912u, 0xc0e5c00eu, 0x88f3f227u, 0xa1d8bac5u, 0x875a0d52u, 0x41f3fe21u, 0xb14d429fu, 0xb4b7fa3du, 0x8094de6au, 0x198d694fu, 0xf07a93f8u, 0x4c078c62u, 0x344ced56u, 0x17563fbau, 0xe4b4178cu, 0x76ab2838u, 0x93730a2cu, 0xfe4dc90fu, 0x1ac20b52u, 0xac12ea51u, 0xf85abcdau, 0x17a91cb3u, 0xe5af30e6u, 0xa34bd9b5u, 0x6298c73fu, 0xca12b27du, 0xe182f156u, 0x69377284u, 0xba6ca603u, 0x725ea091u, 0xed8923e6u, 0x8bdbd0c4u, 0xb47cf8dbu, 0x00199733u, 0xe3c1352fu, 0x8ced99c3u, 0x36eb442fu, 0x0f788067u, 0x10dee8aeu, 0x21fa3598u, 0x4ec45affu, 0x4416e89bu, 0xfe0a58f5u, 0x1648abb0u, 0x36796364u, 0x884ab0c2u, 0x32e45a4eu, 0x44fa2bb2u, 0xd0057999u, 0xf65122d8u, 0x80342da4u, 0x9c1e9adau, 0xde742bbdu, 0x2337c06fu, 0xccc9feb5u, 0x86c3ea70u, 0x183aff42u, 0x00000000u, 0x02fd92ebu, 0xb5195a83u, 0x8d8f073bu, 0x00000000u, 0x00000000u, 0x84aa3402u};
 
 // Area colour of each tree and ground row (0xAABBGGRR), 0 for the others.
-constexpr uint32_t kOreAreaColors[] = {0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0xff5abf7fu, 0xff30a0f0u, 0xff6f9f3fu, 0xff4f7f2fu, 0xff3060c0u, 0xff60a7bfu, 0xff70c0e0u, 0xffbf9f6fu, 0xff9f8f4fu, 0xff7f6f2fu, 0xffd8e8e8u, 0xff6f7f8fu, 0xff8faf5fu, 0xff3f8f6fu, 0xff60d0a0u, 0xffa0c040u, 0xff40d0b0u, 0xff3f5f8fu, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0xffb8a4a0u, 0xff645050u, 0xff3850c0u, 0xffc4e4f0u, 0xff60a8e0u, 0xff80a078u, 0xff906880u, 0xffa8f0f8u, 0xff88c8e8u, 0xffa0e0b8u, 0xff5878b0u, 0xff40b078u, 0u, 0u, 0u, 0u, 0u, 0u, 0xffa8dcf0u, 0xfff0a84au};
+constexpr uint32_t kOreAreaColors[] = {0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0xff5abf7fu, 0xff30a0f0u, 0xff6f9f3fu, 0xff4f7f2fu, 0xff3060c0u, 0xff60a7bfu, 0xff70c0e0u, 0xffbf9f6fu, 0xff9f8f4fu, 0xff7f6f2fu, 0xffd8e8e8u, 0xff6f7f8fu, 0xff8faf5fu, 0xff3f8f6fu, 0xff60d0a0u, 0xffa0c040u, 0xff40d0b0u, 0xff3f5f8fu, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0xffb8a4a0u, 0xff645050u, 0xff3850c0u, 0xffc4e4f0u, 0xff60a8e0u, 0xff80a078u, 0xff906880u, 0xffa8f0f8u, 0xff88c8e8u, 0xffa0e0b8u, 0xff5878b0u, 0xff40b078u, 0u, 0u, 0u, 0u, 0u, 0u, 0xffa8dcf0u, 0xfff0a84au, 0u};
 
 constexpr size_t kMiningFirst = 0, kMiningCount = 21;
 constexpr size_t kMaterialsFirst = 21, kMaterialsCount = 12;
@@ -568,6 +570,7 @@ constexpr size_t kLatePlantsFirst = 252, kLatePlantsCount = 3;
 constexpr size_t kLateBaitFirst = 255, kLateBaitCount = 1;
 constexpr size_t kLatePlants2First = 256, kLatePlants2Count = 2;
 constexpr size_t kSurfaceFirst = 258, kSurfaceCount = 2;
+constexpr size_t kLateMaterialsFirst = 260, kLateMaterialsCount = 1;
 
 struct OreDeposit {
     uint16_t ore;       // Ore
@@ -576,7 +579,7 @@ struct OreDeposit {
     uint16_t amount;    // ore m^3, or plants in the patch
 };
 
-constexpr size_t kOreDepositCount = 64286;
+constexpr size_t kOreDepositCount = 64385;
 
 constexpr OreDeposit kOreDeposits[kOreDepositCount] = {
     {0, 349, 2275, 825, 1042},
@@ -64865,6 +64868,105 @@ constexpr OreDeposit kOreDeposits[kOreDepositCount] = {
     {257, 9447, 3549, 989, 1},
     {257, 9463, 1323, 706, 2},
     {257, 9483, 3493, 854, 1},
+    {260, 3122, 6926, 584, 1},
+    {260, 3225, 6947, 581, 1},
+    {260, 3231, 6938, 577, 1},
+    {260, 3369, 6842, 574, 1},
+    {260, 3386, 6846, 564, 1},
+    {260, 3391, 6845, 565, 1},
+    {260, 4106, 6627, 669, 1},
+    {260, 4115, 6618, 670, 1},
+    {260, 4171, 6637, 669, 1},
+    {260, 4178, 6634, 670, 1},
+    {260, 4199, 6553, 667, 1},
+    {260, 4207, 6546, 668, 1},
+    {260, 4207, 6553, 668, 1},
+    {260, 4214, 6546, 670, 1},
+    {260, 4214, 6558, 673, 1},
+    {260, 4223, 6481, 669, 1},
+    {260, 4223, 6527, 675, 1},
+    {260, 4286, 6703, 671, 1},
+    {260, 4319, 6490, 672, 1},
+    {260, 4322, 6499, 671, 1},
+    {260, 4325, 6489, 667, 1},
+    {260, 4403, 6541, 675, 1},
+    {260, 4477, 6610, 674, 1},
+    {260, 4491, 6606, 672, 1},
+    {260, 4567, 6602, 673, 1},
+    {260, 4575, 6603, 674, 1},
+    {260, 4579, 6611, 676, 1},
+    {260, 4586, 5562, 757, 1},
+    {260, 4625, 5426, 752, 1},
+    {260, 4635, 5437, 755, 1},
+    {260, 4637, 5437, 754, 1},
+    {260, 4638, 5434, 752, 1},
+    {260, 4649, 5421, 759, 1},
+    {260, 4687, 5633, 748, 1},
+    {260, 4699, 5630, 756, 1},
+    {260, 4703, 5630, 756, 1},
+    {260, 4705, 5618, 753, 1},
+    {260, 4707, 5795, 760, 1},
+    {260, 4714, 5807, 759, 1},
+    {260, 4715, 5614, 752, 1},
+    {260, 4715, 5818, 757, 1},
+    {260, 4718, 5811, 757, 1},
+    {260, 4758, 5782, 749, 1},
+    {260, 4758, 5845, 751, 1},
+    {260, 4762, 5345, 755, 1},
+    {260, 4762, 5795, 759, 1},
+    {260, 4765, 5834, 754, 1},
+    {260, 4766, 5838, 755, 1},
+    {260, 4766, 5851, 751, 1},
+    {260, 4770, 5345, 754, 1},
+    {260, 4771, 5842, 755, 1},
+    {260, 4773, 5835, 750, 1},
+    {260, 4774, 5830, 750, 1},
+    {260, 4774, 5850, 753, 1},
+    {260, 4775, 5822, 749, 1},
+    {260, 4782, 5827, 750, 1},
+    {260, 4794, 5439, 726, 1},
+    {260, 4834, 5667, 749, 1},
+    {260, 4837, 5658, 749, 1},
+    {260, 4846, 5735, 750, 1},
+    {260, 4846, 6299, 711, 1},
+    {260, 4850, 6350, 713, 1},
+    {260, 4851, 6158, 711, 1},
+    {260, 4854, 6301, 711, 1},
+    {260, 4875, 5454, 733, 1},
+    {260, 4893, 5774, 751, 1},
+    {260, 4894, 5786, 753, 1},
+    {260, 4914, 5769, 755, 1},
+    {260, 4918, 5470, 739, 1},
+    {260, 4919, 5662, 741, 1},
+    {260, 4921, 5467, 738, 1},
+    {260, 4923, 5658, 745, 1},
+    {260, 4925, 5474, 739, 1},
+    {260, 4927, 5457, 739, 1},
+    {260, 4927, 5779, 755, 1},
+    {260, 4930, 5034, 757, 1},
+    {260, 4934, 5045, 756, 1},
+    {260, 4938, 5025, 759, 1},
+    {260, 4938, 5039, 756, 1},
+    {260, 4938, 5042, 758, 1},
+    {260, 4973, 5466, 755, 1},
+    {260, 4974, 5458, 753, 1},
+    {260, 4978, 5455, 756, 1},
+    {260, 4983, 5458, 758, 1},
+    {260, 4991, 5457, 755, 1},
+    {260, 5030, 5617, 746, 1},
+    {260, 5034, 5613, 746, 1},
+    {260, 5047, 5406, 755, 1},
+    {260, 5403, 5747, 753, 1},
+    {260, 5407, 5738, 751, 1},
+    {260, 5410, 5745, 751, 1},
+    {260, 5430, 6377, 719, 1},
+    {260, 5433, 6378, 719, 1},
+    {260, 5437, 6382, 722, 1},
+    {260, 5441, 6378, 723, 1},
+    {260, 5445, 5690, 760, 1},
+    {260, 5962, 5602, 823, 1},
+    {260, 5966, 5603, 822, 1},
+    {260, 5971, 5594, 822, 1},
 };
 
 // Lore notes and bosses: for each deposit of those rows (kOreDeposits from kKnowledgeFirstDeposit on, same

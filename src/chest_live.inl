@@ -60,6 +60,38 @@ size_t ChestOf(const uint8_t* c) {
     return it == g_chestByLootId.end() ? kTotalChestCount : it->second;
 }
 
+// The clams' loot ids aren't in the mod's data (chest_loot_ids.h has 0): a loot entity standing exactly on a clam's
+// place (within half a metre) is that clam, and its id is kept for the session. Ids already looked at and not a clam's
+// aren't looked at again.
+std::unordered_set<uint32_t> g_notClamIds;
+size_t LearnClam(uint8_t* rec, const uint8_t* id, uint16_t positionType) {
+    const uint32_t v = *reinterpret_cast<const uint32_t*>(id);
+    if (v == 0 || g_notClamIds.count(v)) return kTotalChestCount;
+    float p[3];
+    size_t found = kTotalChestCount;
+    // (the nearest within 1 m: the closest two clams are 2.5 m apart, and a chest can settle onto the ground a little)
+    if (EcsPosition(rec, positionType, p) && p[0] > 3000.0f && p[0] < 6100.0f && p[2] > 4900.0f && p[2] < 7100.0f) {
+        float best = 1.0f;
+        for (size_t c = kClamFirst; c < kClamFirst + kClamCount; ++c) {
+            const ChestSpawn& sp = kChestSpawns[c];
+            const float dx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f - p[0];
+            const float dy = static_cast<float>(sp.py1) + static_cast<float>(sp.py0) / 65536.0f - p[1];
+            const float dz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f - p[2];
+            if (dx * dx + dy * dy + dz * dz < best) {
+                best = dx * dx + dy * dy + dz * dz;
+                found = c;
+            }
+        }
+    }
+    if (found == kTotalChestCount) {
+        if (g_notClamIds.size() < 200000) g_notClamIds.insert(v);
+        return found;
+    }
+    g_chestByLootId.emplace(v, static_cast<uint16_t>(found));
+    if (g_log) g_log("Live chests: clam %zu has loot id %08x", found - kClamFirst, v);
+    return found;
+}
+
 // Finds both types in one registry; false while there are not enough chests near the player to be sure.
 bool DetectInner(uint8_t* reg, Types& out) {
     out = Types{reg, DetectPositionType(reg), 0, 0};
@@ -160,10 +192,12 @@ void Update(uint64_t nowTick, uint32_t screen) {
     if (g_lootSection.empty() || nowTick - g_lastTick < 1000ULL) return;
     g_lastTick = nowTick;
     if (g_chestByLootId.empty()) {
-        for (size_t c = 0; c < kTotalChestCount; ++c) g_chestByLootId.emplace(kChestLootNodeIds[c], static_cast<uint16_t>(c));
+        for (size_t c = 0; c < kTotalChestCount; ++c)
+            if (kChestLootNodeIds[c]) g_chestByLootId.emplace(kChestLootNodeIds[c], static_cast<uint16_t>(c));
     }
     if (g_types.registry && !RegistryLearned(g_types.registry)) { // another world
         g_types = Types{};
+        g_notClamIds.clear();
         std::memset(g_fullReads, 0, sizeof(g_fullReads));
         std::memset(g_seenEmpty, 0, sizeof(g_seenEmpty));
     }
@@ -198,7 +232,8 @@ void Update(uint64_t nowTick, uint32_t screen) {
             uint16_t size = 0;
             const uint8_t* id = EcsComponent(rec, t.lootId, &size);
             if (!id || size != 4) return;
-            const size_t c = ChestOf(id);
+            size_t c = ChestOf(id);
+            if (c >= kTotalChestCount) c = LearnClam(rec, id, t.position);
             if (c >= kTotalChestCount) return;
             const uint8_t* e = EcsComponent(rec, t.empty, &size);
             if (e && size == 2 && e[0] == 1 && e[1] <= 1) state[c] = e[1];

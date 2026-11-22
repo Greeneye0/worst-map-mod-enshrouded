@@ -1,0 +1,5 @@
+Pearl (Materials, off at first): the 99 underwater clams of Veilwater Basin, with the game's pearl icon. They work like chests: an opened clam gets a check mark and grays out or hides with Looted / Read / Beaten, and comes back with the same area reset as chests. Ctrl + click marks one by hand, and G G lights the unopened ones near you. Requested by vavraCZe.
+Plant and bait marks on the minimap get the up / down height arrow when they're 6 m or more above or below you, so a patch on a lake bed or up a cliff is easy to tell apart.
+Settings: opening a group folds the others, so the card always fits the screen, and the group bars look like the Map Key's category bars.
+Reported bugs fixed:
+- The Settings card ran past the bottom of the screen with every group open, so the last settings couldn't be reached (seen in Simplified Chinese at 4K). Reported by StrangeJoe2613 and izisot.

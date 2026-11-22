@@ -671,13 +671,13 @@ const Row kTable[] = {
      "เฉพาะสิ่งมีชีวิตใกล้ตัว"},
     // SecMap / SecMinimap / SecLook / SecFilters: the settings card's section headers (the World Map's settings, the
     // minimap's, how the maps look, the Map Key's filters)
-    {"World Map", "Weltkarte", "Carte du monde", "Mappa del mondo", "Mapa del mundo", "Mapa-múndi", "Mapa świata",
-     "Карта мира", "Мапа світу", "Dünya Haritası", "ワールドマップ", "월드 맵", "世界地图", "世界地圖", "แผนที่โลก"},
-    {"Minimap", "Minikarte", "Mini-carte", "Minimappa", "Minimapa", "Minimapa", "Minimapa", "Мини-карта", "Мінімапа",
-     "Mini harita", "ミニマップ", "미니맵", "小地图", "小地圖", "แผนที่ย่อ"},
-    {"Look", "Aussehen", "Apparence", "Aspetto", "Apariencia", "Aparência", "Wygląd", "Внешний вид", "Вигляд",
-     "Görünüm", "外観", "외형", "外观", "外觀", "รูปลักษณ์"},
-    {"Filters", "Filter", "Filtres", "Filtri", "Filtros", "Filtros", "Filtry", "Фильтры", "Фільтри", "Filtreler",
+    {"WORLD MAP", "WELTKARTE", "CARTE DU MONDE", "MAPPA DEL MONDO", "MAPA DEL MUNDO", "MAPA-MÚNDI", "MAPA ŚWIATA",
+     "КАРТА МИРА", "МАПА СВІТУ", "DÜNYA HARİTASI", "ワールドマップ", "월드 맵", "世界地图", "世界地圖", "แผนที่โลก"},
+    {"MINIMAP", "MINIKARTE", "MINI-CARTE", "MINIMAPPA", "MINIMAPA", "MINIMAPA", "MINIMAPA", "МИНИ-КАРТА", "МІНІМАПА",
+     "MİNİ HARİTA", "ミニマップ", "미니맵", "小地图", "小地圖", "แผนที่ย่อ"},
+    {"LOOK", "AUSSEHEN", "APPARENCE", "ASPETTO", "APARIENCIA", "APARÊNCIA", "WYGLĄD", "ВНЕШНИЙ ВИД", "ВИГЛЯД",
+     "GÖRÜNÜM", "外観", "외형", "外观", "外觀", "รูปลักษณ์"},
+    {"FILTERS", "FILTER", "FILTRES", "FILTRI", "FILTROS", "FILTROS", "FILTRY", "ФИЛЬТРЫ", "ФІЛЬТРИ", "FİLTRELER",
      "フィルター", "필터", "筛选", "篩選", "ตัวกรอง"},
     // HideOnWorldMap: Settings, under Nearby Creatures Only: the creature rows' spawn points off the World Map too
     {"Hide on World Map", "Auf Weltkarte ausblenden", "Masquer sur la carte du monde", "Nascondi sulla mappa del mondo",
@@ -998,6 +998,8 @@ const Row kLatePlantNames[] = {
     // Roads (the Surface rows, kSurfaceFirst: Ground category, painted from roads.bin)
     {"Roads", "Straßen", "Routes", "Strade", "Caminos", "Estradas", "Drogi", "Дороги", "Дороги", "Yollar", "道", "도로", "道路", "道路", "ถนน"},
     {"Surface Water", "Oberflächenwasser", "Eaux de surface", "Acque superficiali", "Aguas superficiales", "Águas superficiais", "Wody powierzchniowe", "Поверхностные воды", "Поверхневі води", "Yüzey suyu", "地表水", "지표수", "地表水", "地表水", "น้ำผิวดิน"},
+    // Pearl (kLateMaterialsFirst: the underwater clams, Materials category): the game's Pearl item text
+    {"Pearl", "Perle", "Perle", "Perla", "Perla", "Pérola", "Perła", "Жемчужина", "Перлина", "İnci", "真珠", "진주", "珍珠", "珍珠", "ไข่มุก"},
 };
 // clang-format on
 

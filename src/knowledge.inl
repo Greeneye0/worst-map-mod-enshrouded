@@ -410,7 +410,25 @@ bool KnowledgeDoneInGame(size_t d) {
 // The game's answer, or for a boss the character's mark by hand when there is one. A unique item is found once the
 // character has picked it up (the game keeps every item ever picked up as knowledge under the item's id: one an enemy
 // dropped, or a loot mod took, too; reported by FWSWBN), once its chest is looted, or once marked found by hand.
+// A Pearl spot's clam (kClamFirst on; make_clam_chests.py writes the clams in the Pearl spots' order), or
+// kTotalChestCount for any other spot
+size_t ClamOfDeposit(size_t d) {
+    static size_t first = kOreDepositCount;
+    if (first == kOreDepositCount) {
+        for (size_t i = 0; i < kOreDepositCount; ++i)
+            if (kOreDeposits[i].ore == kLateMaterialsFirst) {
+                first = i;
+                break;
+            }
+    }
+    if (d < first || d >= first + kClamCount || kOreDeposits[d].ore != kLateMaterialsFirst) return kTotalChestCount;
+    return kClamFirst + (d - first);
+}
+
 bool KnowledgeDone(size_t d) {
+    // A Pearl spot: its clam, like a chest: the check mark once it has been looted
+    if (const size_t clam = ClamOfDeposit(d); clam < kTotalChestCount)
+        return g_chestLootStates[clam].everLooted || g_chestLootStates[clam].looted;
     if (IsUniqueSpot(d)) {
         const size_t i = d - kKnowledgeFirstDeposit;
         if (g_uniqueNotFound.count(static_cast<uint16_t>(i))) return false;
@@ -445,6 +463,8 @@ bool BossDeadNow(size_t d) {
 // Grayed out (or hidden with Looted Chests: Hide): a lore note read, a unique item found, a boss beaten and still dead.
 // The check mark goes with KnowledgeDone: a boss that came back keeps it.
 bool KnowledgeGrayed(size_t d) {
+    // a clam: grayed (or hidden) while it is looted; refilled, it keeps only its check mark
+    if (const size_t clam = ClamOfDeposit(d); clam < kTotalChestCount) return g_chestLootStates[clam].looted;
     return KnowledgeDone(d) && (!IsBossSpot(d) || BossDeadNow(d));
 }
 
@@ -957,6 +977,7 @@ bool ToggleLoreReadNear(float wx, float wz, float maxRadiusMeters, float shiftMe
 bool RowCanBeMarked(uint32_t rowHash) {
     if (rowHash == kGoldChestTypeHash || rowHash == kSilverChestTypeHash || rowHash == kWoodChestTypeHash ||
         rowHash == kSpoilsTypeHash) return true;
+    if (rowHash == OreHash(kLateMaterialsFirst)) return true; // Pearl: the clams are chests
     if (!IsOreHash(rowHash)) return false;
     for (size_t i = 0; i < kKnowledgeSpotCount; ++i) {
         const size_t d = kKnowledgeFirstDeposit + i;

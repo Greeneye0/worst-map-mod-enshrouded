@@ -396,7 +396,10 @@ constexpr uint32_t kChestLootNodeIds[kTotalChestCount] = {
     0x04ee6147u, 0xebfbcb57u, 0x395c77a6u, 0x15b2fd9au, 0x75245c6eu, 0x5fb633b1u, 0x3227d40cu, 0x99ec4cadu,
     0xcbb33458u, 0xdcc01960u, 0x92126399u, 0x4b9576b2u, 0xa94799acu, 0xda94ecc6u, 0x3e75be6bu, 0x5d3b4c48u,
     0xaee908a3u, 0x5e51ee76u, 0x8460e33eu, 0x251ed2aeu, 0x703f154au, 0xfb6dea11u, 0xe4b25f90u, 0x95f8061fu,
-    0xfc06eea7u, 0xc54bfc19u
+    0xfc06eea7u, 0xc54bfc19u,
+    // Clams (kClamFirst on): make_clam_chests.py
+    0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+    // End of clams
 };
 
 } // namespace unlock_map_markers

@@ -124,7 +124,7 @@ Read from the game's own world files, so every spot is where the game put it.
 - MINING: every ore deposit, 21 kinds (copper, iron, silver, gold, sulfur, salt...), 7,452 in
   all.
 - MATERIALS: farm soil, fertilised farm soil, flower soil, twigs, bones, tar, toxic slime, luminous growth, ice,
-  gold coins, archaic essence.
+  gold coins, archaic essence, and Pearl: the underwater clams, tracked like chests once opened.
 - PLANTS: 30 harvestable plants, as patches, and each region's night plants (Midnight Lily,
   Gloomberry, Calla Luna, Shadowbloom, Glimmer Gentian, Stapelia Starflower, Passionflower,
   Gleam Root) where they grow at night.
@@ -208,7 +208,7 @@ you play, even with the minimap and its info bar off.
 Alt+Shift+H (or LB + D-pad Right; ToggleMinimap under [Keys]) hides the minimap and its info bar
 while you play, for screenshots, and brings them back. It isn't saved: the next start shows them.
 Below FOG and PINS the settings are grouped under WORLD MAP, MINIMAP, LOOK and FILTERS; click a
-group's bar (- / +) to fold or unfold it. Folded groups stay folded.
+group's bar (- / +) to open it; one group is open at a time, and it stays open the next time.
 The search box at the top narrows SETTINGS to the settings whose name holds what you type,
 folded groups included; Esc clears it. While you type, the game and the other Greeneye mods
 ignore the keyboard.
@@ -409,6 +409,20 @@ decide before you switch it off.
 
 CHANGES
 -------
+1.3.55
+- Pearl (Materials, off at first): the 99 underwater clams of Veilwater Basin, with the game's
+  pearl icon. They work like chests: an opened clam gets a check mark and grays out or hides
+  with Looted / Read / Beaten, and comes back with the same area reset as chests. Ctrl + click
+  marks one by hand, and G G lights the unopened ones near you. Requested by vavraCZe.
+- Plant and bait marks on the minimap get the up / down height arrow when they're 6 m or more
+  above or below you, so a patch on a lake bed or up a cliff is easy to tell apart.
+- Settings: opening a group folds the others, so the card always fits the screen, and the group
+  bars look like the Map Key's category bars.
+Reported bugs fixed:
+- The Settings card ran past the bottom of the screen with every group open, so the last
+  settings couldn't be reached (seen in Simplified Chinese at 4K). Reported by StrangeJoe2613
+  and izisot.
+
 1.3.54
 - With Find 1.2.14 or newer, what a Find search lights (chests, crafting stations, placed
   things) shows as gold stars on the World Map and the minimap, held at the minimap's edge when

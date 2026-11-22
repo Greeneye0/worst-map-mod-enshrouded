@@ -291,18 +291,28 @@ bool g_woodChestEnabled = false; // off at first: 1562 more icons on a map that 
 bool g_spoilsEnabled = true;      // the Hollow Halls' end-room chests (Dungeon Spoils)
 
 // A kChestSpawns index: gold chests, then silver, then wooden (kWoodChestFirst on), then the Hollow Halls' end-room
-// sarcophagi (kEndChestFirst on), which count as gold
+// sarcophagi (kEndChestFirst on), which count as gold, then the pearl clams (kClamFirst on: the Pearl row, Materials)
+bool IsClam(size_t c) {
+    return c >= kClamFirst && c < kClamFirst + kClamCount;
+}
 bool IsGoldChest(size_t c) {
-    return c < kGoldChestCount || c >= kEndChestFirst;
+    return c < kGoldChestCount || (c >= kEndChestFirst && c < kClamFirst);
 }
 bool IsWoodChest(size_t c) {
     return c >= kWoodChestFirst && c < kEndChestFirst;
 }
+// A chest the chest rows draw (clams aren't: the Pearl row draws them, with their looted marks)
 bool ChestRowEnabled(size_t c) {
+    if (IsClam(c)) return false;
     if (c >= kEndChestFirst) return g_spoilsEnabled;
     return IsGoldChest(c) ? g_goldChestEnabled : !IsWoodChest(c) ? g_silverChestEnabled : g_woodChestEnabled;
 }
+// Ctrl + click marks it: a shown chest, or a clam while the Pearl row is on
+bool ChestMarkable(size_t c) {
+    return ChestRowEnabled(c) || (IsClam(c) && g_oreEnabled[kLateMaterialsFirst]);
+}
 uint32_t ChestTypeHash(size_t c) {
+    if (IsClam(c)) return kOreTypeHashBase + static_cast<uint32_t>(kLateMaterialsFirst);
     if (c >= kEndChestFirst) return kSpoilsTypeHash;
     return IsGoldChest(c) ? kGoldChestTypeHash : !IsWoodChest(c) ? kSilverChestTypeHash : kWoodChestTypeHash;
 }
@@ -978,8 +988,6 @@ constexpr std::array<MarkerRowSpec, sizeof...(I)> MakeResourceRows(std::index_se
 }
 constexpr auto kMiningRows = MakeResourceRows<kMiningFirst, kMiningCategory, umm_lang::Str::CatMining>(
     std::make_index_sequence<kMiningCount>{});
-constexpr auto kMaterialsRows = MakeResourceRows<kMaterialsFirst, kMaterialsCategory, umm_lang::Str::CatMaterials>(
-    std::make_index_sequence<kMaterialsCount>{});
 // The Plants rows, then Gloomberry (a night plant, added after the other rows so their index stays)
 template <size_t A, size_t B>
 constexpr std::array<MarkerRowSpec, A + B> JoinRows(const std::array<MarkerRowSpec, A>& a, const std::array<MarkerRowSpec, B>& b) {
@@ -988,6 +996,11 @@ constexpr std::array<MarkerRowSpec, A + B> JoinRows(const std::array<MarkerRowSp
     for (size_t i = 0; i < B; ++i) out[A + i] = b[i];
     return out;
 }
+// The Materials rows, then Pearl (the underwater clams, added after every other row so their index stays)
+constexpr auto kMaterialsRows = JoinRows(
+    MakeResourceRows<kMaterialsFirst, kMaterialsCategory, umm_lang::Str::CatMaterials>(std::make_index_sequence<kMaterialsCount>{}),
+    MakeResourceRows<kLateMaterialsFirst, kMaterialsCategory, umm_lang::Str::CatMaterials>(
+        std::make_index_sequence<kLateMaterialsCount>{}));
 constexpr auto kPlantsRows = JoinRows(JoinRows(JoinRows(
     MakeResourceRows<kPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kPlantsCount>{}),
     MakeResourceRows<kNightPlantsFirst, kPlantsCategory, umm_lang::Str::CatPlants>(std::make_index_sequence<kNightPlantsCount>{})),
@@ -1011,7 +1024,7 @@ static_assert(kSummonsCount == 1, "one Fell Summoning Stone row");
 static_assert(kCosmeticCount == 1, "one Cosmetics row");
 static_assert(kMiningCount + kMaterialsCount + kPlantsCount + kBaitCount + kTreesCount + kBeaconsCount + kWaterCount +
                   kLoreCount + kBossesCount + kUniqueCount + kSummonsCount + kNightPlantsCount + kCreaturesCount +
-                  kCosmeticCount + kGroundCount + kLatePlantsCount + kLateBaitCount + kLatePlants2Count + kSurfaceCount == kOreCount,
+                  kCosmeticCount + kGroundCount + kLatePlantsCount + kLateBaitCount + kLatePlants2Count + kSurfaceCount + kLateMaterialsCount == kOreCount,
               "every row in one category");
 
 struct CategoryGroupSpec {
@@ -4215,7 +4228,7 @@ bool ToggleChestClearedNearWorldPos(float wx, float wz, float maxRadiusMeters) {
     float bestDistSq = maxRadiusMeters * maxRadiusMeters;
     size_t bestChest = kTotalChestCount;
     for (size_t c = 0; c < kTotalChestCount; ++c) {
-        if (!ChestRowEnabled(c) || MarkClickSkipsChest(c)) continue;
+        if (!ChestMarkable(c) || MarkClickSkipsChest(c)) continue;
         if (g_chestLootStates[c].looted && g_lootedChestMode == 0) continue;
 
         const ChestSpawn& sp = kChestSpawns[c];
@@ -6511,7 +6524,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
 
     // 2. Scan Gold & Silver Chests directly from kChestSpawns so filtered-out counts work even when disabled
     for (size_t c = 0; c < kTotalChestCount; ++c) {
-        if (IsChestCurrentlyCleared(c)) continue;
+        if (IsClam(c) || IsChestCurrentlyCleared(c)) continue; // (clams: the Pearl spots, below)
         const ChestSpawn& sp = kChestSpawns[c];
         uint32_t chestHash = ChestTypeHash(c);
         bool isFilterOn = ChestRowEnabled(c);
@@ -9094,21 +9107,30 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
     ry += 2.0f * kRowH + 6.0f; // the FOG and PINS rows
 
     bool secOpen = true; // the section the rows below are in is unfolded
-    // Section: the World Map (a click on its bar folds or unfolds it; remembered, SettingsClosed)
-    {
-        const bool hovSec = isHov(sx + 8.0f, ry + 2.0f, cardW - 16.0f, kRowH - 2.0f);
-        secOpen = !g_settingsSecClosed[0];
-        DrawSolidRectAbs(widgetRaw, sx + 8.0f, ry + 4.0f, cardW - 16.0f, 1.0f, kGoldDim, 0.65f);
-        DrawLabelAbs(sx + 12.0f, ry + 4.0f, 18.0f, kRowH - 6.0f, secOpen ? "-" : "+", hovSec ? kActiveText : kGold, 1.0f,
+    // A section's bar, drawn like the Map Key's category bars (gold + / -, capital title), the whole bar clickable.
+    // Opening one folds the others, so the card always fits the screen (with all four open it ran past the bottom at
+    // 1080 lines: izisot, StrangeJoe2613, 2026-11-17). Remembered (SettingsClosed).
+    auto sectionBar = [&](int idx, Str title) {
+        const float bh = umm_lang::TallScript() ? 24.0f : 23.0f; // the Map Key's kCatRowH
+        const float bx = sx + 8.0f, by = ry + 3.0f, bw = cardW - 16.0f;
+        const bool hovSec = isHov(bx, by, bw, bh);
+        secOpen = !g_settingsSecClosed[idx];
+        DrawCategoryBarAbs(widgetRaw, bx, by, bw, bh, hovSec);
+        DrawLabelAbs(bx + 4.0f, by, 22.0f, bh, secOpen ? "-" : "+", hovSec ? kActiveText : kGold, 1.0f,
                      TextAlignH::Center, TextAlignV::Center);
-        DrawLabelAbs(sx + 32.0f, ry + 4.0f, cardW - 44.0f, kRowH - 6.0f, T(Str::SecMap), hovSec ? kActiveText : kTitle, 0.9f,
-                     TextAlignH::Left, TextAlignV::Center);
+        DrawLabelAbs(bx + 28.0f, by, bw - 36.0f, bh, T(title), kTitle, 1.0f, TextAlignH::Left, TextAlignV::Center,
+                     nullptr, kCategoryTitleFontScale);
         if (clicked && hovSec) {
-            g_settingsSecClosed[0] = !g_settingsSecClosed[0];
+            const bool open = g_settingsSecClosed[idx];
+            for (int k = 0; k < 4; ++k) g_settingsSecClosed[k] = true;
+            g_settingsSecClosed[idx] = !open;
+            secOpen = open;
             SaveMinimapConfig();
         }
-        ry += kRowH - 2.0f;
-    }
+        ry += bh + 2.0f;
+    };
+    // Section: the World Map
+    sectionBar(0, Str::SecMap);
 
     // Row 1: Custom Marker Size: [-] [1.0x] [+]
     if (SetRowShown(secOpen, T(Str::PinSize))) {
@@ -9371,21 +9393,8 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         ry += kRowH;
     }
 
-    // Section: the minimap (a click on its bar folds or unfolds it; remembered, SettingsClosed)
-    {
-        const bool hovSec = isHov(sx + 8.0f, ry + 2.0f, cardW - 16.0f, kRowH - 2.0f);
-        secOpen = !g_settingsSecClosed[1];
-        DrawSolidRectAbs(widgetRaw, sx + 8.0f, ry + 4.0f, cardW - 16.0f, 1.0f, kGoldDim, 0.65f);
-        DrawLabelAbs(sx + 12.0f, ry + 4.0f, 18.0f, kRowH - 6.0f, secOpen ? "-" : "+", hovSec ? kActiveText : kGold, 1.0f,
-                     TextAlignH::Center, TextAlignV::Center);
-        DrawLabelAbs(sx + 32.0f, ry + 4.0f, cardW - 44.0f, kRowH - 6.0f, T(Str::SecMinimap), hovSec ? kActiveText : kTitle, 0.9f,
-                     TextAlignH::Left, TextAlignV::Center);
-        if (clicked && hovSec) {
-            g_settingsSecClosed[1] = !g_settingsSecClosed[1];
-            SaveMinimapConfig();
-        }
-        ry += kRowH - 2.0f;
-    }
+    // Section: the minimap
+    sectionBar(1, Str::SecMinimap);
 
     // Row 2: Show Minimap [ON / OFF]
     if (SetRowShown(secOpen, T(Str::ShowMinimap))) {
@@ -9647,21 +9656,8 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         ry += kRowH;
     }
 
-    // Section: how the maps look (a click on its bar folds or unfolds it; remembered, SettingsClosed)
-    {
-        const bool hovSec = isHov(sx + 8.0f, ry + 2.0f, cardW - 16.0f, kRowH - 2.0f);
-        secOpen = !g_settingsSecClosed[2];
-        DrawSolidRectAbs(widgetRaw, sx + 8.0f, ry + 4.0f, cardW - 16.0f, 1.0f, kGoldDim, 0.65f);
-        DrawLabelAbs(sx + 12.0f, ry + 4.0f, 18.0f, kRowH - 6.0f, secOpen ? "-" : "+", hovSec ? kActiveText : kGold, 1.0f,
-                     TextAlignH::Center, TextAlignV::Center);
-        DrawLabelAbs(sx + 32.0f, ry + 4.0f, cardW - 44.0f, kRowH - 6.0f, T(Str::SecLook), hovSec ? kActiveText : kTitle, 0.9f,
-                     TextAlignH::Left, TextAlignV::Center);
-        if (clicked && hovSec) {
-            g_settingsSecClosed[2] = !g_settingsSecClosed[2];
-            SaveMinimapConfig();
-        }
-        ry += kRowH - 2.0f;
-    }
+    // Section: how the maps look
+    sectionBar(2, Str::SecLook);
 
     // Row A7: Map Desk (the World Map lies on a cartographer's desk, desk.inl) [ON / OFF]
     if (SetRowShown(secOpen, T(Str::MapDesk))) {
@@ -9729,21 +9725,8 @@ bool DrawSettingsCardAbs(void* widgetRaw, float sx, float sy,
         ry += kRowH;
     }
 
-    // Section: the Map Key's filters (a click on its bar folds or unfolds it; remembered, SettingsClosed)
-    {
-        const bool hovSec = isHov(sx + 8.0f, ry + 2.0f, cardW - 16.0f, kRowH - 2.0f);
-        secOpen = !g_settingsSecClosed[3];
-        DrawSolidRectAbs(widgetRaw, sx + 8.0f, ry + 4.0f, cardW - 16.0f, 1.0f, kGoldDim, 0.65f);
-        DrawLabelAbs(sx + 12.0f, ry + 4.0f, 18.0f, kRowH - 6.0f, secOpen ? "-" : "+", hovSec ? kActiveText : kGold, 1.0f,
-                     TextAlignH::Center, TextAlignV::Center);
-        DrawLabelAbs(sx + 32.0f, ry + 4.0f, cardW - 44.0f, kRowH - 6.0f, T(Str::SecFilters), hovSec ? kActiveText : kTitle, 0.9f,
-                     TextAlignH::Left, TextAlignV::Center);
-        if (clicked && hovSec) {
-            g_settingsSecClosed[3] = !g_settingsSecClosed[3];
-            SaveMinimapConfig();
-        }
-        ry += kRowH - 2.0f;
-    }
+    // Section: the Map Key's filters
+    sectionBar(3, Str::SecFilters);
 
     // Row A2: Region Filter (the Map Key's Region row) [ON / OFF]
     if (SetRowShown(secOpen, T(Str::RegionFilter))) {
@@ -13069,6 +13052,12 @@ void LoadMinimapConfig() {
     {
         const int closed = GetPrivateProfileIntA("MinimapV2", "SettingsClosed", 0, cfg.c_str());
         for (int k = 0; k < 4; ++k) g_settingsSecClosed[k] = (closed >> k) & 1;
+        // One section open at a time since 1.3.55: an older ini (all four open by default) keeps its first open one
+        bool seenOpen = false;
+        for (int k = 0; k < 4; ++k) {
+            if (!g_settingsSecClosed[k] && seenOpen) g_settingsSecClosed[k] = true;
+            seenOpen = seenOpen || !g_settingsSecClosed[k];
+        }
     }
     g_spreadPins = GetPrivateProfileIntA("MinimapV2", "StackedPinsList", 0, cfg.c_str()) != 0;
     g_panelCollapsed = GetPrivateProfileIntA("MinimapV2", "MapKeyCollapsed", 0, cfg.c_str()) != 0;
@@ -14513,7 +14502,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     // (and under the health bars and compass at the top: 80 down; with every section open it can't clear both, the
     // hotbar gives)
     constexpr float kTopReserve = 80.0f;
-    const float mmSettingsY = std::max(rootY + kTopReserve, std::min(rootY + rootH - kSettingsCardH - kHotbarReserve, frameY));
+    const float mmSettingsY = std::max(rootY + kTopReserve, std::min(rootY + rootH - SettingsCardH() - kHotbarReserve, frameY));
 
     // Hotkeys: '[' (zoom out) and ']' (zoom in), or Numpad '-' / '+'
     if (appFocused && !g_findDialogOpen) {
@@ -15152,11 +15141,14 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 const bool checked = KnowledgeDone(d), done = checked && KnowledgeGrayed(d);
                 if (done && g_lootedChestMode == 0) continue;
                 int8_t heightDir = 0;
+                // Plants and bait too (Gleam Root grows on lake beds, 15 m and more under the bank: asked 2026-11-18),
+                // from 6 m: a patch's height is its highest plant, and patches spread over slopes
+                const bool plantRow = kOreCategory[dep.ore] == kPlantsCategory || kOreCategory[dep.ore] == kBaitCategory;
                 const bool heightCaret = IsKnowledgeDeposit(d) || kOreCategory[dep.ore] == kMiningCategory ||
-                                         kOreCategory[dep.ore] == kMaterialsCategory;
+                                         kOreCategory[dep.ore] == kMaterialsCategory || plantRow;
                 if (heightCaret && knowHavePlayerY && dxMeters * dxMeters + dzMeters * dzMeters <= 75.0f * 75.0f) {
                     const float dy = static_cast<float>(dep.topY) - knowPlayerY;
-                    heightDir = HeightCaret(0x10000u + static_cast<uint32_t>(d), dy, 3.5f);
+                    heightDir = HeightCaret(0x10000u + static_cast<uint32_t>(d), dy, plantRow ? 6.0f : 3.5f);
                 }
                 // Return Beacons and the other world rows layer with their pins; deposits stay under everything
                 drawList.push_back(MinimapMarkerDraw{sx, sy, 13.0f * btnScale, DepositIcon(d),
@@ -17064,6 +17056,40 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
         g_regionMask = static_cast<uint32_t>(std::strtoul(value, nullptr, 0)) & kAllRegionsMask;
         UpdateFocusedRegion(client);
         changed = true;
+    } else if (std::strcmp(action, "chestmark") == 0) {
+        // dev: "<chest>:<state>" sets a chest's (or clam's: kClamFirst + n) marks: 0 never looted, 1 looted, 2 looted
+        // once and refilled
+        char* end = nullptr;
+        const size_t c = std::strtoul(value, &end, 0);
+        const int state = (end && *end == ':') ? std::atoi(end + 1) : -1;
+        if (c >= kTotalChestCount || state < 0 || state > 2) return -1;
+        g_chestLootStates[c].looted = state == 1;
+        g_chestLootStates[c].everLooted = state != 0;
+        g_chestLootStates[c].elapsedOutOfBuildZoneSec = 0.0;
+        g_chestLootDirty = true;
+        g_lootSaveDirty = true;
+        if (g_log) g_log("Dev: chest %zu%s marked %d", c, IsClam(c) ? " (a clam)" : "", state);
+        changed = true;
+    } else if (std::strcmp(action, "chestwhy") == 0) {
+        // dev: why the chests within <value> m (default 30) of you show or not, in the log
+        const float r = value && *value ? static_cast<float>(std::atof(value)) : 30.0f;
+        float px = 0.0f, pz = 0.0f, py = 0.0f;
+        if (!GetHudPlayerWorldPos(client, px, pz)) return -1;
+        if (uint8_t* cw = GetClientWorld(client))
+            py = static_cast<float>(static_cast<double>(*reinterpret_cast<int64_t*>(cw + 0x2c20)) * 2.3283064365386963e-10);
+        const int vault = halls::Load() ? halls::VaultAt(px, py, pz) : -1;
+        if (g_log) g_log("Dev: chestwhy at %.1f %.1f %.1f, vault %d, cur dungeon %d", px, py, pz, vault, halls::g_curDungeon);
+        for (size_t c = 0; c < kTotalChestCount; ++c) {
+            const ChestSpawn& sp = kChestSpawns[c];
+            const float cx = sp.px1 + sp.px0 / 65536.0f, cy = sp.py1 + sp.py0 / 65536.0f, cz = sp.pz1 + sp.pz0 / 65536.0f;
+            if (std::hypot(cx - px, cz - pz) > r) continue;
+            if (g_log)
+                g_log("Dev: chest %zu sub %u at %.1f %.1f %.1f: row %d, looted %d ever %d, hall %u, minimap hides %d, "
+                      "explored %d",
+                      c, sp.subtype, cx, cy, cz, ChestRowEnabled(c), g_chestLootStates[c].looted,
+                      g_chestLootStates[c].everLooted, kChestHall[c], halls::MinimapHidesChest(c, px, py, pz),
+                      IsPositionExploredByCharacter(client, sp.px1, sp.pz1));
+        }
     } else return -1;
     if (changed) {
         SaveMinimapConfig();

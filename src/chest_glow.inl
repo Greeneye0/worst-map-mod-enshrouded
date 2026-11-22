@@ -1003,6 +1003,16 @@ void LightNearbyChests(uint8_t* client) {
         if ((dep.x - px) * (dep.x - px) + (dep.z - pz) * (dep.z - pz) > kNearMeters * kNearMeters) continue;
         nearChests.push_back({float(dep.x), float(dep.topY), float(dep.z), kTotalChestCount, d, kFindGold});
     }
+    // Pearl clams not looted now, while the Pearl row is on (chests of their own: ClamOfDeposit)
+    if (g_oreEnabled[kLateMaterialsFirst]) {
+        for (size_t d = 0; d < kOreDepositCount; ++d) {
+            const size_t clam = ClamOfDeposit(d);
+            if (clam >= kTotalChestCount || IsChestCurrentlyCleared(clam)) continue;
+            const OreDeposit& dep = kOreDeposits[d];
+            if ((dep.x - px) * (dep.x - px) + (dep.z - pz) * (dep.z - pz) > kNearMeters * kNearMeters) continue;
+            nearChests.push_back({float(dep.x), float(dep.topY), float(dep.z), kTotalChestCount, d, kSilver});
+        }
+    }
     // What the quests you're on want here
     QuestPin pins[16];
     const size_t pinCount = CollectQuestPins(client, px, pz, pins, 16);
@@ -1136,7 +1146,10 @@ void DrawMarkersInner(uint8_t* client, void* widgetRaw) {
             float p[3];
             if (!creature_live::Position(c.creature, p) || creature_live::Dead(c.creature)) continue; // gone or dead
             c.x = p[0], c.y = p[1] + 0.6f, c.z = p[2];
-        } else if (c.chest < kTotalChestCount ? IsChestCurrentlyCleared(c.chest) : !c.questRow && KnowledgeDone(c.deposit)) {
+        } else if (c.chest < kTotalChestCount  ? IsChestCurrentlyCleared(c.chest)
+                   : c.questRow                ? false
+                   : ClamOfDeposit(c.deposit) < kTotalChestCount ? IsChestCurrentlyCleared(ClamOfDeposit(c.deposit))
+                                                                 : KnowledgeDone(c.deposit)) {
             continue;
         }
         if (hasSilhouette(c)) continue;

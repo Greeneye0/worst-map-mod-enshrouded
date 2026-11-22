@@ -1,7 +1,7 @@
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1792777807-2042744051.jpg[/img][/center]
 
 [center][size=3][url=https://www.nexusmods.com/profile/GreeneyeDS/mods?gameId=5811][b]All my Enshrouded mods[/b][/url][/size]
-[url=https://www.nexusmods.com/enshrouded/mods/272]Hollow Halls Progression[/url] | [url=https://www.nexusmods.com/enshrouded/mods/255]Town Portals[/url] | [url=https://www.nexusmods.com/enshrouded/mods/219]Embervale Teleport[/url] | [url=https://www.nexusmods.com/enshrouded/mods/200]Find - Base Storage Search[/url] | [url=https://www.nexusmods.com/enshrouded/mods/195]Quick Deposit[/url] | [url=https://www.nexusmods.com/enshrouded/mods/197]Continue - Remember Password[/url][/center]
+[url=https://www.nexusmods.com/enshrouded/mods/384]Radiance - Player Light Source[/url] | [url=https://www.nexusmods.com/enshrouded/mods/272]Hollow Halls Progression[/url] | [url=https://www.nexusmods.com/enshrouded/mods/255]Town Portals[/url] | [url=https://www.nexusmods.com/enshrouded/mods/219]Embervale Teleport[/url] | [url=https://www.nexusmods.com/enshrouded/mods/200]Find - Base Storage Search[/url] | [url=https://www.nexusmods.com/enshrouded/mods/195]Quick Deposit[/url] | [url=https://www.nexusmods.com/enshrouded/mods/197]Continue - Remember Password[/url][/center]
 
 [line]
 
@@ -108,7 +108,7 @@ On the minimap, the ones 4 m or more above or below you get a green up or orange
 Read from the game's own world files, so every spot is where the game put it. Each kind has its own row in the Map Key (all off at first), and hovering an icon on the world map names it.
 [list]
 [*][b]MINING[/b]: every ore deposit, 21 kinds (copper, iron, silver, gold, sulfur, salt...), 7,452 in all.
-[*][b]MATERIALS[/b]: farm soil, fertilised farm soil, flower soil, twigs, bones, tar, toxic slime, luminous growth, ice, gold coins, archaic essence.
+[*][b]MATERIALS[/b]: farm soil, fertilised farm soil, flower soil, twigs, bones, tar, toxic slime, luminous growth, ice, gold coins, archaic essence, and [b]Pearl[/b]: the underwater clams, tracked like chests once opened.
 [*][b]PLANTS[/b]: 30 harvestable plants plus Date and Yucca Fruit, as patches, and each region's night plants (Midnight Lily, Gloomberry, Calla Luna, Shadowbloom, Glimmer Gentian, Stapelia Starflower, Passionflower, Gleam Root) where they grow at night.
 [*][b]BAIT[/b]: fireflies, moths, grasshoppers, pillbugs, frogs and more.
 [*][b]TREES[/b]: each forest as a heat map in its tree type's colour, as thick as its trees grow, 18 types; the big ones carry their name.
@@ -156,7 +156,7 @@ On the world map, press [b]Shift+F[/b] or click [b]FIND[/b]. Type a name or a ki
 
 [center][img]https://staticdelivery.nexusmods.com/mods/5811/images/220/220-1793549371-1789962003.jpg[/img][/center]
 
-The [b]cog[/b] on the Map Key (and the one under the minimap) opens Settings, and so does [b]Alt+Shift+M[/b] (LB + D-pad Down on a controller), while you play too. Click a group's bar to fold it; the search box at the top finds a setting by name. [b]Alt+Shift+H[/b] (LB + D-pad Right) hides the minimap for screenshots.
+The [b]cog[/b] on the Map Key (and the one under the minimap) opens Settings, and so does [b]Alt+Shift+M[/b] (LB + D-pad Down on a controller), while you play too. Click a group's bar to open it (one at a time); the search box at the top finds a setting by name. [b]Alt+Shift+H[/b] (LB + D-pad Right) hides the minimap for screenshots.
 [list]
 [*][b]FOG:[/b] [b]EXPLORED[/b] is the game's own fog, [b]HYBRID[/b] draws the whole map with unexplored land under a light fog, [b]REVEAL ALL[/b] has no fog.
 [*][b]PINS:[/b] [b]EXPLORED[/b] shows pins only where you've been, [b]HYBRID[/b] grays out pins in unexplored land, [b]REVEAL ALL[/b] shows every pin. EXPLORED also keeps everything the game itself shows in land still fogged: places it knows of, places you've discovered, and lore rumor hints. With EXPLORED and HYBRID, a place you haven't discovered yet (the game would hide it) is grayed out, even where the fog is cleared; REVEAL ALL shows it in full colour.
@@ -271,6 +271,17 @@ If something doesn't work, please post these files with your report. Both are in
 [line]
 
 [size=4][b]Changelog[/b][/size]
+
+[b]1.3.55[/b]
+[list]
+[*]Pearl (Materials, off at first): the 99 underwater clams of Veilwater Basin, with the game's pearl icon. They work like chests: an opened clam gets a check mark and grays out or hides with Looted / Read / Beaten, and comes back with the same area reset as chests. Ctrl + click marks one by hand, and G G lights the unopened ones near you. Requested by vavraCZe.
+[*]Plant and bait marks on the minimap get the up / down height arrow when they're 6 m or more above or below you, so a patch on a lake bed or up a cliff is easy to tell apart.
+[*]Settings: opening a group folds the others, so the card always fits the screen, and the group bars look like the Map Key's category bars.
+[/list]
+Reported bugs fixed:
+[list]
+[*]The Settings card ran past the bottom of the screen with every group open, so the last settings couldn't be reached (seen in Simplified Chinese at 4K). Reported by StrangeJoe2613 and izisot.
+[/list]
 
 [b]1.3.54[/b]
 [list]
@@ -394,21 +405,6 @@ Reported bugs fixed:
 [list]
 [*]Inside a Hollow Hall, Pins: Explored hid the hall's chests and notes (Hybrid grayed them), even ones already found: the game's fog never clears in the halls' corner. The hall you're in now counts as explored (reported by Ykses).
 [*]A new world could take over an old world's looted chests when its first Flame Altar stood where one of the old world's did. A world is now recognised by most of its altars, not one (reported by FWSWBN).
-[/list]
-
-[b]1.3.45[/b]
-[list]
-[*]Ancient Vaults and Ancient Spires get dungeon maps like the Hollow Halls: the World Map and minimap show the floor you're on, with its walls, teleport pads, exits, chests and lore notes. Teleporters split a vault or spire into floors: - Floor n / m + on the map picks one (Ctrl+Up/Down, or LT+Up/Down on a controller), and the map opens on the floor you stand on.
-[*]Their traps are drawn live: fireballs and spark beams move on the map in time with the game, spike plates glow red as their spikes come out, and plates turned off by their switch show as off. Doors show whether they're locked, closed or open, and barred windows that can't be broken show as walls. Hover a teleport pad to see which floor it takes you to, up or down.
-[*]On the dungeon maps the player arrow points the way your character faces, not the camera, and is a dotted outline when you're on another floor than the one shown. Footprints now look like left and right feet, so you can see which way you walked.
-[*]Find on the map is off on a dungeon's own map; Shift+F still searches the skill tree.
-[*]Bosses: the Heavy Ancient Construct's four spots are marked, and a killed boss now counts only for its own spot, so spots close together (such as Engine Chambers' S.P.D.R. Construct above a camp) track their kills separately.
-[/list]
-Reported bugs fixed:
-[list]
-[*]Inside a vault or spire the minimap showed a fast travel icon.
-[*]G G could light a bowl beside a lore note instead of the note.
-[*]A chest's height arrow on the minimap flickered when the chest was near the height where the arrow shows.
 [/list]
 
 [line]
