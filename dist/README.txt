@@ -420,8 +420,8 @@ CHANGES
   bars look like the Map Key's category bars.
 Reported bugs fixed:
 - The Settings card ran past the bottom of the screen with every group open, so the last
-  settings couldn't be reached (seen in Simplified Chinese at 4K). Reported by StrangeJoe2613
-  and izisot.
+  settings couldn't be reached (seen in Simplified Chinese at 4K). Reported by StrangeJoe2613,
+  izisot and ItsFireFear.
 
 1.3.54
 - With Find 1.2.14 or newer, what a Find search lights (chests, crafting stations, placed
