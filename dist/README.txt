@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.53
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.56
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -409,6 +409,21 @@ decide before you switch it off.
 
 CHANGES
 -------
+1.3.56
+- Quest and rumor pins draw over the places beside them, and a place whose icon would cover a
+  quest's "!" or a rumor's "?" moves aside until the two just touch, so both can be read and
+  clicked. Its check mark and menu go with it.
+Reported bugs fixed:
+- With the Map Desk off, roads drew over the map's pins, the key hints and a marker's menu.
+  They're under all of them now, with the desk on or off. Reported by Ykses.
+- A quest's "!" in an area you haven't explored yet was hidden under a nearby catacomb or camp
+  icon. Reported by Ykses.
+- A chest blown up along with explosive barrels kept its marker. It's now marked looted like an
+  opened one, and comes back when the area resets. Reported by GillzaSVD.
+- Without the Find mod installed, moving through the map's search results with a controller
+  didn't show which line was selected. The selected line now starts with ">". Reported by
+  Ykses.
+
 1.3.55
 - Pearl (Materials, off at first): the 99 underwater clams of Veilwater Basin, with the game's
   pearl icon. They work like chests: an opened clam gets a check mark and grays out or hides
