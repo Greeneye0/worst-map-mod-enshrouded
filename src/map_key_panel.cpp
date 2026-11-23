@@ -572,6 +572,8 @@ using PopUiClipRectFn = void (*)(void* uiCtx);
 using PushUiOpacityFn = void (*)(void* uiCtx, float opacity);
 using PopUiOpacityFn = void (*)(void* uiCtx);
 using DrawWorldMapMarkerIconFn = void (*)(void* mapState, uint8_t* m, uint8_t* drawParams);
+using RebuildPinListsFn = void (*)(void* mapState);
+using DrawPinFn = uint64_t (*)(void* mapState, uint8_t* pin, void* outBox);
 using DrawWorldMapMarkerPlateFn = void (*)(void* widget, uint8_t* entry, const float* rect4);
 
 using FindCreateDialogFn = uint8_t* (*)(const char* title, const char* okLabel);
@@ -705,6 +707,25 @@ constexpr uint8_t kCanonicalBuildWorldMapPlayersPrologue[15] = {
     0x41, 0x57,                                     // push r15
     0x48, 0x8D, 0x6C, 0x24, 0xB8                    // lea rbp, [rsp - 0x48]
 };
+// The World Map's pin lists (FUN_140da4770, re atlas world-map.md: WorldMap_RebuildPinLists, called by the map's draw
+// c36070 each frame right before it draws the lists)
+constexpr uint8_t kCanonicalRebuildPinListsPrologue[18] = {
+    0x40, 0x55,                                     // push rbp
+    0x41, 0x54,                                     // push r12
+    0x41, 0x55,                                     // push r13
+    0x48, 0x8D, 0x6C, 0x24, 0xF0,                   // lea rbp, [rsp - 0x10]
+    0x48, 0x81, 0xEC, 0x10, 0x01, 0x00, 0x00        // sub rsp, 0x110
+};
+// One pin of the World Map (FUN_140c34650, re atlas world-map.md: DrawPin(mapState, pin, outBox)); the pin is the
+// descriptor FUN_140b20a40 fills: +0x08 the marker slot, +0x1c/+0x20 its spot in map pixels, +0x24/+0x28 the same held
+// inside the view (the edge arrows)
+constexpr uint8_t kCanonicalDrawPinPrologue[29] = {
+    0x4C, 0x89, 0x44, 0x24, 0x18,                   // mov [rsp+18h], r8
+    0x55, 0x53, 0x57,                               // push rbp / rbx / rdi
+    0x41, 0x55, 0x41, 0x56, 0x41, 0x57,             // push r13 / r14 / r15
+    0x48, 0x8D, 0xAC, 0x24, 0xB8, 0xFD, 0xFF, 0xFF, // lea rbp, [rsp - 0x248]
+    0x48, 0x81, 0xEC, 0x48, 0x03, 0x00, 0x00        // sub rsp, 0x348
+};
 constexpr uint8_t kCanonicalDrawWorldMapMarkerIconPrologue[19] = {
     0x48, 0x8B, 0xC4,                               // mov rax, rsp
     0x55,                                           // push rbp
@@ -767,6 +788,10 @@ uint8_t* g_buildWorldMapPlayersHookTarget = nullptr;
 BuildWorldMapPlayersFn g_origBuildWorldMapPlayers = nullptr;
 uint8_t* g_drawWorldMapMarkerIconHookTarget = nullptr;
 DrawWorldMapMarkerIconFn g_origDrawWorldMapMarkerIcon = nullptr;
+uint8_t* g_rebuildPinListsHookTarget = nullptr;
+RebuildPinListsFn g_origRebuildPinLists = nullptr;
+uint8_t* g_drawPinHookTarget = nullptr;
+DrawPinFn g_origDrawPin = nullptr;
 uint8_t* g_drawWorldMapMarkerPlateHookTarget = nullptr;
 DrawWorldMapMarkerPlateFn g_origDrawWorldMapMarkerPlate = nullptr;
 bool g_hookInstalled = false;
@@ -1760,9 +1785,9 @@ float g_markerIconSize = 53.0f; // the game's marker icons drawn this frame (Dra
 // behind it, like the game's gear tooltips, so the name reads on a crowded map. Set before the icon passes.
 DrawExclusion g_titleBox;
 bool g_gameDrawsTitle = false; // the game draws the hovered marker's label itself (a spire's two lines): g_titleBox keeps pins under it
-bool MapLayerReady(); // below: the map-layer pass is running (Map Desk on)
+bool MapLayerReady(); // below: the map-layer pass is running (the desk's, or the bare one with the desk off)
 // Where the mod's drawing would sit over the game's UI (a marker's menu column, the key hints, the legend): with the Map
-// Desk on, drawn under it in the map layer (UnderRing); without, left out as before
+// Drawn under it in the map layer (UnderRing), the desk's pass or the bare one (desk::DrawBareLayer)
 bool OverGameUi(float x, float y, float w, float h) {
     auto in = [&](const DrawExclusion& e) { return e.active && x < e.x1 && x + w > e.x0 && y < e.y1 && y + h > e.y0; };
     return in(g_drawExclusion) || in(g_hintStrip) || in(g_legendBox);
@@ -1775,7 +1800,7 @@ bool Excluded(float x, float y, float w, float h) {
     return !g_ringReplayFlag && !MapLayerReady() && OverGameUi(x, y, w, h);
 }
 // The mod's icons and check marks over the "player over here" ring: not dropped, drawn later in the map's own layer, under
-// the game's markers and that ring (desk.inl DrawUnder calls DrawUnderRing; without the Map Desk they draw as before)
+// the game's markers and that ring (desk.inl DrawUnder calls DrawUnderRing, or DrawBareLayer with the Map Desk off)
 // The same for whole passes that belong with the game's markers (check marks on their corners, the mod's map words):
 // with g_toMapLayer set they all go into the map's layer, under the game's markers, labels and the ring.
 struct RingDraw {
@@ -1799,8 +1824,8 @@ bool g_toMapLayer = false;
 bool g_roadsUnder = false;          // the roads wait for the map's layer (DrawUnderRing): the view they were set for
 uint8_t* g_roadsMapState = nullptr;
 float g_roadsRect[4] = {};
-uint64_t g_mapLayerTick = 0; // the desk's map-layer pass ran recently (DrawUnderRing): the queue gets drawn
-bool MapLayerReady() { return g_mapDesk && GetTickCount64() - g_mapLayerTick <= 250; }
+uint64_t g_mapLayerTick = 0; // the map-layer pass (the desk's or the bare one) ran recently (DrawUnderRing): the queue gets drawn
+bool MapLayerReady() { return GetTickCount64() - g_mapLayerTick <= 250; } // (with the desk off too: desk::DrawBareLayer)
 bool g_arrowHovered = false;  // the cursor on your arrow (SetLocatorExclusions)
 DrawExclusion g_arrowBox;      // the player's bare arrow: the mod's icons go under it (not the check marks on game markers)
 bool g_markerChecks = false;   // drawing the check marks on the game's markers (they'd sink under their own marker)
@@ -1836,6 +1861,10 @@ bool UnderRing(float x, float y, float w, float h) {
 }
 
 bool LevelMapView(uint8_t* mapState, float& zoom, float& originX, float& originY, float& mapWorldH); // levels.inl
+// A place's icon moved aside from a quest / rumor pin it overlapped (QuestPinsOverPlacesInner): the move in world metres
+// (x east, z north) for the marker slot, or for a place at (x, z); false when it isn't moved
+bool MarkerNudge(const uint8_t* m, float& mx, float& mz);
+bool MarkerNudgeAt(float x, float z, float& mx, float& mz);
 // The locators of the players the World Map shows (you, and the others unless Other Players is off), from the client's
 // player list (client + 0x4642c0, 0x240 apart, live position at +0x10 / +0x18)
 void SetLocatorExclusions(uint8_t* client, uint8_t* mapState) {
@@ -3990,7 +4019,7 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
         }
     }
     UpdateBuiltWater(client);
-    chest_live::Update(nowTick, screen);
+    chest_live::Update(nowTick, screen, client);
     // Two minutes of play on an untested game build: nothing that runs early crashed it (map_natives.h)
     {
         static uint64_t playingSince = 0;
@@ -5853,6 +5882,12 @@ uint64_t g_lastClickTick = 0;
 int g_lastClickedRow = -1;
 
 uint8_t* g_mapFindDialog = nullptr;
+#ifdef UMM_DEV_BRIDGE
+// dev (map ops "findfallback" on / off, "findopen" <query>, "findclose"): the map's search box as without Find (its own
+// dialog on the game's text dialog), opened with a query, without keys or focus
+std::string g_devFindOpenQuery;
+bool g_devFindOpenPending = false, g_devFindClosePending = false;
+#endif
 char g_suggestionBufs[8][192]{};
 char g_hintLineBuf[256]{};
 
@@ -6166,7 +6201,13 @@ void SyncNativeFindDialogState() {
 
     for (int i = 0; i < visCount; ++i) {
         const auto& row = g_findDisplayRows[g_findScrollOffset + i];
-        std::snprintf(g_suggestionBufs[i], sizeof(g_suggestionBufs[i]), "%s", row.displayLine.c_str());
+        // Without Find's dialog (Find not installed, or its dialog not found) the game's own text dialog shows the lines:
+        // it draws no bar behind the selected one, which only Find's dialog draws (DrawHighlights). A mouse clicks a
+        // line, but the controller's D-pad moved through them with nothing marked (Ykses, 2026-11-17): the selected
+        // line is marked in its text instead: "> " before it (a "<" after it is taken as the start of a text tag and
+        // isn't drawn, seen 2026-11-23).
+        const bool markSelected = !g_findRunDialogFrame && g_findScrollOffset + i == g_findSelectedIndex;
+        std::snprintf(g_suggestionBufs[i], sizeof(g_suggestionBufs[i]), markSelected ? "> %s" : "%s", row.displayLine.c_str());
         sugArray[i] = MakeRuntimeUiText(g_suggestionBufs[i]);
     }
     *reinterpret_cast<size_t*>(g_mapFindDialog + 0xd8) = static_cast<size_t>(visCount);
@@ -7611,7 +7652,9 @@ void DrawVisitedSanctumsOnMap(void* widgetRaw, const float* rootRect, uint8_t* c
         if (!SanctumVisitedNear(sp.x, sp.z)) continue;
         // Night Sanctums come after the 63 Flame ones in sanctum_spots.h
         if (!(i < 63 ? flameOn : nightOn)) continue;
-        const float sx = originX + sp.x * zoom, sy = originY + (mapWorldH - sp.z) * zoom;
+        float nudgeX = 0.0f, nudgeZ = 0.0f;
+        MarkerNudgeAt(sp.x, sp.z, nudgeX, nudgeZ); // (moved aside from a quest's pin: the mark goes with it)
+        const float sx = originX + (sp.x + nudgeX) * zoom, sy = originY + (mapWorldH - (sp.z + nudgeZ)) * zoom;
         if (sx < left || sx > right || sy < top + 114.0f || sy > bottom) continue;
         // Its icon's rules: Region > Hide takes the mark too, Dim fades it like the icon (izisot)
         if (RegionHidesAt(sp.x, sp.z) || halls::MapHides(sp.x, sp.z)) continue;
@@ -7639,7 +7682,9 @@ void DrawVisitedSanctumsOnMap(void* widgetRaw, const float* rootRect, uint8_t* c
             if ((origHash == 0x7b4c9e16u || origHash == 0x6df85109u) &&
                 SanctumVisitedNear(static_cast<float>(px), static_cast<float>(pz))) continue; // drawn above
             const float fx = static_cast<float>(px), fz = static_cast<float>(pz);
-            const float sx = originX + fx * zoom, sy = originY + (mapWorldH - fz) * zoom;
+            float nudgeX = 0.0f, nudgeZ = 0.0f;
+            MarkerNudge(m, nudgeX, nudgeZ); // (moved aside from a quest's pin: the mark goes with it)
+            const float sx = originX + (fx + nudgeX) * zoom, sy = originY + (mapWorldH - (fz + nudgeZ)) * zoom;
             if (sx < left || sx > right || sy < top + 114.0f || sy > bottom) continue;
             if (RegionHidesAt(fx, fz) || halls::MapHides(fx, fz)) continue;
             const float a = OutsideFocusedRegion(fx, fz) ? 0.3f : 1.0f;
@@ -10332,6 +10377,20 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         }
         SyncNativeFindDialogState();
     };
+#ifdef UMM_DEV_BRIDGE
+    if (g_devFindOpenPending) {
+        g_devFindOpenPending = false;
+        if (!g_findDialogOpen) openFindDialog();
+        if (g_findDialogOpen && g_mapFindDialog) SetNativeFindTextFieldValue(g_mapFindDialog, g_devFindOpenQuery);
+        if (g_log) g_log("Find on the map (dev): opened with '%s' on %s", g_devFindOpenQuery.c_str(),
+                         g_findRunDialogFrame ? "Find's dialog" : "the game's text dialog");
+    }
+    if (g_devFindClosePending) {
+        g_devFindClosePending = false;
+        if (g_findDialogOpen) CloseNativeFindDialog();
+        g_devFindOpenQuery.clear();
+    }
+#endif
 
     // Find searches the overworld's places: not on a dungeon's own map (its Overworld view, yes). Only this World Map
     // frame's Shift+F is skipped; the skill tree's Shift+F is Find's own, on its own screen (2026-11-09)
@@ -10539,7 +10598,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                 if (worldH <= 100.0f) worldH = 10240.0f;
                 const float ox = *reinterpret_cast<float*>(view + 0x1f0) + *reinterpret_cast<float*>(view + 0x18c) -
                                  *reinterpret_cast<float*>(view + 0x1f8);
-                const float sx = ox + static_cast<float>(*reinterpret_cast<const int32_t*>(menuMarker + 0x14)) * zoom;
+                float nudgeX = 0.0f, nudgeZ = 0.0f;
+                MarkerNudge(menuMarker, nudgeX, nudgeZ); // (a place moved aside from a quest's pin: its menu beside it)
+                const float sx = ox + (static_cast<float>(*reinterpret_cast<const int32_t*>(menuMarker + 0x14)) + nudgeX) * zoom;
                 constexpr float kMenuW = 354.0f, kGap = 45.0f, kMargin = 12.0f;
                 const float rightEdge = rootRect[0] + rootW, bottomEdge = rootRect[1] + rootH;
                 float left = sx + kGap;
@@ -12058,6 +12119,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
                     SetNativeFindTextFieldValue(g_mapFindDialog, curQuery);
                 }
             }
+#ifdef UMM_DEV_BRIDGE
+            if (!g_devFindOpenQuery.empty()) curQuery = g_devFindOpenQuery; // dev "findopen": the field can't be typed in here
+#endif
 
             // Strip any control characters (e.g. 0x7f from Ctrl+Backspace or \t from Tab)
             bool hadCtrlChar = false;
@@ -12720,8 +12784,10 @@ void SafeDeskDraw(void* mapState) {
     __try {
         desk::DrawUnder(static_cast<uint8_t*>(mapState), g_overlayRootRect);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
+        if (!g_mapDesk) desk::g_bareOff = true; // the bare map-layer pass (desk off) faulted
         g_mapDesk = false;
-        if (g_log) g_log("Map desk: a fault while drawing; off for this session");
+        if (g_log) g_log(desk::g_bareOff ? "Map layer pass: a fault while drawing; off for this session"
+                                         : "Map desk: a fault while drawing; off for this session");
     }
 }
 void DrawMapFilterMenuHook(void* mapState) {
@@ -16251,8 +16317,10 @@ bool UnderLocator(uint8_t* mapState, const uint8_t* m, const uint8_t* drawParams
     float zoom = 0.0f, ox = 0.0f, oy = 0.0f, worldH = 0.0f;
     __try {
         if (!LevelMapView(mapState, zoom, ox, oy, worldH)) return false;
-        const float sx = ox + static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)) * zoom;
-        const float sy = oy + (worldH - static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24))) * zoom;
+        float nudgeX = 0.0f, nudgeZ = 0.0f;
+        MarkerNudge(m, nudgeX, nudgeZ); // (a place moved aside from a quest's pin, where the game draws it)
+        const float sx = ox + (static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)) + nudgeX) * zoom;
+        const float sy = oy + (worldH - (static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24)) + nudgeZ)) * zoom;
         // the marker's icon (its drawn size, half each way) overlapping the box
         float half = drawParams ? *reinterpret_cast<const float*>(drawParams + 0x40) * 0.5f : 10.0f;
         if (!(half > 2.0f && half < 100.0f)) half = 10.0f;
@@ -16294,8 +16362,10 @@ void NoteCursorIcon(uint8_t* mapState, const uint8_t* m, const uint8_t* drawPara
         if (!LevelMapView(mapState, zoom, ox, oy, worldH)) return;
         float half = *reinterpret_cast<const float*>(drawParams + 0x40) * 0.5f;
         if (!(half > 2.0f && half < 150.0f)) return;
-        const float sx = ox + static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)) * zoom;
-        const float sy = oy + (worldH - static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24))) * zoom;
+        float nudgeX = 0.0f, nudgeZ = 0.0f;
+        MarkerNudge(m, nudgeX, nudgeZ); // (a place moved aside from a quest's pin, where the game draws it)
+        const float sx = ox + (static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)) + nudgeX) * zoom;
+        const float sy = oy + (worldH - (static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24)) + nudgeZ)) * zoom;
         {
             const float d = std::fabs(g_mapCursor[0] - sx) + std::fabs(g_mapCursor[1] - sy);
             if (d < g_nearestIconD) g_nearestIconD = d, g_nearestIconType = *reinterpret_cast<const uint32_t*>(m + 0x30);
@@ -16556,6 +16626,219 @@ void PublishCursorIcon() {
         g_hoveredIcon[0] = g_cursorBest.x, g_hoveredIcon[1] = g_cursorBest.y, g_hoveredIcon[2] = g_cursorBest.half;
     }
     g_cursorBest = {};
+}
+
+// Quest and rumor pins over the places their icon overlaps. The game draws the world places' list (mapState + 0xc1e0:
+// {entries, count}, 0x48 bytes each, the marker slot first) in the marker array's order, and the later one is on top
+// (and takes the hover). A camp or catacomb the mod reveals beside a quest's "!" came after it and covered it; with
+// the place's row off the "!" showed again (reported by Ykses, 2026-11-17). Each place whose icon overlaps a quest or
+// rumor pin before it in the list moves to just before the first such pin: both stay shown, the pin on top. Nothing
+// else changes order (a place elsewhere in a quest's search circle keeps its place). Run after every call: the game
+// rebuilds the list only when it changed; on an unchanged list nothing moves.
+// The places moved aside, rebuilt every frame (QuestPinsOverPlacesInner, before the map draws its pins), one table per
+// map: the World Map's and the HUD minimap's lists are both built and drawn by the same code at their own zoom, and one
+// shared table flipped between the two sizes (seen 2026-11-23)
+struct PlaceNudge { const uint8_t* m; float x, z, mx, mz; };
+struct NudgeTable { const void* mapState = nullptr; std::vector<PlaceNudge> list; };
+NudgeTable g_nudgeTables[4];
+std::vector<PlaceNudge>& NudgesFor(const void* mapState) {
+    for (NudgeTable& t : g_nudgeTables)
+        if (t.mapState == mapState) return t.list;
+    for (NudgeTable& t : g_nudgeTables)
+        if (!t.mapState) {
+            t.mapState = mapState;
+            return t.list;
+        }
+    g_nudgeTables[3].mapState = mapState; // (more maps than seen so far: the last slot is reused)
+    g_nudgeTables[3].list.clear();
+    return g_nudgeTables[3].list;
+}
+const std::vector<PlaceNudge>* FindNudges(const void* mapState) {
+    for (const NudgeTable& t : g_nudgeTables)
+        if (mapState && t.mapState == mapState) return &t.list;
+    return nullptr;
+}
+// (the mod's own drawing on the World Map: its table)
+bool MarkerNudge(const uint8_t* m, float& mx, float& mz) {
+    const std::vector<PlaceNudge>* list = FindNudges(g_lastMapState);
+    if (!list) return false;
+    for (const PlaceNudge& n : *list)
+        if (n.m == m) {
+            mx = n.mx, mz = n.mz;
+            return true;
+        }
+    return false;
+}
+bool MarkerNudgeAt(float x, float z, float& mx, float& mz) {
+    const std::vector<PlaceNudge>* list = FindNudges(g_lastMapState);
+    if (!list) return false;
+    for (const PlaceNudge& n : *list)
+        if (std::fabs(n.x - x) < 2.0f && std::fabs(n.z - z) < 2.0f) {
+            mx = n.mx, mz = n.mz;
+            return true;
+        }
+    return false;
+}
+bool IsQuestLikeSlot(const uint8_t* m) {
+    return m && (m[0x34] == 1 || *reinterpret_cast<const uint32_t*>(m + 0x30) == 0xafce0c5fu);
+}
+void QuestPinsOverPlacesInner(uint8_t* mapState) {
+    struct Entry { uint8_t b[0x48]; };
+    std::vector<PlaceNudge>& nudges = NudgesFor(mapState); // (this map's)
+    nudges.clear();
+    auto* list = *reinterpret_cast<Entry**>(mapState + 0xc1e0);
+    const uint64_t count = *reinterpret_cast<const uint64_t*>(mapState + 0xc1e8);
+    if (!list || count < 2 || count > 20000) return;
+    float zoom = 0.0f, ox = 0.0f, oy = 0.0f, worldH = 0.0f;
+    if (!LevelMapView(mapState, zoom, ox, oy, worldH) || !(zoom > 0.0f)) return;
+    // icons overlap when their centres are closer than an icon's drawn size (half of each)
+    const float iconPx = g_markerIconSize > 8.0f && g_markerIconSize < 200.0f ? g_markerIconSize : 53.0f;
+    const float reach = iconPx / zoom, reach2 = reach * reach; // in metres
+    struct Pin { uint64_t index; float x, z; };
+    std::vector<Pin> pins;
+    for (uint64_t i = 0; i < count; ++i) {
+        const uint8_t* m = *reinterpret_cast<uint8_t* const*>(list[i].b);
+        if (IsQuestLikeSlot(m) && !MarkerHiddenOnMap(m)) // (one the mod leaves undrawn, Region: Hide, moves nothing)
+            pins.push_back({i, static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14)),
+                            static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24))});
+    }
+    if (pins.empty()) return;
+    // Each place whose icon overlaps a quest / rumor pin's: moved aside, straight away from the nearest such pin, until
+    // the two icons just touch (on the very spot: up and to the right, the next one at the same pin turned 60 degrees
+    // on). Both readable, both clickable (the game's DrawPin draws and hit-tests it there: DrawPinHook).
+    {
+        std::vector<int> stacked(pins.size(), 0);
+        for (uint64_t i = 0; i < count && nudges.size() < 256; ++i) {
+            const uint8_t* m = *reinterpret_cast<uint8_t* const*>(list[i].b);
+            if (!m || IsQuestLikeSlot(m) || MarkerHiddenOnMap(m)) continue;
+            const float x = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14));
+            const float z = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24));
+            size_t best = pins.size();
+            float bestD2 = reach2;
+            for (size_t k = 0; k < pins.size(); ++k) {
+                const float dx = x - pins[k].x, dz = z - pins[k].z, d2 = dx * dx + dz * dz;
+                if (d2 < bestD2) bestD2 = d2, best = k;
+            }
+            if (best == pins.size()) continue;
+            float dx = x - pins[best].x, dz = z - pins[best].z;
+            const float d = std::sqrt(bestD2);
+            if (d < reach * 0.05f) {
+                const float angle = 0.785398f + 1.047198f * static_cast<float>(stacked[best]++);
+                dx = std::cos(angle), dz = std::sin(angle);
+            } else {
+                dx /= d, dz /= d;
+            }
+            const float push = reach - d;
+            nudges.push_back({m, x, z, dx * push, dz * push});
+        }
+#ifdef UMM_DEV_BRIDGE
+        static size_t s_logged = SIZE_MAX;
+        if (g_log && mapState == g_lastMapState && nudges.size() != s_logged) { // (the World Map's)
+            s_logged = nudges.size();
+            for (size_t k = 0; k < nudges.size() && k < 6; ++k)
+                g_log("Map: place %08x at %.0f,%.0f moved aside %.1f,%.1f m from a quest / rumor pin (%zu moved, reach %.0f m)",
+                      GetMarkerOrigTypeHash(nudges[k].m), nudges[k].x, nudges[k].z, nudges[k].mx, nudges[k].mz,
+                      nudges.size(), reach);
+            if (nudges.empty()) g_log("Map: no place moved aside from a quest / rumor pin");
+        }
+#endif
+    }
+    // each place: the first overlapping pin before it (count = none)
+    std::vector<uint64_t> before(count, count);
+    bool any = false;
+    for (uint64_t i = 0; i < count; ++i) {
+        const uint8_t* m = *reinterpret_cast<uint8_t* const*>(list[i].b);
+        if (!m || IsQuestLikeSlot(m)) continue;
+        const float x = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x14));
+        const float z = static_cast<float>(*reinterpret_cast<const int32_t*>(m + 0x24));
+        for (const Pin& p : pins) {
+            if (p.index >= i) break; // (in list order)
+            const float dx = p.x - x, dz = p.z - z;
+            if (dx * dx + dz * dz < reach2) {
+                before[i] = p.index;
+                any = true;
+                break;
+            }
+        }
+    }
+    if (!any) return;
+    std::vector<Entry> sorted;
+    sorted.reserve(count);
+    std::vector<std::vector<uint64_t>> moved(count);
+    for (uint64_t i = 0; i < count; ++i)
+        if (before[i] < count) moved[before[i]].push_back(i);
+    for (uint64_t i = 0; i < count; ++i) {
+        for (uint64_t j : moved[i]) sorted.push_back(list[j]);
+        if (before[i] == count) sorted.push_back(list[i]);
+    }
+    if (sorted.size() != count) return;
+    std::memcpy(list, sorted.data(), sizeof(Entry) * count);
+#ifdef UMM_DEV_BRIDGE
+    if (g_log) {
+        int n = 0;
+        for (uint64_t i = 0; i < count; ++i) n += before[i] < count;
+        g_log("Map: %d place(s) moved under an overlapping quest / rumor pin (%llu pins listed, %zu quest-like, reach %.0f m)", n,
+              static_cast<unsigned long long>(count), pins.size(), reach);
+    }
+#endif
+}
+void SafeQuestPinsOverPlaces(uint8_t* mapState) {
+    __try {
+        QuestPinsOverPlacesInner(mapState);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+}
+void RebuildPinListsHook(void* mapState) {
+    if (!g_origRebuildPinLists) return;
+    g_origRebuildPinLists(mapState);
+    greeneye::Lease lease;
+    if (lease && g_worldMapModded && mapState) SafeQuestPinsOverPlaces(static_cast<uint8_t*>(mapState));
+    else if (lease && mapState) NudgesFor(mapState).clear();
+}
+// A moved place: its spot (both copies) shifted for the game's draw, so the icon, its label, its hover and the card's
+// and menu's anchor all go with it; put back after
+bool NudgePin(uint8_t* mapState, uint8_t* pin, float out[2]) {
+    __try {
+        const uint8_t* m = *reinterpret_cast<uint8_t* const*>(pin + 8);
+        const std::vector<PlaceNudge>* list = FindNudges(mapState); // (this map's: the World Map or the minimap)
+        if (!m || !list) return false;
+        float mx = 0.0f, mz = 0.0f;
+        bool found = false;
+        for (const PlaceNudge& n : *list)
+            if (n.m == m) {
+                mx = n.mx, mz = n.mz, found = true;
+                break;
+            }
+        if (!found) return false;
+        const uint8_t* view = *reinterpret_cast<uint8_t* const*>(mapState + 8);
+        const float zoom = view ? *reinterpret_cast<const float*>(view + 0x10) : 0.0f;
+        if (!(zoom > 0.0f)) return false;
+        out[0] = mx * zoom, out[1] = -mz * zoom; // (map pixels: y down)
+        for (int k = 0; k < 2; ++k) {
+            reinterpret_cast<float*>(pin + 0x1c)[k] += out[k];
+            reinterpret_cast<float*>(pin + 0x24)[k] += out[k];
+        }
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+uint64_t DrawPinHook(void* mapState, uint8_t* pin, void* outBox) {
+    if (!g_origDrawPin) return 0;
+    float moved[2] = {};
+    bool nudged = false;
+    {
+        greeneye::Lease lease;
+        nudged = lease && g_worldMapModded && mapState && pin && NudgePin(static_cast<uint8_t*>(mapState), pin, moved);
+    }
+    const uint64_t r = g_origDrawPin(mapState, pin, outBox);
+    if (nudged) {
+        for (int k = 0; k < 2; ++k) {
+            reinterpret_cast<float*>(pin + 0x1c)[k] -= moved[k];
+            reinterpret_cast<float*>(pin + 0x24)[k] -= moved[k];
+        }
+    }
+    return r;
 }
 
 void DrawWorldMapMarkerIconHook(void* mapState, uint8_t* m, uint8_t* drawParams) {
@@ -17035,6 +17318,43 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
             }
         }
 #endif
+#ifdef UMM_DEV_BRIDGE
+    } else if (std::strcmp(action, "findfallback") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
+        // Find's functions set aside (on) or back (off), only while the box is closed; the dialog made either way is
+        // dropped, never handed to the other side's functions (Find's reads fields past the map's own dialog)
+        struct Saved {
+            FindCreateDialogFn create; FindResetDialogFn reset; FindGetQueryStrFn query; FindEnsureFocusFn focus;
+            FindRunDialogFrameFn run; FindGetUiCursorPosFn cursor; FindHitTestRowFn hit; FindCloseDialogFn close;
+            FindSetTextFieldValueFn setText; volatile LONG* wheel; FindDialogCheckboxFn check; FindDialogCheckboxAtFn checkAt;
+        };
+        static Saved saved{};
+        static bool aside = false;
+        const bool on = std::strcmp(value, "on") == 0;
+        if (g_findDialogOpen || on == aside) return -3;
+        if (on) {
+            saved = {g_findCreateDialog, g_findResetDialog, g_findGetQueryStr, g_findEnsureFocus, g_findRunDialogFrame,
+                     g_findGetUiCursorPos, g_findHitTestRow, g_findCloseDialog, g_findSetTextFieldValue, g_findWheelDeltaPtr,
+                     g_findDialogCheckbox, g_findDialogCheckboxAt};
+            g_findCreateDialog = nullptr, g_findResetDialog = nullptr, g_findGetQueryStr = nullptr, g_findEnsureFocus = nullptr;
+            g_findRunDialogFrame = nullptr, g_findGetUiCursorPos = nullptr, g_findHitTestRow = nullptr, g_findCloseDialog = nullptr;
+            g_findSetTextFieldValue = nullptr, g_findWheelDeltaPtr = nullptr, g_findDialogCheckbox = nullptr, g_findDialogCheckboxAt = nullptr;
+        } else {
+            g_findCreateDialog = saved.create, g_findResetDialog = saved.reset, g_findGetQueryStr = saved.query;
+            g_findEnsureFocus = saved.focus, g_findRunDialogFrame = saved.run, g_findGetUiCursorPos = saved.cursor;
+            g_findHitTestRow = saved.hit, g_findCloseDialog = saved.close, g_findSetTextFieldValue = saved.setText;
+            g_findWheelDeltaPtr = saved.wheel, g_findDialogCheckbox = saved.check, g_findDialogCheckboxAt = saved.checkAt;
+        }
+        aside = on;
+        g_mapFindDialog = nullptr; // (the old one is left: a dev leak)
+        if (g_log) g_log("Find on the map (dev): %s", on ? "Find's dialog set aside: the map's own on the game's text dialog" : "Find's dialog back");
+    } else if (std::strcmp(action, "chestgone") == 0) {
+        chest_live::g_devHideChest = std::atol(value); // -1: none
+        if (g_log) g_log("Live chests (dev): chest %ld read as gone", chest_live::g_devHideChest);
+    } else if (std::strcmp(action, "findopen") == 0) {
+        g_devFindOpenQuery = value, g_devFindOpenPending = true; // next World Map frame
+    } else if (std::strcmp(action, "findclose") == 0) {
+        g_devFindClosePending = true;
+#endif
     } else if (std::strcmp(action, "hallsmap") == 0 && worldMap && halls::g_mapDungeon >= 0) {
         halls::g_mapOverworld = !halls::g_mapOverworld; // the Dungeon Map / Overworld Map button
         g_worldMapOpenCenterFrames = 2;
@@ -17157,6 +17477,8 @@ bool InstallMapKeyPanelHook(LogFn logger) {
     uint8_t* fnPlayStateUiTail = FindUnique("48 8B 05 ?? ?? ?? ?? 48 8B 88 D0 00 00 00 48 8B 01 48 85 C0 0F 84 ?? ?? ?? ?? 4D 89 73 C8 4C 8B 70 38");
     uint8_t* fnBuildWorldMapPlayersTail = FindUnique("48 81 EC 48 01 00 00 48 8B 05 ?? ?? ?? ?? 48 8B F9 4C 8B A0 D0 00 00 00 4C 89 A5 90 00 00 00");
     uint8_t* fnDrawWorldMapMarkerIconTail = FindUnique("80 BA 9C 00 00 00 00 49 8B D8 F3 0F 10 05 ?? ?? ?? ?? 0F 29 70 B8 0F 29 78 A8");
+    uint8_t* fnDrawPinTail = FindUnique("48 8B 7A 08 4C 8B F2 4C 8B 7A 10 4C 8B E9 44 0F 29 B4 24 B0 02 00 00 44 0F 29 BC 24 A0 02 00 00 80 7F 34");
+    uint8_t* fnRebuildPinListsTail = FindUnique("48 8B 05 ?? ?? ?? ?? 4C 8B E9 48 8B 90 D0 00 00 00 48 8B 02 48 85 C0 75 05 45 33 E4 EB 04");
     uint8_t* fnDrawWorldMapMarkerPlateTail = FindUnique("F3 0F 10 42 20 49 8B F8 F3 0F 10 4A 1C 48 8B F1 F3 0F 5C 42 28 F3 0F 5C 4A 24");
 
     if (!fnBeginWidget || !fnEndWidgetTail || !fnSetSize || !fnUiCtx || !fnImageTail || !fnDrawImage ||
@@ -17305,6 +17627,29 @@ bool InstallMapKeyPanelHook(LogFn logger) {
             if (g_origDrawWorldMapMarkerIcon) g_drawWorldMapMarkerIconHookTarget = fn;
         }
     }
+
+    // rebuildPinLists: "push rbp/r12/r13; lea rbp, [rsp-10h]; sub rsp, 110h" (18 bytes). Optional: without it a place can
+    // cover a quest's pin, as before.
+    if (fnRebuildPinListsTail) {
+        uint8_t* fn = fnRebuildPinListsTail - sizeof(kCanonicalRebuildPinListsPrologue);
+        if (StartsAsExpected(fn, kCanonicalRebuildPinListsPrologue, sizeof(kCanonicalRebuildPinListsPrologue))) {
+            g_origRebuildPinLists = reinterpret_cast<RebuildPinListsFn>(
+                InstallHook(fn, reinterpret_cast<void*>(&RebuildPinListsHook), sizeof(kCanonicalRebuildPinListsPrologue)));
+            if (g_origRebuildPinLists) g_rebuildPinListsHookTarget = fn;
+        }
+    }
+    if (!g_origRebuildPinLists && g_log) g_log("MapKeyPanel: the map's pin lists not found; a place can cover a quest's pin");
+    // drawPin: "mov [rsp+18h], r8; push rbp/rbx/rdi/r13/r14/r15; lea rbp, [rsp-248h]; sub rsp, 348h" (29 bytes). Optional:
+    // without it a place under a quest's pin isn't moved aside.
+    if (fnDrawPinTail && g_origRebuildPinLists) {
+        uint8_t* fn = fnDrawPinTail - sizeof(kCanonicalDrawPinPrologue);
+        if (StartsAsExpected(fn, kCanonicalDrawPinPrologue, sizeof(kCanonicalDrawPinPrologue))) {
+            g_origDrawPin = reinterpret_cast<DrawPinFn>(
+                InstallHook(fn, reinterpret_cast<void*>(&DrawPinHook), sizeof(kCanonicalDrawPinPrologue)));
+            if (g_origDrawPin) g_drawPinHookTarget = fn;
+        }
+    }
+    if (!g_origDrawPin && g_log) g_log("MapKeyPanel: the map's pin draw not found; places under a quest's pin aren't moved aside");
 
     // drawWorldMapMarkerPlate: "mov [rsp+8], rbx; mov [rsp+20h], rsi; push rdi; sub rsp, 50h" (15 bytes).
     if (fnDrawWorldMapMarkerPlateTail) {

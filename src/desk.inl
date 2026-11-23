@@ -336,11 +336,37 @@ void MeshTest(void* widget, const float* screen) {
 }
 #endif
 
+// Without the desk, the map layer still gets its pass: the roads and the icons held back from over the game's UI
+// (DrawUnderRing), at the sub-layer the desk's frame uses, so they stay under every pin, the key hints and a marker's
+// menu. Before this the roads went under them only with the desk on (Ykses, 1.3.55).
+bool g_bareOff = false; // the bare pass faulted: off for this session (SafeDeskDraw)
+void DrawBareLayer(const float* screen) {
+    if (g_bareOff || !g_worldMapModded || halls::MapActive() || screen[2] < 100.0f) return;
+    static const UiText kName = MakeUiText("mapDesk");
+    Widget w;
+    g_namedWidget(w.raw, &kName);
+    g_setSize(w.Handle(), 0);
+    void* uiCtx = *reinterpret_cast<void**>(w.raw);
+    void* drawList = uiCtx ? g_getUiDrawList(uiCtx) : nullptr;
+    const uint16_t saved = uiCtx ? *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(uiCtx) + 0x6ce8) : 0;
+    const uint16_t savedDl = drawList ? *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(drawList) + 0x35214) : 0;
+    SetSubLayer(uiCtx, drawList, saved, static_cast<uint8_t>(g_deskBandKey));
+    DrawUnderRing(w.raw);
+    if (uiCtx) {
+        *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(uiCtx) + 0x6ce8) = saved;
+        if (drawList) *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(drawList) + 0x35214) = savedDl;
+    }
+    g_endWidget(w.raw);
+}
+
 // The desk: under the map, then its frame over it (called from the filter-menu hook, in the game's map layer)
 void DrawUnder(uint8_t* mapState, const float* screen) {
     const bool show = Shown() && hdpool::Available() && Ready() && screen[2] >= 100.0f;
     HideGameEdge(show && !g_edgeStopping);
-    if (!show) return;
+    if (!show) {
+        DrawBareLayer(screen);
+        return;
+    }
     float x0 = 0, y0 = 0, side = 0;
     if (!MapSquare(mapState, x0, y0, side)) return;
     static const UiText kName = MakeUiText("mapDesk");

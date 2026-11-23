@@ -12,6 +12,13 @@
 // or emptied some way the game doesn't flag (another mod taking the items), stays marked: the respawn rule brings it
 // back. These are not told to the other players over chat: a world reload could send dozens, and players nearby read
 // the same state.
+// A chest blown up (barrels beside it, GillzaSVD 1.3.54) never reads empty: the server's destructible system dissolves
+// the entity and it is gone (re atlas loot.md). So a chest seen this session that is gone while it should still be sent
+// to the player is marked looted too: within 90 m and 10 m closer than a chest of its own kind that is still there,
+// 3 reads in a row, not just after a teleport. The server sends an entity by its 2D distance to the player, 100 m or
+// 200 m by its template, scaled down under load (memory: entity relevance, send radius factor); a chest of the same kind
+// has the same template, so one still there farther away means this one would be sent too. It comes back like an
+// emptied one: read full twice after the area reset.
 
 
 namespace chest_live {
@@ -24,7 +31,22 @@ Types g_types;
 std::unordered_map<uint32_t, uint16_t> g_chestByLootId;
 uint8_t g_fullReads[kTotalChestCount]{}; // reads of "full" in a row while marked looted
 bool g_seenEmpty[kTotalChestCount]{};     // read empty in the game this session
+bool g_seenHere[kTotalChestCount]{};      // its entity read this session (full or empty)
+uint8_t g_goneReads[kTotalChestCount]{};  // reads in a row it was gone while in the player's reach
+float g_lastPlayerXZ[2] = {};
+#ifdef UMM_DEV_BRIDGE
+long g_devHideChest = -1; // dev (map op "chestgone" <index>): that chest's entity read as gone, as if blown up (-1 none)
+#endif
+uint64_t g_settleUntil = 0; // after a teleport (or a world's first read): the new place's entities are still coming
 uint64_t g_lastTick = 0, g_lastDetectTick = 0;
+
+// The chest's place, across the ground (x, z)
+float ChestDistXZ(size_t c, float px, float pz) {
+    const ChestSpawn& sp = kChestSpawns[c];
+    const float dx = static_cast<float>(sp.px1) + static_cast<float>(sp.px0) / 65536.0f - px;
+    const float dz = static_cast<float>(sp.pz1) + static_cast<float>(sp.pz0) / 65536.0f - pz;
+    return std::sqrt(dx * dx + dz * dz);
+}
 
 bool AtChest(const float p[3], size_t c) {
     const ChestSpawn& sp = kChestSpawns[c];
@@ -188,7 +210,7 @@ bool RegistryLearned(void* reg) {
 }
 
 // Once a second in a world: reads the chests near the player and fixes their looted marks.
-void Update(uint64_t nowTick, uint32_t screen) {
+void Update(uint64_t nowTick, uint32_t screen, uint8_t* client) {
     if (g_lootSection.empty() || nowTick - g_lastTick < 1000ULL) return;
     g_lastTick = nowTick;
     if (g_chestByLootId.empty()) {
@@ -200,9 +222,12 @@ void Update(uint64_t nowTick, uint32_t screen) {
         g_notClamIds.clear();
         std::memset(g_fullReads, 0, sizeof(g_fullReads));
         std::memset(g_seenEmpty, 0, sizeof(g_seenEmpty));
+        std::memset(g_seenHere, 0, sizeof(g_seenHere));
+        std::memset(g_goneReads, 0, sizeof(g_goneReads));
     }
-    if (!g_types.empty) {
-        if (nowTick - g_lastDetectTick < 5000ULL) return;
+    // Until an emptied chest is near, the empty-state type isn't known; the chests' id type is, and with it which chests
+    // are there (a blown-up one gone): read with that while the empty state is looked for again every 5 s
+    if (!g_types.empty && nowTick - g_lastDetectTick >= 5000ULL) {
         g_lastDetectTick = nowTick;
         for (auto& slot : g_waterRegistries) {
             auto* reg = static_cast<uint8_t*>(slot.load(std::memory_order_relaxed));
@@ -213,18 +238,26 @@ void Update(uint64_t nowTick, uint32_t screen) {
                 ok = DetectInner(reg, found);
             } __except (EXCEPTION_EXECUTE_HANDLER) {
                 ok = false;
+                found = Types{};
             }
             if (ok) {
                 g_types = found;
                 break;
             }
+            if (found.lootId && found.position && !g_types.lootId) {
+                g_types = found; // (empty 0: presence only)
+                if (g_log) g_log("Live chests: chests' id type %u found; their empty state not yet", found.lootId);
+            }
         }
-        if (!g_types.empty) return;
     }
+    if (!g_types.lootId || !g_types.position) return;
     // The chest screen open: the chest being looted is changing
     if (screen == 21) return;
     uint8_t state[kTotalChestCount];
     std::memset(state, 0xff, sizeof(state)); // 0xff not near
+    bool present[kTotalChestCount]{};        // its entity is there (whatever its empty state reads)
+    float px = 0.0f, pz = 0.0f;
+    const bool havePlayer = GetHudPlayerWorldPos(client, px, pz);
     bool ok = true;
     __try {
         const Types t = g_types;
@@ -235,7 +268,11 @@ void Update(uint64_t nowTick, uint32_t screen) {
             size_t c = ChestOf(id);
             if (c >= kTotalChestCount) c = LearnClam(rec, id, t.position);
             if (c >= kTotalChestCount) return;
-            const uint8_t* e = EcsComponent(rec, t.empty, &size);
+#ifdef UMM_DEV_BRIDGE
+            if (static_cast<long>(c) == g_devHideChest) return;
+#endif
+            present[c] = true;
+            const uint8_t* e = t.empty ? EcsComponent(rec, t.empty, &size) : nullptr;
             if (e && size == 2 && e[0] == 1 && e[1] <= 1) state[c] = e[1];
         });
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -246,8 +283,51 @@ void Update(uint64_t nowTick, uint32_t screen) {
         g_types = Types{};
         return;
     }
+    if (havePlayer) {
+        const float mx = px - g_lastPlayerXZ[0], mz = pz - g_lastPlayerXZ[1];
+        if (mx * mx + mz * mz > 40.0f * 40.0f) g_settleUntil = nowTick + 10000ULL; // a teleport, not a run or a glide
+        g_lastPlayerXZ[0] = px, g_lastPlayerXZ[1] = pz;
+    }
+    const bool settled = nowTick >= g_settleUntil;
+    // per kind of chest, the farthest one still sent to the player, across the ground (within 150 m: not an old place's)
+    constexpr size_t kKinds = 11;
+    float reach[kKinds]{};
+    if (havePlayer) {
+        for (size_t c = 0; c < kTotalChestCount; ++c) {
+            if (!present[c] || kChestSpawns[c].subtype >= kKinds) continue;
+            const float d = ChestDistXZ(c, px, pz);
+            if (d < 150.0f) reach[kChestSpawns[c].subtype] = std::max(reach[kChestSpawns[c].subtype], d);
+        }
+    }
     for (size_t c = 0; c < kTotalChestCount; ++c) {
         auto& st = g_chestLootStates[c];
+        if (present[c]) {
+            g_seenHere[c] = true;
+            g_goneReads[c] = 0;
+        } else if (g_seenHere[c] && !st.looted && havePlayer && settled && kChestSpawns[c].subtype < kKinds) {
+            // gone: blown up, if it's well inside the distance chests of its kind are still sent at
+            const float d = ChestDistXZ(c, px, pz);
+            const float r = reach[kChestSpawns[c].subtype];
+            if (d + 10.0f < r && d < 90.0f) {
+                if (++g_goneReads[c] >= 3) {
+                    g_goneReads[c] = 0;
+                    g_seenHere[c] = false;
+                    g_seenEmpty[c] = true; // read full again after the area reset: unmarked as an emptied one is
+                    g_fullReads[c] = 0;
+                    st.looted = true;
+                    st.elapsedOutOfBuildZoneSec = 0.0;
+                    g_chestLootDirty = true;
+                    g_lootSaveDirty = true;
+                    if (g_log)
+                        g_log("Live chests: chest %zu is gone %.0f m away (its kind still sent at %.0f m); destroyed, marked looted",
+                              c, d, r);
+                }
+            } else {
+                g_goneReads[c] = 0;
+            }
+        } else {
+            g_goneReads[c] = 0;
+        }
         if (state[c] == 1) {
             g_fullReads[c] = 0;
             g_seenEmpty[c] = true;
