@@ -256,7 +256,8 @@ ignore the keyboard.
   (10% to 80%, 50% at first); the borders and badges stay.
 - Vanilla World Map (LOOK), off at first: the world map exactly as the game draws it, as your
   friends without the mod see it (the game's markers, fog, zoom and filter menu; no Map Key or
-  added pins). The minimap stays, and its cog is then the way to Settings.
+  added pins). The minimap stays, and its cog (hold Shift + Alt so the cursor appears) is then
+  the way to Settings.
 - Vanilla Minimap (LOOK), under it: the minimap shows only what the game's world map shows,
   the game's own markers and the players, and none of the mod's chests, resources, lore notes,
   portals and the like.
