@@ -143,6 +143,7 @@ void TickGuard(void* scene) {
     }
 }
 void TickHook(void* scene,const void* description) {
+    UMM_COUNT(HcSceneTick);
     greeneye::Lease lease;
     if(lease && g_enabled){std::lock_guard lock(g_lock);TickGuard(scene);}
     g_tick(scene,description);
@@ -176,7 +177,20 @@ void* Registry(void* widget) {
     return renderer?At<void*>(renderer,0):nullptr;
 }
 // pixels null: only an image already resident under the key (keeps it from being reused), nothing queued
-uint32_t Request(void* widget,const uint32_t* pixels,uint64_t key) {
+#ifdef UMM_DEV_BRIDGE
+// dev: requests and refusals per caller (owner) in the last finished frame, for the "hdtest" status
+constexpr int kOwners = 9;
+uint64_t g_ownFrame=0; uint32_t g_ownReq[kOwners]{}, g_ownDef[kOwners]{}, g_ownReqLast[kOwners]{}, g_ownDefLast[kOwners]{};
+void OwnerCount(int owner,uint64_t frame,bool deferred){
+    if(frame!=g_ownFrame){std::memcpy(g_ownReqLast,g_ownReq,sizeof g_ownReq);std::memcpy(g_ownDefLast,g_ownDef,sizeof g_ownDef);
+        std::memset(g_ownReq,0,sizeof g_ownReq);std::memset(g_ownDef,0,sizeof g_ownDef);g_ownFrame=frame;}
+    if(owner<0||owner>=kOwners)owner=0;
+    ++g_ownReq[owner];if(deferred)++g_ownDef[owner];
+}
+#endif
+// owner (dev counts only): 1 desk 1x, 2 desk fine, 3 desk card, 4 ground, 5 halls, 6 minimap art, 7 boss icon, 8 roads
+uint32_t Request(void* widget,const uint32_t* pixels,uint64_t key,int owner=0) {
+    (void)owner;
     if(!g_enabled || !key)return 0;
     std::lock_guard lock(g_lock);auto& s=*g_state;
     if(s.error || g_releaseRequested)return 0;
@@ -196,6 +210,9 @@ uint32_t Request(void* widget,const uint32_t* pixels,uint64_t key) {
     if(!registry)return 0;
     const uint64_t frame=At<uint64_t>(s.graphics,0x568);
     int index=hd_pool_policy::Find(s.slots,key);
+#ifdef UMM_DEV_BRIDGE
+    if(index>=0 || !pixels)OwnerCount(owner,frame,false);
+#endif
     if(index>=0){
         auto& slot=s.slots[index];slot.lastUse=frame;
         if(slot.queued || !slot.valid || frame<=slot.readyFrame)return 0;
@@ -213,6 +230,9 @@ uint32_t Request(void* widget,const uint32_t* pixels,uint64_t key) {
     }
     if(!pixels)return 0;
     index=hd_pool_policy::Victim(s.slots,frame,s.framesInFlight);
+#ifdef UMM_DEV_BRIDGE
+    OwnerCount(owner,frame,index<0);
+#endif
     if(index<0){++s.deferred;return 0;}
     auto& slot=s.slots[index];slot.pending=key;slot.queued=true;slot.lastUse=frame;
     g_pixels[index].assign(pixels,pixels+size_t(kPixels)*kPixels);
@@ -260,6 +280,14 @@ int Control(const char* action,const char* target,char* out,uint32_t cap) {
         "{\"enabled\":%s,\"error\":%u,\"ticket\":%u,\"capacity\":%u,\"bytes\":%u,\"resident\":%u,\"queued\":%u,\"registered\":%u,\"frame\":%llu,\"framesInFlight\":%u,\"allocations\":%llu,\"releases\":%llu,\"uploads\":%llu,\"reused\":%llu,\"hits\":%llu,\"deferred\":%llu,\"viewsFreedLast\":%llu,\"budgetFirst\":%llu,\"budgetLast\":%llu,\"testActive\":%s}",
         g_enabled?"true":"false",s.error,s.ticket,unsigned(kSlots),unsigned(kSlots*kBytes),resident,queued,registered,s.frame,s.framesInFlight,
         s.allocations,s.releases,s.uploads,s.reused,s.hits,s.deferred,g_viewsFreedLast,g_budgetFirst,g_budgetLast,GetTickCount64()<g_testUntil?"true":"false");
+    if(n>1 && uint32_t(n)<cap){
+        unsigned live=0;for(size_t i=0;i<kSlots;++i)live+=s.slots[i].valid && s.frame && s.slots[i].lastUse+2>=s.frame;
+        --n; // over the closing brace
+        n+=std::snprintf(out+n,cap-n,",\"live\":%u,\"owners\":[",live);
+        for(int k=0;k<kOwners && n>0 && uint32_t(n)<cap;++k)
+            n+=std::snprintf(out+n,cap-n,"%s[%u,%u]",k?",":"",g_ownReqLast[k],g_ownDefLast[k]);
+        if(n>0 && uint32_t(n)<cap)n+=std::snprintf(out+n,cap-n,"]}");
+    }
     return n>0 && uint32_t(n)<cap?1:-4;
 }
 #endif
@@ -275,7 +303,7 @@ bool Init() {
     map_natives::Ensure(greeneye::Host(),g_log);
     for(auto* e:entries)if(!map_natives::At(e->rva))return false;
     auto* host=greeneye::Host();
-    g_state=static_cast<State*>(host->keep("halls.gpu-pool.v1",sizeof(State)));
+    g_state=static_cast<State*>(host->keep("halls.gpu-pool.v2",sizeof(State)));
     if(!g_state)return false;
     // Transient upload buffers belong to the old DLL. Keep only finished GPU contents.
     for(auto& slot:g_state->slots){slot.queued=false;slot.pending=0;}

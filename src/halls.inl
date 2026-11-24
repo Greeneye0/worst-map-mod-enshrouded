@@ -2036,10 +2036,10 @@ void DrawHdTiles(void* widgetRaw, const std::shared_ptr<const LevelGrid>& grid, 
         if (t.rgba.empty()) return false;
         const float cx0 = std::max(sx0, left), cx1 = std::min(sx1, right), cy0 = std::max(sy0, top), cy1 = std::min(sy1, bottom);
         if (cx1 <= cx0 || cy1 <= cy0) return true;
-        uint32_t id = hdpool::Request(widgetRaw, t.rgba.data(), t.imageKey);
+        uint32_t id = hdpool::Request(widgetRaw, t.rgba.data(), t.imageKey, 5);
         auto& shown = s_shown[spot];
         if (id) shown = t.imageKey;
-        else if (shown && shown != t.imageKey) id = hdpool::Request(widgetRaw, nullptr, shown);
+        else if (shown && shown != t.imageKey) id = hdpool::Request(widgetRaw, nullptr, shown, 5);
         if (!id) return false;
         float fu0 = u0 + (u1 - u0) * (cx0 - sx0) / (sx1 - sx0), fu1 = u0 + (u1 - u0) * (cx1 - sx0) / (sx1 - sx0);
         float fv0 = v0 + (v1 - v0) * (cy0 - sy0) / (sy1 - sy0), fv1 = v0 + (v1 - v0) * (cy1 - sy0) / (sy1 - sy0);

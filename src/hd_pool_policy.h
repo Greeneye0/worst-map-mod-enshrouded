@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cstddef>
 namespace hd_pool_policy {
-constexpr size_t kSlots = 96;
+constexpr size_t kSlots = 192; // (96 ran full on the World Map: the desk, roads and ground together)
 constexpr uint32_t kPixels = 256, kBytes = kPixels * kPixels * 4;
 constexpr uint32_t kUploadsPerFrame = 4;
 struct Slot {

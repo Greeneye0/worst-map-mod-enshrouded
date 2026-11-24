@@ -263,7 +263,7 @@ void DrawCompass(void* widget, float dx, float dy, float s) {
     auto tipped = [&](float u, float v, float z) { return V3{u, v, z + u * c.tx + v * c.ty}; };
     const float cr = inner * 0.985f;
     const uint64_t cardKey = (g_keyBase ^ g_props.hash ^ 0x636f6d7061737300ull) | 1;
-    const uint32_t cardId = hdpool::Request(widget, g_props.card.data(), cardKey);
+    const uint32_t cardId = hdpool::Request(widget, g_props.card.data(), cardKey, 3);
     {
         smooth_highlight::Batch dial;
         // lit as a plate: brighter tipped toward the light

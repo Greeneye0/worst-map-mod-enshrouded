@@ -71,10 +71,11 @@ namespace {
 // Dev builds: the time each per-frame part takes, averaged per frame and logged every 5 s (UMM_PERF(Part) at the top of
 // a scope times the rest of it). Release builds: nothing.
 #ifdef UMM_DEV_BRIDGE
-enum PerfPart { PerfHud, PerfLoot, PerfGlowDraw, PerfMinimap, PerfMmTerrain, PerfMmMarkers, PerfMmChests, PerfMmOres, PerfMapKey, PerfPreSync, PerfIconOverride, PerfGlowNext, PerfPlate, PerfMarkerType, PerfMmHalls, PerfMmRoads, PerfMmTurn, PerfCount };
+enum PerfPart { PerfHud, PerfLoot, PerfGlowDraw, PerfMinimap, PerfMmTerrain, PerfMmMarkers, PerfMmChests, PerfMmOres, PerfMapKey, PerfPreSync, PerfIconOverride, PerfGlowNext, PerfPlate, PerfMarkerType, PerfMmHalls, PerfMmRoads, PerfMmTurn, PerfMmPre, PerfMmPins, PerfMmPortalsFind, PerfMmPlayers, PerfMmQuest, PerfMmFrame, PerfMmTray, PerfMapPrep, PerfMapLevelAreas, PerfMapBorders, PerfMapGround, PerfMapTrees, PerfMapRoadsNames, PerfMapDeposits, PerfMapChecks, PerfMapWood, PerfMapGravesPortalsFind, PerfMapTail, PerfMapPanel, PerfDepGather, PerfDepSpread, PerfDepPass0, PerfDepPoints, PerfDepTail, PerfLootHead, PerfLootWater, PerfLootLive, PerfLootKnowledge, PerfLootBosses, PerfLootPlaces, PerfLootRest, PerfLiveDetect, PerfLiveSlice, PerfLiveJudge, PerfMapHead, PerfMapPulses, PerfMapPad, PerfMapLocators, PerfMapCursor, PerfSyncChests, PerfSyncRest, PerfSyncLoop1, PerfSyncLoop2, PerfDesk, PerfPadRead, PerfCount };
 constexpr const char* kPerfNames[PerfCount] = {"hud+minimap", "loot tracking", "glow draw", "minimap", "mm terrain", "mm markers", "mm chests", "mm resources", "map key+overlay", "map pre-sync", "icon override",
-                                               "glow next", "plate", "marker type", "mm hall plan", "mm roads", "mm turn"};
-std::atomic<uint64_t> g_perfTicks[PerfCount]{}, g_perfCalls[PerfCount]{}, g_perfMax[PerfCount]{};
+                                               "glow next", "plate", "marker type", "mm hall plan", "mm roads", "mm turn", "mm setup", "mm pin draw", "mm portals+find", "mm players+pings", "mm waypoint+quest", "mm frame+arrow", "mm tray", "map prep", "map level areas", "map borders", "map ground", "map trees", "map roads+names", "map deposits", "map checks", "map wood chests", "map graves+portals+find", "map tail", "map panel", "dep gather+sort", "dep spread", "dep pass0", "dep points", "dep tail", "loot head+altars", "loot built water", "loot live chests", "loot knowledge", "loot bosses", "loot places", "loot rest", "live detect", "live slice", "live judge", "map head", "map pulses", "map pad", "map menu+locators", "map cursor", "sync chests", "sync rest", "sync loop1", "sync loop2", "desk / map layer", "pad key frame"};
+std::atomic<uint64_t> g_perfTicks[PerfCount]{}, g_perfCalls[PerfCount]{}, g_perfMax[PerfCount]{}, g_perfDraws[PerfCount]{};
+uint64_t ModDrawsSoFar(); // (below: the mod's rect, asset and icon draws counted so far)
 void PerfAdd(PerfPart part, uint64_t ticks) {
     g_perfTicks[part].fetch_add(ticks, std::memory_order_relaxed);
     g_perfCalls[part].fetch_add(1, std::memory_order_relaxed);
@@ -85,12 +86,16 @@ void PerfAdd(PerfPart part, uint64_t ticks) {
 // Section times inside one function: UMM_LAP_START, then UMM_LAP(Part) at the end of each section
 struct PerfLapper {
     LARGE_INTEGER last;
-    PerfLapper() { QueryPerformanceCounter(&last); }
+    uint64_t lastDraws;
+    PerfLapper() : lastDraws(ModDrawsSoFar()) { QueryPerformanceCounter(&last); }
     void Mark(PerfPart part) {
         LARGE_INTEGER now;
         QueryPerformanceCounter(&now);
         PerfAdd(part, static_cast<uint64_t>(now.QuadPart - last.QuadPart));
         last = now;
+        const uint64_t d = ModDrawsSoFar();
+        g_perfDraws[part].fetch_add(d - lastDraws, std::memory_order_relaxed);
+        lastDraws = d;
     }
 };
 struct PerfScope {
@@ -104,10 +109,34 @@ struct PerfScope {
     }
 };
 #define UMM_PERF(part) PerfScope umm_perf_scope_(part)
+inline int64_t DevQpc() { LARGE_INTEGER q; QueryPerformanceCounter(&q); return q.QuadPart; }
+inline void DevPerf(PerfPart part, int64_t since) { PerfAdd(part, static_cast<uint64_t>(DevQpc() - since)); }
+// Calls of each hooked game function (any thread), logged per frame with the perf parts; and the frames the renderer
+// finished (the upscale hook, render thread), the true frame rate beside the UI thread's
+enum HookCount { HcNext, HcPalette, HcStage, HcFight, HcAlert, HcMeshRead, HcProcess, HcUpscale, HcWaterView, HcMarkerType,
+                 HcSceneTick, HcTitle, HcIcon, HcPin, HcPlate, HcRebuild, HcXInput, HcMapHint, HcDrawRect, HcDrawAsset,
+                 HcDrawIcon, HcDrawLabel, HcDrawImage, HcCount };
+constexpr const char* kHookNames[HcCount] = {"next", "palette", "stage", "fight", "alert", "meshRead", "process", "upscale",
+                                             "waterView", "markerType", "sceneTick", "title", "icon", "pin", "plate", "rebuild",
+                                             "xinput", "mapHint", "modRect", "modAsset", "modIcon", "modLabel", "modImage"};
+struct alignas(64) HookCounter { std::atomic<uint64_t> n{0}; };
+HookCounter g_hookCalls[HcCount];
+#define UMM_COUNT(hc) g_hookCalls[hc].n.fetch_add(1, std::memory_order_relaxed)
+std::atomic<uint64_t> g_modDrawsTotal{0}; // (never reset: laps take differences)
+uint64_t ModDrawsSoFar() { return g_modDrawsTotal.load(std::memory_order_relaxed); }
+#define UMM_DRAW_TOTAL() g_modDrawsTotal.fetch_add(1, std::memory_order_relaxed)
 #define UMM_LAP_START PerfLapper umm_perf_lap_
 #define UMM_LAP(part) umm_perf_lap_.Mark(part)
+#define UMM_FN_LAP_START PerfLapper umm_fn_lap_
+#define UMM_FN_LAP(part) umm_fn_lap_.Mark(part)
 #else
+#define UMM_FN_LAP_START ((void)0)
+#define UMM_FN_LAP(part) ((void)0)
 #define UMM_PERF(part) ((void)0)
+inline int64_t DevQpc() { return 0; }
+#define DevPerf(part, since) ((void)(since))
+#define UMM_COUNT(hc) ((void)0)
+#define UMM_DRAW_TOTAL() ((void)0)
 #define UMM_LAP_START ((void)0)
 #define UMM_LAP(part) ((void)0)
 #endif
@@ -252,21 +281,77 @@ struct SavedSlot {
     uint32_t hash; // m+0x30 after the mod's last pass
     uint32_t id08; // m+0x08 after the mod's last pass
 };
-std::unordered_map<const uint8_t*, SavedSlot> g_savedSlotUid;
+// A hash map for the lookups made for every marker in every UI pass (several thousand a pass): open addressing in two
+// flat arrays, the key 0 meaning empty; grows, never drops an entry (std::unordered_map's node chasing was most of the
+// marker sync's 0.4 ms a pass, 2026-11-23)
+template <class K, class V>
+struct FlatMap {
+    std::vector<uint64_t> keys;
+    std::vector<V> vals;
+    size_t count = 0;
+    static uint64_t Key(K k) { return static_cast<uint64_t>((uintptr_t)k); }
+    static size_t Slot(uint64_t k, size_t mask) {
+        k ^= k >> 33;
+        k *= 0xff51afd7ed558ccdULL;
+        k ^= k >> 33;
+        return static_cast<size_t>(k) & mask;
+    }
+    size_t size() const { return count; }
+    void clear() {
+        std::fill(keys.begin(), keys.end(), 0ULL);
+        count = 0;
+    }
+    V* find(K key) {
+        const uint64_t k = Key(key);
+        if (keys.empty() || !k) return nullptr;
+        const size_t mask = keys.size() - 1;
+        for (size_t i = Slot(k, mask);; i = (i + 1) & mask) {
+            if (keys[i] == k) return &vals[i];
+            if (!keys[i]) return nullptr;
+        }
+    }
+    V& operator[](K key) {
+        if (V* v = find(key)) return *v;
+        if ((count + 1) * 2 > keys.size()) Grow();
+        const uint64_t k = Key(key);
+        const size_t mask = keys.size() - 1;
+        size_t i = Slot(k, mask);
+        while (keys[i]) i = (i + 1) & mask;
+        keys[i] = k;
+        vals[i] = V{};
+        ++count;
+        return vals[i];
+    }
+    void Grow() {
+        std::vector<uint64_t> oldKeys = std::move(keys);
+        std::vector<V> oldVals = std::move(vals);
+        const size_t cap = oldKeys.empty() ? 4096 : oldKeys.size() * 2;
+        keys.assign(cap, 0ULL);
+        vals.assign(cap, V{});
+        const size_t mask = cap - 1;
+        for (size_t j = 0; j < oldKeys.size(); ++j) {
+            if (!oldKeys[j]) continue;
+            size_t i = Slot(oldKeys[j], mask);
+            while (keys[i]) i = (i + 1) & mask;
+            keys[i] = oldKeys[j];
+            vals[i] = oldVals[j];
+        }
+    }
+};
+FlatMap<const uint8_t*, SavedSlot> g_savedSlotUid;
 
 bool IsSlotSaved(const uint8_t* m) {
-    auto it = g_savedSlotUid.find(m);
-    return it != g_savedSlotUid.end() && it->second.uid == *reinterpret_cast<const uint32_t*>(m) &&
-           it->second.hash == *reinterpret_cast<const uint32_t*>(m + 0x30) &&
-           it->second.id08 == *reinterpret_cast<const uint32_t*>(m + 0x08);
+    const SavedSlot* s = g_savedSlotUid.find(m);
+    return s && s->uid == *reinterpret_cast<const uint32_t*>(m) && s->hash == *reinterpret_cast<const uint32_t*>(m + 0x30) &&
+           s->id08 == *reinterpret_cast<const uint32_t*>(m + 0x08);
 }
 
 // After the mod has written a saved slot's type or quest id: what it holds now is the mod's, not a game change.
 void NoteSlotPass(const uint8_t* m) {
-    auto it = g_savedSlotUid.find(m);
-    if (it == g_savedSlotUid.end() || it->second.uid != *reinterpret_cast<const uint32_t*>(m)) return;
-    it->second.hash = *reinterpret_cast<const uint32_t*>(m + 0x30);
-    it->second.id08 = *reinterpret_cast<const uint32_t*>(m + 0x08);
+    SavedSlot* s = g_savedSlotUid.find(m);
+    if (!s || s->uid != *reinterpret_cast<const uint32_t*>(m)) return;
+    s->hash = *reinterpret_cast<const uint32_t*>(m + 0x30);
+    s->id08 = *reinterpret_cast<const uint32_t*>(m + 0x08);
 }
 
 // Places the game itself never puts on the map, by their name: Revelwood's Abandoned Farms and Abandoned Windmills.
@@ -373,6 +458,7 @@ int DumpMarkersToFile(uint8_t* client); // map_native_filters.inl
 #endif
 bool g_bridgeRecenterMap = false;
 float g_bridgeZoomSet = 0.0f; // dev: the map op zoomset
+float g_bridgeZoomFit = 0.0f; // dev: the map op zoomfit (metres to fit: the zoom step for it)
 float g_devDot[2] = {-1.0f, -1.0f}; // dev: the map op dot
 float g_devNear[2] = {-1.0f, -1.0f}; // dev: the map op near
 #ifdef UMM_DEV_BRIDGE
@@ -873,11 +959,25 @@ uint8_t* CustomMarkerType(uint32_t typeHash) {
 
 // Our marker types, every other one from the game (or a mod that hooked the lookup before us).
 uint8_t* GetMarkerTypeHook(uint32_t typeHash, void* mgr) {
+    UMM_COUNT(HcMarkerType);
+    // (~3,700 calls a frame on the World Map, all but a few for the game's own types: those go straight on, without
+    // the lease's two calls into the loader; the hashes are constants, no state of this generation is read)
+    if (typeHash != kGoldChestTypeHash && typeHash != kSilverChestTypeHash && typeHash != kWoodChestTypeHash &&
+        typeHash != kLockedFastTravelTypeHash)
+        return g_origGetMarkerType ? g_origGetMarkerType(typeHash, mgr) : nullptr;
     UMM_PERF(PerfMarkerType);
     {
         greeneye::Lease lease; // an older generation after a hot reload only calls on
-        if (lease && !g_modOff) {
-            if (uint8_t* custom = CustomMarkerType(typeHash)) return custom;
+        if (lease) {
+            if (!g_modOff) {
+                if (uint8_t* custom = CustomMarkerType(typeHash)) return custom;
+            } else {
+                // Mod off (Ctrl+Shift+F12): markers the mod gave its own types still carry them until the game rebuilds
+                // them, and the game has no type for those hashes. Its DrawPin reads the type without a null check:
+                // Ctrl+Shift+F12 with the World Map open crashed the game (2026-11-23, twice, Silver Chest 511fcbe5).
+                uint8_t* game = g_origGetMarkerType ? g_origGetMarkerType(typeHash, mgr) : nullptr;
+                return game ? game : CustomMarkerType(typeHash);
+            }
         }
     }
     return g_origGetMarkerType ? g_origGetMarkerType(typeHash, mgr) : nullptr;
@@ -1678,9 +1778,6 @@ DrawExclusion g_drawExclusion;
 // The game's key hints along the bottom of the World Map (Mark Chest Looted, Hide Filter, ...): drawn before the mod's
 // icons, so while those draw they stay out of its strip, or they cover the hints
 DrawExclusion g_hintStrip;
-DrawExclusion g_gameCardBox;   // the game's own card for a place drawn as a quest / rumor pin: no mod pins over it
-uint64_t g_gameCardBoxTick = 0; // (set each frame the card is up)
-int g_cardAreaDropped = 0;        // dev: draws it kept out since the last log
 // How far from a game marker's spot an Alt / Ctrl + click still takes it (UI px): its icon's edge, not only its middle (a
 // spire's diamond is ~50 px across; 16 missed clicks on it). The nearest marker wins, so crowded spots are as before.
 constexpr float kMarkerReach = 26.0f;
@@ -1781,10 +1878,6 @@ float g_locatorBox[4] = {-0.45f, -0.45f, 0.45f, 0.5f}; // round a player's map s
 // (their drawn square, ~53 px with its padding): left, top, right, bottom. The arrow itself, ~half one across: a box the
 // size of the locator's ring left a gap round you where creatures and the like weren't drawn.
 float g_markerIconSize = 53.0f; // the game's marker icons drawn this frame (DrawWorldMapMarkerIconHook), UI px
-// The hover title's area (the game's, to the right of its hovered marker, or the mod's own): a tooltip panel is drawn
-// behind it, like the game's gear tooltips, so the name reads on a crowded map. Set before the icon passes.
-DrawExclusion g_titleBox;
-bool g_gameDrawsTitle = false; // the game draws the hovered marker's label itself (a spire's two lines): g_titleBox keeps pins under it
 bool MapLayerReady(); // below: the map-layer pass is running (the desk's, or the bare one with the desk off)
 // Where the mod's drawing would sit over the game's UI (a marker's menu column, the key hints, the legend): with the Map
 // Drawn under it in the map layer (UnderRing), the desk's pass or the bare one (desk::DrawBareLayer)
@@ -1833,22 +1926,9 @@ bool g_drawingMapKey = false;  // drawing the Map Key and its Settings card: not
 bool UnderRing(float x, float y, float w, float h) {
     if (g_ringReplay || !MapLayerReady() || g_drawingMapKey) return false;
     if (g_toMapLayer) return true;
-    // the game's card for a hovered quest / rumor pin: the mod's pins there go under it, into the map's layer (left out,
-    // they vanished; 2026-11-14)
-    {
-        const DrawExclusion& c = g_gameCardBox;
-        if (c.active && GetTickCount64() - g_gameCardBoxTick < 120 && w <= 120.0f && h <= 120.0f && x < c.x1 && x + w > c.x0 &&
-            y < c.y1 && y + h > c.y0) {
-            ++g_cardAreaDropped;
-            return true;
-        }
-    }
-    // the game's own label for the hovered marker (a spire's title and region): the mod's pins there go under it, as
-    // under a quest's card (the pin beside the Springlands spire lay over "Ancient Spire", 2026-11-16)
-    if (g_gameDrawsTitle && w <= 120.0f && h <= 120.0f) {
-        const DrawExclusion& c = g_titleBox;
-        if (c.active && x < c.x1 && x + w > c.x0 && y < c.y1 && y + h > c.y0) return true;
-    }
+    // (the game's own label for the hovered marker, a quest's name or a spire's two lines: no longer under it here. In
+    // the map layer they went under every game marker too, and on a crowded map vanished round the name, 2026-11-23:
+    // the pins draw under the game's card instead, MapPinsKey)
     // (only icon-sized things move under: a level-area tint strip or a forest run crossing the arrow or the hints, moved
     // whole into the map layer, drew a dark band across the map)
     if (w > 120.0f || h > 120.0f) return false;
@@ -1929,7 +2009,46 @@ void SetLocatorExclusions(uint8_t* client, uint8_t* mapState) {
     }
 }
 
+// The game builds its UI several times a frame: three passes in mode 1 (the UI context's +8; layout and input) and one in
+// mode 4, the only one whose drawing reaches the screen (its layers have a draw list; counted 2026-11-23: on the World
+// Map 340 calls in mode 1 to 113 in mode 4 in 5 s, mode 4 matching the rendered frames). The mod drew everything in all
+// four, three quarters of its drawing thrown away. While g_skipDraws is set (the map overlay or the HUD overlay running
+// in a mode 1 pass) the solid rects, icons, assets, boxes and images return at once; widgets, labels and layers are
+// built in every pass as before, so each pass's UI tree stays the same.
+bool g_skipDraws = false;
+#ifdef UMM_DEV_BRIDGE
+float g_devCursor[2] = {-1.0f, -1.0f}; // dev: a stand-in cursor for the mod's World Map hover (map op "cursor")
+HWND g_devCursorHwnd = nullptr;
+#endif
+const uint32_t* IconImage(const void* iconRef16); // below: an icon's UI image, looked up once a UI pass
+bool UiDrawPass(const void* widgetRaw) {
+    const void* uiCtx = widgetRaw ? *static_cast<void* const*>(widgetRaw) : nullptr;
+    __try {
+        return !uiCtx || *reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(uiCtx) + 8) == 4u;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return true;
+    }
+}
+// the same, for the UI pass now running (before a widget of the mod's exists): the UI context at *(G + 0x18)
+bool UiDrawPassNow() {
+    __try {
+        auto* g = g_uiCtx ? static_cast<uint8_t*>(g_uiCtx()) : nullptr;
+        const uint8_t* uiCtx = g ? *reinterpret_cast<uint8_t* const*>(g + 0x18) : nullptr;
+        return !uiCtx || *reinterpret_cast<const uint32_t*>(uiCtx + 8) == 4u;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return true;
+    }
+}
+struct SkipDrawsScope {
+    bool saved;
+    explicit SkipDrawsScope(bool skip) : saved(g_skipDraws) { g_skipDraws = skip; }
+    ~SkipDrawsScope() { g_skipDraws = saved; }
+};
+
 void DrawSolidRectAbs(void* parentWidgetRaw, float absX, float absY, float w, float h, uint32_t rgba, float alpha, float brightness = 1.0f) {
+    UMM_COUNT(HcDrawRect);
+    UMM_DRAW_TOTAL();
+    if (g_skipDraws) return; // (a UI pass that doesn't draw)
     if (!parentWidgetRaw || w <= 0.0f || h <= 0.0f || alpha <= 0.0f || Excluded(absX, absY, w, h)) return;
     if (UnderRing(absX, absY, w, h)) {
         if (g_ringQueue.size() < 4096) g_ringQueue.push_back({4, 0, {}, absX, absY, w, h, rgba, alpha, brightness});
@@ -1944,6 +2063,9 @@ void DrawSolidRectAbs(void* parentWidgetRaw, float absX, float absY, float w, fl
 // Draws an asset primitive (e.g. circle) at absolute UI coordinates (absX, absY, w, h)
 // without creating or shifting any child widgets.
 void DrawAssetRectAbs(void* parentWidgetRaw, size_t assetOffset, float absX, float absY, float w, float h, uint32_t rgba, float alpha, float brightness = 1.0f) {
+    UMM_COUNT(HcDrawAsset);
+    UMM_DRAW_TOTAL();
+    if (g_skipDraws) return; // (a UI pass that doesn't draw)
     uint8_t* assets = GetUiAssets();
     if (!assets || !parentWidgetRaw || w <= 0.0f || h <= 0.0f || alpha <= 0.0f || Excluded(absX, absY, w, h)) return;
     if (UnderRing(absX, absY, w, h)) {
@@ -1952,8 +2074,7 @@ void DrawAssetRectAbs(void* parentWidgetRaw, size_t assetOffset, float absX, flo
     }
     float rect[4] = {absX, absY, w, h};
     uint64_t packedCol = MakePackedColor(rgba, alpha, brightness);
-    alignas(16) uint8_t tmp[16]{};
-    g_drawImage(parentWidgetRaw, rect, g_image(g_uiCtx(), tmp, assets + assetOffset), &packedCol);
+    g_drawImage(parentWidgetRaw, rect, IconImage(assets + assetOffset), &packedCol);
 }
 
 // Draws a 16-byte UiImageReference icon at absolute UI coordinates (absX, absY, w, h)
@@ -2195,7 +2316,25 @@ uint32_t MultiplyColor(uint32_t a, uint32_t b) {
     return out;
 }
 
+bool DrawBossIconImage(void* widget, float x, float y, float w, float h, uint32_t rgba, float alpha, float brightness); // below
+// An icon's UI image, looked up once a UI pass for each icon reference (the same few dozen icons are drawn thousands of
+// times on the World Map; each looked up by its GUID every time). g_uiPassSerial changes with every pass of the overlay.
+uint64_t g_uiPassSerial = 0;
+const uint32_t* IconImage(const void* iconRef16) {
+    struct Entry { const void* ref; uint64_t serial; uint32_t id; bool ok; };
+    static Entry cache[256];
+    Entry& e = cache[(reinterpret_cast<uintptr_t>(iconRef16) >> 4) & 255u];
+    if (e.ref == iconRef16 && e.serial == g_uiPassSerial) return e.ok ? &e.id : nullptr;
+    alignas(16) uint8_t tmp[16]{};
+    const uint32_t* id = g_image(g_uiCtx(), tmp, iconRef16);
+    if (!id) return nullptr; // (not kept: asked again, it may be loaded by then)
+    e.ref = iconRef16, e.serial = g_uiPassSerial, e.ok = true, e.id = *id;
+    return &e.id;
+}
 void DrawIconRectAbs(void* parentWidgetRaw, const void* iconRef16, float absX, float absY, float w, float h, uint32_t rgba, float alpha, float brightness = 1.0f) {
+    UMM_COUNT(HcDrawIcon);
+    UMM_DRAW_TOTAL();
+    if (g_skipDraws) return; // (a UI pass that doesn't draw)
     if (!parentWidgetRaw || !iconRef16 || w <= 0.0f || h <= 0.0f || alpha <= 0.0f || Excluded(absX, absY, w, h)) return;
     if (UnderRing(absX, absY, w, h)) {
         if (g_ringQueue.size() < 4096) {
@@ -2207,6 +2346,7 @@ void DrawIconRectAbs(void* parentWidgetRaw, const void* iconRef16, float absX, f
     }
     // The Boss row's icon is drawn by the mod from kBossIconRuns (its icon GUID in ore_deposits.h is only a stand-in)
     if (iconRef16 == static_cast<const void*>(kOreIcons[kBossesFirst])) {
+        if (DrawBossIconImage(parentWidgetRaw, absX, absY, w, h, rgba, alpha, brightness)) return; // (one image, not 220 rects)
         const float px = w / kBossIconSize, py = h / kBossIconSize;
         for (const PixelRun& r : kBossIconRuns) {
             DrawSolidRectAbs(parentWidgetRaw, absX + r.x * px, absY + r.y * py, r.w * px + 0.35f, py + 0.35f,
@@ -2218,8 +2358,7 @@ void DrawIconRectAbs(void* parentWidgetRaw, const void* iconRef16, float absX, f
     if (bytes[0] == 0 && bytes[1] == 0) return;
     float rect[4] = {absX, absY, w, h};
     uint64_t packedCol = MakePackedColor(rgba, alpha, brightness);
-    alignas(16) uint8_t tmp[16]{};
-    g_drawImage(parentWidgetRaw, rect, g_image(g_uiCtx(), tmp, iconRef16), &packedCol);
+    g_drawImage(parentWidgetRaw, rect, IconImage(iconRef16), &packedCol);
 }
 
 // Draws one of the game's nine-slice boxes (kRoundedBoxPrimitive, kBoxInnerGlowPrimitive,
@@ -2228,6 +2367,7 @@ void DrawIconRectAbs(void* parentWidgetRaw, const void* iconRef16, float absX, f
 // falls back to a flat rectangle and the glows are left out.
 void DrawBoxAbs(void* parentWidgetRaw, size_t assetOffset, float absX, float absY, float w, float h,
                 uint32_t rgba, float alpha, float border, float brightness = 1.0f) {
+    if (g_skipDraws) return; // (a UI pass that doesn't draw)
     uint8_t* assets = GetUiAssets();
     if (!assets || !parentWidgetRaw || w <= 0.0f || h <= 0.0f || alpha <= 0.0f || Excluded(absX, absY, w, h)) return;
     if (UnderRing(absX, absY, w, h)) {
@@ -2271,6 +2411,7 @@ void DrawLabelAbs(float absX, float absY, float w, float h, const char* utf8,
                   uint32_t rgba = 0xffffffffu, float alpha = 1.0f,
                   TextAlignH hAlign = TextAlignH::Left, TextAlignV vAlign = TextAlignV::Center,
                   const uint8_t* style = nullptr, float fontScale = 1.0f) {
+    UMM_COUNT(HcDrawLabel);
     uint8_t* assets = GetUiAssets();
     if (!assets || !utf8 || !*utf8 || Excluded(absX, absY, w, h)) return;
     if (UnderRing(absX, absY, w, h)) {
@@ -3888,7 +4029,11 @@ void ApplySharedChestStates() {
 bool GetHudPlayerWorldPos(uint8_t* client, float& outX, float& outZ);
 
 // The world was left: save it and start the next world clean (its record is matched again by its altars).
+namespace chest_live {
+void ResetWorld(); // chest_live.inl
+}
 void ResetLootWorld(const char* why) {
+    chest_live::ResetWorld(); // (a walk under way, the detection's back-off)
     if (!g_lootSection.empty()) SaveLootedChests();
     if (g_log && !g_lootSection.empty()) g_log("Looted chests: left world %s (%s)", g_lootSection.c_str(), why);
     g_lootSection.clear();
@@ -3943,6 +4088,7 @@ void AdoptOlderLootRecord(const std::vector<std::pair<int32_t, int32_t>>& altars
 #include "chest_live.inl"
 
 void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
+    UMM_LAP_START;
     if (!client) return;
     uint8_t screen = client[0x1cd8];
     const uint64_t nowTick = GetTickCount64();
@@ -4018,8 +4164,11 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
             ApplyLockedStates(client); // the world is up: its filters are the game's, put the locked ones back
         }
     }
+    UMM_LAP(PerfLootHead);
     UpdateBuiltWater(client);
+    UMM_LAP(PerfLootWater);
     chest_live::Update(nowTick, screen, client);
+    UMM_LAP(PerfLootLive);
     // Two minutes of play on an untested game build: nothing that runs early crashed it (map_natives.h)
     {
         static uint64_t playingSince = 0;
@@ -4028,10 +4177,13 @@ void UpdateChestLootTracking(uint8_t* client, bool appFocused) {
         else if (nowTick - playingSince > 120000ULL) map_natives::NoteStablePlay();
     }
     UpdateKnowledge();
+    UMM_LAP(PerfLootKnowledge);
     UpdateManualBosses(client);
     NoteBossKills(client);
     boss_live::Update(client);
+    UMM_LAP(PerfLootBosses);
     NoteVisitedPlaces(client);
+    UMM_LAP(PerfLootPlaces);
     chest_glow::UpdateKey(client, appFocused);
     // The filter preset keys while playing too (requested 2026-11-11): the minimap and the World Map change together,
     // the notice beside the minimap
@@ -4468,11 +4620,10 @@ struct QuestAnswer {
     uint64_t tick;
 };
 template <typename Compute>
-uint32_t CachedQuestAnswer(std::unordered_map<uint64_t, QuestAnswer>& cache, uint64_t key, Compute compute) {
+uint32_t CachedQuestAnswer(FlatMap<uint64_t, QuestAnswer>& cache, uint64_t key, Compute compute) {
     const uint64_t now = GetTickCount64();
     if (cache.size() > 8192) cache.clear();
-    auto it = cache.find(key);
-    if (it != cache.end() && now - it->second.tick < 500) return it->second.value;
+    if (const QuestAnswer* a = cache.find(key); a && now - a->tick < 500) return a->value;
     const uint32_t value = compute();
     cache[key] = {value, now};
     return value;
@@ -4483,7 +4634,7 @@ uint32_t GetQuestFilterHashForMarkerIdUncached(uint32_t id08, bool activeObjecti
 // Returns 0xa7cadc08u (Main Quest) or 0xc52e92e5u (Side Quest) if id08 belongs to a quest, else 0u.
 uint32_t GetQuestFilterHashForMarkerId(uint32_t id08, bool activeObjectiveOnly) {
     if (id08 == 0u) return 0u;
-    static std::unordered_map<uint64_t, QuestAnswer> cache;
+    static FlatMap<uint64_t, QuestAnswer> cache;
     return CachedQuestAnswer(cache, (static_cast<uint64_t>(id08) << 1) | (activeObjectiveOnly ? 1u : 0u),
                              [&] { return GetQuestFilterHashForMarkerIdUncached(id08, activeObjectiveOnly); });
 }
@@ -4648,7 +4799,28 @@ bool LoreRumorLine(uint8_t* client, uint32_t id08, char* out, size_t cap) {
     }
     return false;
 }
+int LoreRumorFoundUncached(uint8_t* client, uint32_t id08);
+// (asked for every rumor marker in every UI pass, from the World Map, the minimap and the marker sync; each answer a walk
+// of the whole lore table: kept for half a second like the quest answers, a rumor is only found by reading it)
 int LoreRumorFound(uint8_t* client, uint32_t id08) {
+    if (!client || id08 == 0u) return -1;
+    static FlatMap<uint64_t, QuestAnswer> cache;
+    return static_cast<int>(CachedQuestAnswer(cache, id08, [&] {
+        return static_cast<uint32_t>(LoreRumorFoundUncached(client, id08) + 1);
+    })) - 1;
+}
+// The game's "is this marker id a lore rumor's" (every marker with an id, every UI pass): kept for 2 s
+bool IsLoreRumorIdCached(uint32_t id08) {
+    if (!g_isLoreRumorMarkerId || id08 == 0u) return false;
+    static FlatMap<uint64_t, QuestAnswer> cache;
+    const uint64_t now = GetTickCount64();
+    if (cache.size() > 8192) cache.clear();
+    if (const QuestAnswer* a = cache.find(id08); a && now - a->tick < 2000) return a->value != 0;
+    const bool yes = g_isLoreRumorMarkerId(id08);
+    cache[id08] = {yes ? 1u : 0u, now};
+    return yes;
+}
+int LoreRumorFoundUncached(uint8_t* client, uint32_t id08) {
     if (!client || id08 == 0u) return -1;
     __try {
         const uint64_t groups = *reinterpret_cast<uint64_t*>(client + 0xb3d48);
@@ -4722,7 +4894,7 @@ uint32_t ClassifyQuestOrRumorMarkerUncached(uint32_t id08, uint8_t vis35);
 
 uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t vis35) {
     if (id08 == 0u) return 0u;
-    static std::unordered_map<uint64_t, QuestAnswer> cache;
+    static FlatMap<uint64_t, QuestAnswer> cache;
     return CachedQuestAnswer(cache, (static_cast<uint64_t>(id08) << 8) | vis35,
                              [&] { return ClassifyQuestOrRumorMarkerUncached(id08, vis35); });
 }
@@ -4730,7 +4902,7 @@ uint32_t ClassifyQuestOrRumorMarker(uint32_t id08, uint8_t vis35) {
 uint32_t ClassifyQuestOrRumorMarkerUncached(uint32_t id08, uint8_t vis35) {
     if (id08 == 0u) return 0u;
     if (uint32_t activeQ = GetQuestFilterHashForMarkerId(id08, true)) return activeQ;
-    if (g_isLoreRumorMarkerId && g_isLoreRumorMarkerId(id08)) {
+    if (g_isLoreRumorMarkerId && IsLoreRumorIdCached(id08)) {
         // A rumor about something already found (its lore entry is found) is done and hidden, as the game drops it
         // (a found Cosmetic Item Location kept its "?")
         return LoreRumorFound(GetUiClient(), id08) == 1 ? kCompletedQuestTypeHash : 0x8ba7c122u;
@@ -4866,7 +5038,11 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
     static bool s_initialRefresh = true;
     bool dirty = s_initialRefresh;
     s_initialRefresh = false;
+    const int64_t qSync0 = DevQpc();
     SyncChestsInUiArrays(client, dirty);
+    DevPerf(PerfSyncChests, qSync0);
+    const int64_t qSync1 = DevQpc();
+    struct SyncRestTimer { int64_t q; ~SyncRestTimer() { DevPerf(PerfSyncRest, q); } } syncRestTimer{qSync1};
 
     auto computeMarkerKey = [](const uint8_t* m) -> uint64_t {
         uint64_t entityAndB48 = static_cast<uint64_t>(*reinterpret_cast<const uint32_t*>(m + 0x04)) |
@@ -4939,6 +5115,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
     };
 
     uint64_t arr0Sig = 0xcbf29ce484222325ULL;
+    int64_t qLoop = DevQpc();
     if (arrBase && arrCount > 0 && arrCount <= 10000) {
         for (uint64_t i = 0; i < arrCount; ++i) {
             uint8_t* m = arrBase + i * 0xA0;
@@ -4997,6 +5174,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             }
         }
 
+        DevPerf(PerfSyncLoop1, qLoop);
+        qLoop = DevQpc();
         g_rumorSpots.clear();
         auto noteRumor = [&](const uint8_t* rm) {
             g_rumorSpots.emplace_back(*reinterpret_cast<const int32_t*>(rm + 0x14), *reinterpret_cast<const int32_t*>(rm + 0x24));
@@ -5028,7 +5207,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
             // off hid the Sunken Ancient City's "?", 2026-11-14)
             auto isSubpinRumor = [&](bool rowOn) {
                 return rowOn && GameShowsMarker(m[0x35]) && !subpinQuestHash && rumorFilterOn && !gameRumorSwapOff &&
-                       g_isLoreRumorMarkerId && savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) &&
+                       g_isLoreRumorMarkerId && savedId08 != 0u && IsLoreRumorIdCached(savedId08) &&
                        LoreRumorFound(client, savedId08) != 1 &&
                        // a place a quest also names (the Sunken Ancient City: Follow The Melody, done): as the "?" type the
                        // game takes its id for the quest's and draws nothing there. It stays itself (2026-11-14)
@@ -5219,10 +5398,13 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
         s_lastArr0Sig = arr0Sig;
     }
 
+    DevPerf(PerfSyncLoop2, qLoop);
     // Count markers in the other 3 UI marker arrays:
     // +0x396a28 (custom pins / waypoints), +0x3bea50 (Hollow Halls), +0x3e6a78 (Player Graves)
     constexpr size_t kExtraArrayOffsets[3] = { 0x396a28, 0x3bea50, 0x3e6a78 };
+    // (no counts asked for, the sync before the game reads its markers: only the Hollow Halls' visibility, below)
     for (size_t a = 0; a < 3; ++a) {
+        if (numQueries == 0 && a != 1) continue;
         uint8_t* extraBase = *reinterpret_cast<uint8_t**>(client + kExtraArrayOffsets[a]);
         uint64_t extraCount = *reinterpret_cast<uint64_t*>(client + kExtraArrayOffsets[a] + 8);
         if (!extraBase || extraCount == 0 || extraCount > 10000) continue;
@@ -5238,7 +5420,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                 if (origHash == 0u) continue;
                 const bool revealed = !exploredOnly || IsMarkerShownForExploredPins(client, m, origHash);
                 applyMarkerVisibility(m, origHash, savedId08, revealed);
-                if (!revealed) continue;
+                if (!revealed || numQueries == 0) continue;
                 countHash = origHash;
             }
             if (countHash == 0) continue;
@@ -5253,7 +5435,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
     }
 
     int otherPlayerCount = 0;
-    {
+    if (numQueries > 0) {
         uint8_t* playerArray = *reinterpret_cast<uint8_t**>(client + 0x4642c0);
         uint64_t playerCount = *reinterpret_cast<uint64_t*>(client + 0x4642c8);
         uint32_t localPlayerId = *reinterpret_cast<uint32_t*>(client + 0x18);
@@ -5267,23 +5449,23 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
         }
     }
 
-    int unlootedGoldCount = 0;
+    int unlootedGoldCount = 0, unlootedSilverCount = 0, unlootedWoodCount = 0;
+    if (numQueries > 0) {
     for (size_t c = 0; c < kTotalChestCount; ++c) {
         if (!IsGoldChest(c) || IsChestCurrentlyCleared(c)) continue;
         if (exploredOnly && !IsPositionExploredByCharacter(client, kChestSpawns[c].px1, kChestSpawns[c].pz1)) continue;
         ++unlootedGoldCount;
     }
-    int unlootedSilverCount = 0;
     for (size_t c = kGoldChestCount; c < kWoodChestFirst; ++c) {
         if (IsChestCurrentlyCleared(c)) continue;
         if (exploredOnly && !IsPositionExploredByCharacter(client, kChestSpawns[c].px1, kChestSpawns[c].pz1)) continue;
         ++unlootedSilverCount;
     }
-    int unlootedWoodCount = 0;
     for (size_t c = kWoodChestFirst; c < kEndChestFirst; ++c) {
         if (IsChestCurrentlyCleared(c)) continue;
         if (exploredOnly && !IsPositionExploredByCharacter(client, kChestSpawns[c].px1, kChestSpawns[c].pz1)) continue;
         ++unlootedWoodCount;
+    }
     }
 
     for (size_t q = 0; q < numQueries; ++q) {
@@ -5451,6 +5633,7 @@ DWORD PadFilterState(DWORD r, DWORD user, XINPUT_STATE* st) {
     return r;
 }
 DWORD WINAPI XInputGetStateHook(DWORD user, XINPUT_STATE* st) {
+    UMM_COUNT(HcXInput);
     greeneye::Lease lease;
     const DWORD r = g_origXInputGetState(user, st);
     if (!lease) return r;
@@ -5659,9 +5842,25 @@ PadInput ReadPadPresses() {
     static uint64_t repeatAt = 0;
     const uint64_t now = GetTickCount64();
     uint16_t down = 0;
+    // (an empty slot is the slow read: the connected ones every time, one empty one every half second in turn, as
+    // inp::ReadPad does; all four were read in every UI pass, 0.1 ms each time, 2026-11-23)
+    static bool connected[XUSER_MAX_COUNT]{};
+    static uint64_t probeAt = 0;
+    static DWORD nextEmpty = 0;
+    DWORD probe = XUSER_MAX_COUNT;
+    if (now >= probeAt) {
+        probeAt = now + 500;
+        for (DWORD tries = 0; tries < XUSER_MAX_COUNT && probe == XUSER_MAX_COUNT; ++tries) {
+            const DWORD slot = (nextEmpty + tries) % XUSER_MAX_COUNT;
+            if (!connected[slot]) probe = slot;
+        }
+        if (probe != XUSER_MAX_COUNT) nextEmpty = (probe + 1) % XUSER_MAX_COUNT;
+    }
     for (DWORD u = 0; u < XUSER_MAX_COUNT; ++u) {
+        if (!connected[u] && u != probe) continue;
         XINPUT_STATE st{};
-        if (get(u, &st) != ERROR_SUCCESS) continue;
+        connected[u] = get(u, &st) == ERROR_SUCCESS;
+        if (!connected[u]) continue;
         ++in.pads;
         down |= st.Gamepad.wButtons;
         in.state.lt |= st.Gamepad.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
@@ -6547,7 +6746,7 @@ void RebuildFindResults(uint8_t* client, uint8_t* mapState) {
             }
 
             std::string rumorLine;
-            if (savedId08 != 0u && g_isLoreRumorMarkerId && g_isLoreRumorMarkerId(savedId08) && LoreRumorFound(client, savedId08) == 0) {
+            if (savedId08 != 0u && g_isLoreRumorMarkerId && IsLoreRumorIdCached(savedId08) && LoreRumorFound(client, savedId08) == 0) {
                 char line[240]{};
                 if (LoreRumorLine(client, savedId08, line, sizeof(line))) rumorLine = line;
             }
@@ -7091,7 +7290,7 @@ bool ShowJournalTargetRowInner(uint8_t* client, uint8_t* mapState, float wx, flo
             bool questish = origHash == 0xafce0c5fu;
             if (!questish && origHash != 0x454e24f2u && savedId08 != 0u) {
                 if (const uint32_t q = GetQuestFilterHashForMarkerId(savedId08, true)) fh = q, questish = true;
-                else if (g_isLoreRumorMarkerId && g_isLoreRumorMarkerId(savedId08) && LoreRumorFound(client, savedId08) != 1)
+                else if (g_isLoreRumorMarkerId && IsLoreRumorIdCached(savedId08) && LoreRumorFound(client, savedId08) != 1)
                     fh = 0x8ba7c122u, questish = true;
             }
             // (a quest's or rumor's counts as nearer: the Journal is about them)
@@ -7545,11 +7744,18 @@ int DrawTreeAreasOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState
         const bool labelOut = OutsideFocusedRegion(static_cast<float>(t.x), static_cast<float>(t.z));
         if (labelOut && g_regionOutsideHide) continue;
         if (t.x < 2700 && t.z > 7900) continue; // the Hollow Halls' corner (halls::InCorner): nothing of the overworld
-        const float cx = originX + t.x * zoom;
+        float cx = originX + t.x * zoom;
         float cy = originY + (mapWorldH - t.z) * zoom;
         if (cx < left || cx > right || cy < top || cy > bottom) continue;
         const char* name = OreName(t.ore);
         const float w = umm_lang::TextWidth(name) * 1.6f + 24.0f, h = 28.0f;
+        // (kept on the map near the world's edge, like the region names: the zoomed-out map is smaller than the screen)
+        {
+            float worldW = *reinterpret_cast<float*>(mapView + 0x38);
+            if (worldW <= 100.0f) worldW = mapWorldH;
+            const float wl = originX, wr = originX + worldW * zoom, textHalf = (w - 24.0f) * 0.5f + 6.0f;
+            if (wr - wl > 2.0f * textHalf) cx = std::max(wl + textHalf, std::min(wr - textHalf, cx));
+        }
         // The 1 px gap keeps float rounding from leaving it overlapping by a hair (that looped forever), and the
         // pass limit is a second guard.
         bool moved = true;
@@ -8113,6 +8319,32 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     g_iconSpreadHover.on = false;
     g_spreadDrawingRing = false;
     if (!widgetRaw || !mapState || !AnyOreEnabled()) return;
+    // (a pass that doesn't draw: the work is left out, the hovered one's name kept, so the name's label is in every pass)
+    static struct {
+        const char* name = nullptr;
+        float x = 0, y = 0, half = 0;
+        uint32_t row = 0;
+        size_t spot = kOreDepositCount; // its height and spot (NoteModHoverPosition), when it has them
+        bool hasWorld = false;          // a spread pin's own spot (drawn off it)
+        float wx = 0.0f, wz = 0.0f;
+        uint64_t tick = 0;
+    } s_hover;
+    if (g_skipDraws) {
+        if (GetTickCount64() - s_hover.tick < 150ULL) {
+            g_hoveredDepositRow = s_hover.row;
+            if (s_hover.name) {
+                NoteModHoverIcon(s_hover.x, s_hover.y);
+                if (s_hover.spot < kOreDepositCount)
+                    NoteModHoverPosition(kOreDeposits[s_hover.spot].x, kOreDeposits[s_hover.spot].topY, kOreDeposits[s_hover.spot].z);
+                if (s_hover.hasWorld) g_modHoverIcon.hasWorld = true, g_modHoverIcon.wx = s_hover.wx, g_modHoverIcon.wz = s_hover.wz;
+                DrawMapHoverTitle(s_hover.x + s_hover.half + 10.0f, s_hover.y, s_hover.name);
+            }
+        }
+        return;
+    }
+    s_hover.name = nullptr;
+    s_hover.spot = kOreDepositCount;
+    UMM_LAP_START;
     uint8_t* mapView = *reinterpret_cast<uint8_t**>(mapState + 8);
     if (!mapView) return;
     const float zoom = *reinterpret_cast<float*>(mapView + 0x10);
@@ -8153,27 +8385,69 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     // The capped pass: the dense rows on screen, nearest the player first when there are more than the cap allows (the
     // creatures alone can be thousands), so what is around you is never the part thinned away; scattered order beyond
     // that, as before.
+    // (one walk of the 64,385 deposits a frame, in the scattered order, only the rows that draw icons; it was four walks
+    // and a sort of every dense one on screen, 4.5 ms a frame on the zoomed-out map with every row on, 2026-11-23)
+    static std::vector<uint32_t> s_scatter;  // i -> deposit, (i * 7919) mod N
+    static std::vector<uint8_t> s_depPass;   // deposit -> 0 the dense resource rows, 1 the point rows, 2 lore notes and bosses
+    if (s_scatter.empty()) {
+        s_scatter.resize(kOreDepositCount);
+        s_depPass.resize(kOreDepositCount);
+        for (size_t i = 0; i < kOreDepositCount; ++i) s_scatter[i] = static_cast<uint32_t>((i * 7919) % kOreDepositCount);
+        for (size_t d = 0; d < kOreDepositCount; ++d)
+            s_depPass[d] = IsResourceCategory(kOreCategory[kOreDeposits[d].ore]) ? 0 : (IsKnowledgeDeposit(d) ? 2 : 1);
+    }
+    bool oreOn[kOreCount];
+    for (size_t o = 0; o < kOreCount; ++o) oreOn[o] = g_oreEnabled[o] && kOreAreaColors[o] == 0 && !CreatureOffWorldMap(o);
+    // the dense rows on screen: (distance squared from you, scattered position); the point rows on screen in the scattered
+    // order, where their icons go (a lore note beside its boss to its side)
+    struct PointDep { uint32_t d; uint8_t pass; float sx, sy; };
     static std::vector<std::pair<float, uint32_t>> closeDeps;
+    static std::vector<PointDep> pointDeps;
     closeDeps.clear();
+    pointDeps.clear();
     float px = 0.0f, pz = 0.0f;
     const bool havePlayer = LocalPlayerXZ(client, px, pz);
     for (size_t i = 0; i < kOreDepositCount; ++i) {
-        const size_t d = (i * 7919) % kOreDepositCount;
+        const size_t d = s_scatter[i];
         const OreDeposit& dep = kOreDeposits[d];
-        if (!g_oreEnabled[dep.ore] || kOreAreaColors[dep.ore] != 0 || !IsResourceCategory(kOreCategory[dep.ore]) || CreatureOffWorldMap(dep.ore)) continue;
-        const float sx = originX + dep.x * zoom, sy = originY + (mapWorldH - dep.z) * zoom;
+        if (!oreOn[dep.ore]) continue;
+        const uint8_t pass = s_depPass[d];
+        const float sx = originX + dep.x * zoom + (pass == 2 ? StackSide(d) * size * 0.7f : 0.0f);
+        const float sy = originY + (mapWorldH - dep.z) * zoom;
         if (sx < left - size || sx > right + size || sy < top - size || sy > bottom + size) continue;
-        const float dx = dep.x - px, dz = dep.z - pz;
-        closeDeps.emplace_back(havePlayer ? dx * dx + dz * dz : 0.0f, static_cast<uint32_t>(d));
+        if (pass == 0) {
+            const float dx = dep.x - px, dz = dep.z - pz;
+            closeDeps.emplace_back(havePlayer ? dx * dx + dz * dz : 0.0f, static_cast<uint32_t>(i));
+        } else {
+            pointDeps.push_back({static_cast<uint32_t>(d), pass, sx, sy});
+        }
     }
-    if (havePlayer && closeDeps.size() > static_cast<size_t>(maxIcons))
-        std::stable_sort(closeDeps.begin(), closeDeps.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    // Nearest first when there are more than the cap: the nearest few (by distance, then the scattered order, as the
+    // stable sort of them all had it) sorted, the rest only if those run out before the cap
+    const auto nearer = [](const std::pair<float, uint32_t>& a, const std::pair<float, uint32_t>& b) {
+        return a.first < b.first || (a.first == b.first && a.second < b.second);
+    };
+    const bool byDistance = havePlayer && closeDeps.size() > static_cast<size_t>(maxIcons);
+    size_t closeSorted = closeDeps.size();
+    if (byDistance) {
+        closeSorted = std::min(closeDeps.size(), static_cast<size_t>(maxIcons) * 4 + 64);
+        std::nth_element(closeDeps.begin(), closeDeps.begin() + closeSorted, closeDeps.end(), nearer);
+        std::sort(closeDeps.begin(), closeDeps.begin() + closeSorted, nearer);
+    }
+    UMM_LAP(PerfDepGather);
     // One icon of these rows at sx, sy: its own rules (fog, done, region, halls), the thinning cells for the dense rows,
     // then drawn and hovered. false: not drawn
     // the cursor on an open ring's disc: the pins under it show but take no hover or click (the user, 2026-11-14)
     bool noHoverUnderRing = false;
     auto drawDeposit = [&](size_t d, int pass, float sx, float sy) -> bool {
         const OreDeposit& dep = kOreDeposits[d];
+        // (its cell already taken: not drawn whatever the rules below say, so they aren't asked; zoomed out most of the
+        // dense rows end here, and the fog, knowledge, region and hall checks took 2 ms a frame for them)
+        if (pass == 0) {
+            const int gx = MapThinCell(dep.x * zoom, left - originX, cell);
+            const int gy = MapThinCell((mapWorldH - dep.z) * zoom, top - originY, cell);
+            if (gx >= 0 && gy >= 0 && gx < gridW && gy < gridH && taken[static_cast<size_t>(gy) * gridW + gx]) return false;
+        }
         const bool unexplored = g_pinRevealMode != PinRevealMode::RevealAll &&
                                 !IsPositionExploredByCharacter(client, dep.x, dep.z);
         if (unexplored && g_pinRevealMode == PinRevealMode::ExploredOnly) return false;
@@ -8232,20 +8506,17 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
     struct SpreadCand { uint32_t d; float sx, sy; };
     static std::vector<SpreadCand> points;
     points.clear();
-    for (size_t d = 0; d < kOreDepositCount; ++d) {
+    for (const PointDep& pd : pointDeps) {
+        const size_t d = pd.d;
         const OreDeposit& dep = kOreDeposits[d];
-        if (!g_oreEnabled[dep.ore] || kOreAreaColors[dep.ore] != 0 || CreatureOffWorldMap(dep.ore) ||
-            IsResourceCategory(kOreCategory[dep.ore]))
-            continue;
-        const float sx = originX + dep.x * zoom + (IsKnowledgeDeposit(d) ? StackSide(d) * size * 0.7f : 0.0f);
-        const float sy = originY + (mapWorldH - dep.z) * zoom;
-        if (sx < left - size || sx > right + size || sy < top + kMapBannerBottom || sy > bottom + size) continue;
+        if (pd.sy < top + kMapBannerBottom) continue;
         if (g_pinRevealMode == PinRevealMode::ExploredOnly && !IsPositionExploredByCharacter(client, dep.x, dep.z)) continue;
         if (KnowledgeDone(d) && KnowledgeGrayed(d) && g_lootedChestMode == 0) continue;
         if ((OutsideFocusedRegion(dep.x, dep.z) && g_regionOutsideHide) || halls::MapHidesAt(dep.x, dep.topY, dep.z, IsKnowledgeDeposit(d)))
             continue;
-        points.push_back({static_cast<uint32_t>(d), sx, sy});
+        points.push_back({static_cast<uint32_t>(d), pd.sx, pd.sy});
     }
+    std::sort(points.begin(), points.end(), [](const SpreadCand& a, const SpreadCand& b) { return a.d < b.d; });
     IconSpread& sp = g_iconSpread;
     const bool menuOpen = *reinterpret_cast<const uint8_t*>(mapState + 0xf8) == 3;
     const uint64_t nowT = GetTickCount64();
@@ -8401,18 +8672,18 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         sp.cardY = std::max(top + kMapBannerBottom + 6.0f, std::min(bottom - 96.0f - sp.cardH, y0 - 20.0f));
     }
     noHoverUnderRing = SpreadBlocksMapInput(); // (the cursor on the card: the pins under it take no hover)
-    for (int pass = 0; pass < 3; ++pass)
-    for (size_t i = 0; i < (pass == 0 ? closeDeps.size() : kOreDepositCount) && (pass > 0 || drawn < maxIcons); ++i) {
-        const size_t d = pass == 0 ? closeDeps[i].second : (i * 7919) % kOreDepositCount;
+    UMM_LAP(PerfDepSpread);
+    for (size_t i = 0; i < closeDeps.size() && drawn < maxIcons; ++i) {
+        if (i == closeSorted) std::sort(closeDeps.begin() + closeSorted, closeDeps.end(), nearer); // (the nearest ran out)
+        const size_t d = s_scatter[closeDeps[i].second];
         const OreDeposit& dep = kOreDeposits[d];
-        if (!g_oreEnabled[dep.ore] || kOreAreaColors[dep.ore] != 0 || CreatureOffWorldMap(dep.ore)) continue;
-        const int depPass = IsResourceCategory(kOreCategory[dep.ore]) ? 0 : (IsKnowledgeDeposit(d) ? 2 : 1);
-        if (depPass != pass) continue;
-        const float sx = originX + dep.x * zoom + (pass == 2 ? StackSide(d) * size * 0.7f : 0.0f);
-        const float sy = originY + (mapWorldH - dep.z) * zoom;
-        if (sx < left - size || sx > right + size || sy < top - size || sy > bottom + size) continue;
-        drawDeposit(d, pass, sx, sy);
+        drawDeposit(d, 0, originX + dep.x * zoom, originY + (mapWorldH - dep.z) * zoom);
     }
+    UMM_LAP(PerfDepPass0);
+    for (int pass = 1; pass < 3; ++pass)
+        for (const PointDep& pd : pointDeps)
+            if (pd.pass == pass) drawDeposit(pd.d, pass, pd.sx, pd.sy);
+    UMM_LAP(PerfDepPoints);
     // (the card is drawn last, over every icon: DrawStackedPinsCard)
     sp.originX = originX, sp.originY = originY, sp.zoom = zoom, sp.worldH = mapWorldH, sp.iconSize = size;
     // Built water (built_water.inl), with the world's wells and barrels under Water Source
@@ -8445,6 +8716,7 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         }
     }
     if (hovered < kOreDepositCount && !g_hoveredDepositRow) g_hoveredDepositRow = OreHash(kOreDeposits[hovered].ore);
+    s_hover.row = g_hoveredDepositRow, s_hover.tick = GetTickCount64();
     // On a Hollow Hall's dungeon map a Return Beacon's numbered badge names it (halls::DrawMapBeacons)
     const bool beaconOnDungeonMap = halls::MapActive() && hovered < kOreDepositCount && kOreDeposits[hovered].ore == kBeaconsFirst;
     if (hoveredName && !beaconOnDungeonMap) {
@@ -8454,6 +8726,9 @@ void DrawOreDepositsOnMap(void* widgetRaw, const float* rootRect, uint8_t* clien
         if (g_iconSpreadHover.on && g_iconSpreadHover.sx == hoveredSx && g_iconSpreadHover.sy == hoveredSy)
             g_modHoverIcon.hasWorld = true, g_modHoverIcon.wx = g_iconSpreadHover.wx, g_modHoverIcon.wz = g_iconSpreadHover.wz;
         DrawMapHoverTitle(hoveredSx + half + 10.0f, hoveredSy, hoveredName);
+        s_hover.name = hoveredName, s_hover.x = hoveredSx, s_hover.y = hoveredSy, s_hover.half = half;
+        if (depositNamed && hovered < kOreDepositCount) s_hover.spot = hovered;
+        s_hover.hasWorld = g_modHoverIcon.hasWorld, s_hover.wx = g_modHoverIcon.wx, s_hover.wz = g_modHoverIcon.wz;
     }
 }
 
@@ -10156,7 +10431,46 @@ void RunDevFind(uint8_t* client, uint8_t* mapState) {
 }
 #endif
 
+// The draw-list key the mod's map pins go in (see its use in the overlay): set while they draw, the overlay's put back
+constexpr uint16_t kMapPinsKey = 0x0a40;
+// (kept in globals while set: a fault caught round the overlay, whose destructors may not run, puts it back,
+// SafeDrawMapKeyOverlayInner)
+struct PinsKeySaved {
+    void* uiCtx = nullptr;
+    void* drawList = nullptr;
+    uint16_t saved = 0, savedDl = 0;
+    bool set = false;
+};
+PinsKeySaved g_pinsKey;
+void RestorePinsKey() {
+    PinsKeySaved& k = g_pinsKey;
+    if (!k.set) return;
+    k.set = false;
+    *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(k.uiCtx) + 0x6ce8) = k.saved;
+    if (k.drawList) *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(k.drawList) + 0x35214) = k.savedDl;
+}
+struct MapPinsKey {
+    explicit MapPinsKey(const uint8_t* widgetRaw) {
+        PinsKeySaved& k = g_pinsKey;
+        k = PinsKeySaved{};
+        k.uiCtx = widgetRaw ? *reinterpret_cast<void* const*>(widgetRaw) : nullptr;
+        if (!k.uiCtx || !g_getUiDrawList) return;
+        k.drawList = g_getUiDrawList(k.uiCtx);
+        k.saved = *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(k.uiCtx) + 0x6ce8);
+        if (k.drawList) k.savedDl = *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(k.drawList) + 0x35214);
+        *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(k.uiCtx) + 0x6ce8) = kMapPinsKey;
+        if (k.drawList) *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(k.drawList) + 0x35214) = kMapPinsKey;
+        k.set = true;
+    }
+    void Restore() { RestorePinsKey(); }
+    ~MapPinsKey() { RestorePinsKey(); }
+};
+
 void DrawMapKeyOverlay(void* mapStateVoid) {
+    UMM_FN_LAP_START;
+    // (every UI pass fills the map layer's queue afresh: the overlay runs first in each pass, then the map layer,
+    // DrawUnderRing; left uncleared, the labels of four passes piled up in it)
+    g_ringQueue.clear();
     g_lastMapState = static_cast<uint8_t*>(mapStateVoid);
     // A generation's first map frame: the game's text input flag an earlier generation left on (its search box typed
     // in at the reload) goes off, or Escape stays dead everywhere
@@ -10187,6 +10501,10 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
     if (g_bridgeZoomSet > 0.0f) {
         if (uint8_t* mv = *reinterpret_cast<uint8_t**>(mapState + 8)) *reinterpret_cast<float*>(mv + 0x10) = g_bridgeZoomSet;
         g_bridgeZoomSet = 0.0f;
+    }
+    if (g_bridgeZoomFit > 0.0f) {
+        FitMapZoom(mapState, g_bridgeZoomFit, g_bridgeZoomFit, 1200.0f, 800.0f);
+        g_bridgeZoomFit = 0.0f;
     }
 #endif
     if (g_bridgeCenterX >= 0.0f) {
@@ -10333,7 +10651,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         }
     }
 
-    UpdateChestLootTracking(client, focused);
+    if (UiDrawPassNow()) UpdateChestLootTracking(client, focused); // (once a frame: the UI pass that draws)
 
     uint32_t allHashes[kTotalCategoryRows]{};
     size_t numHashes = 0;
@@ -10343,7 +10661,18 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         }
     }
     int hashCounts[kTotalCategoryRows]{};
-    SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
+    // (counted in the UI pass that draws; the other passes show the same counts: the sync itself runs before the game
+    // reads its markers in every pass, SafePreSyncWorldMapMarkers)
+    static int s_counts[kTotalCategoryRows]{};
+    static bool s_countsValid = false;
+    const bool drawPassAtHead = UiDrawPassNow();
+    if (drawPassAtHead || !s_countsValid) {
+        SyncSpiresAndCountMarkers(client, mapState, allHashes, numHashes, hashCounts);
+        std::memcpy(s_counts, hashCounts, sizeof(s_counts));
+        s_countsValid = true;
+    } else {
+        std::memcpy(hashCounts, s_counts, sizeof(s_counts));
+    }
 
     auto openFindDialog = [&]() {
         // A dialog made by an older Find copy is left behind (its functions are that copy's)
@@ -10527,19 +10856,33 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         const float rootH = (rootRect[3] > 100.0f) ? rootRect[3] : 1080.0f;
 
         // Draw animated pulse rings on the map for any places selected via Find
+        UMM_FN_LAP(PerfMapHead);
         DrawPulsingMapHighlights(root.raw, rootRect, mapState);
+        UMM_FN_LAP(PerfMapPulses);
 
 
         POINT cursor{};
         RECT clientRect{};
         bool haveCursor = focused && GetCursorPos(&cursor) && ScreenToClient(foreground, &cursor) &&
                           GetClientRect(foreground, &clientRect) && clientRect.right > 0 && clientRect.bottom > 0;
+#ifdef UMM_DEV_BRIDGE
+        // dev (map op "cursor" x,y in the game window's pixels, "off"): the mod's own hover from there, no mouse moved
+        if (g_devCursor[0] >= 0.0f) {
+            HWND gameWnd = g_devCursorHwnd;
+            if (gameWnd && GetClientRect(gameWnd, &clientRect) && clientRect.right > 0 && clientRect.bottom > 0) {
+                cursor.x = static_cast<LONG>(g_devCursor[0]), cursor.y = static_cast<LONG>(g_devCursor[1]);
+                haveCursor = true;
+            }
+        }
+#endif
         float mx = haveCursor ? (rootRect[0] + cursor.x * rootW / static_cast<float>(clientRect.right)) : -1.0f;
         float my = haveCursor ? (rootRect[1] + cursor.y * rootH / static_cast<float>(clientRect.bottom)) : -1.0f;
         // A controller in the Map Key (View): its cursor and A stand in for the mouse's; a mouse click takes over
         const bool padAllowed = focused && !g_findDialogOpen && !g_keySearchFocused && !leftDown &&
                                 *reinterpret_cast<uint32_t*>(mapState + 0xf8) == 0;
+        const int64_t qPadKey = DevQpc();
         const bool padDrives = PadKeyFrame(padAllowed, mx, my, clicked, g_mapKeyScroll);
+        DevPerf(PerfPadRead, qPadKey);
         if (padDrives) {
             haveCursor = true;
             leftDown = clicked;
@@ -10575,6 +10918,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         };
 
         // Forests and deposits share one budget of extra draws a frame (see DrawTreeAreasOnMap)
+        UMM_FN_LAP(PerfMapPad);
         UpdateFocusedRegion(client);
 #ifdef UMM_DEV_BRIDGE
         RunDevFind(client, mapState);
@@ -10584,7 +10928,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         // (KeepDungeonInView: moving the view from here fought the game's own drag and zoom; not used)
         hall_pan::Update(mapState, rootRect); // the game's pan clamp: the hall's box on a dungeon map
         halls::DrawMapPlan(root.raw, rootRect, mapState); // in a Hollow Hall: its floor plan over the empty corner
+        UMM_FN_LAP(PerfMapPrep);
         if (!halls::MapActive()) DrawLevelAreasOnMap(root.raw, rootRect, mapState);
+        UMM_FN_LAP(PerfMapLevelAreas);
         // A marker's menu (Fast Travel / Send Ping / Set as Waypoint) is open: the mod's icons are drawn after the
         // game's, so they stay out of its box (mapState +0xf8 is 3 and +0x542e8 holds the marker while it is open; the
         // menu opens beside the marker, on its right unless that runs off the screen)
@@ -10618,7 +10964,9 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         }
         // The key hints' strip at the bottom: no mod icon over it (the layers' images below are drawn another way)
         g_hintStrip = {true, rootRect[0], rootRect[1] + rootH - 92.0f, rootRect[0] + rootW, rootRect[1] + rootH};
+        UMM_FN_LAP(PerfMapPrep);
         SetLocatorExclusions(client, mapState);
+        UMM_FN_LAP(PerfMapLocators);
         // Find's results: the creature rows it lists stay on the World Map with Hide on World Map (CreatureOffWorldMap)
         if (g_findDialogOpen && g_nearCreaturesHideMap) {
             std::vector<uint8_t> was = GetTickCount64() < g_findShownUntil ? g_findShownOres : std::vector<uint8_t>();
@@ -10639,6 +10987,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         g_hoverTitleWidget = root.raw;
         g_mapCursorIn = haveCursor, g_mapCursor[0] = mx, g_mapCursor[1] = my;
         PublishCursorIcon();
+        UMM_FN_LAP(PerfMapCursor);
 #ifdef UMM_DEV_BRIDGE
         if (g_devNear[0] > 0.0f) { // dev: the markers projected within 60 UI px of a screen point
             float zz = 0, dox = 0, doy = 0, dwh = 0;
@@ -10698,29 +11047,26 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
 #ifdef UMM_DEV_BRIDGE
         RunQuestAt(client);
 #endif
-        {
-            // the hover title's area: the game's to the right of its hovered icon (its name, the region under it), or
-            // the mod's own as drawn last frame
-            const uint64_t now = GetTickCount64();
-            g_titleBox.active = false;
-            g_gameDrawsTitle = false;
-            if (GameIconUnderCursor() && now - g_hoverTitleTick < 150ULL && g_hoverTitleText[0]) {
-                g_gameDrawsTitle = !GameTitleReplaced(g_hoveredGameMarker);
-                const float half = g_hoveredIcon[2] * 0.6f;
-                const float w = umm_lang::TextWidth(g_hoverTitleText) * (40.0f / 15.0f) * 1.45f + 16.0f;
-                g_titleBox = {true, g_hoveredIcon[0] + half, g_hoveredIcon[1] - 30.0f,
-                              g_hoveredIcon[0] + half + std::max(w, 260.0f), g_hoveredIcon[1] + 58.0f};
-            } else if (now - g_modTitleBoxTick < 150ULL) {
-                g_titleBox = g_modTitleBox;
-            }
-        }
         g_legendBox = {!halls::MapActive(), rootRect[0] + 30.0f, rootRect[1] + 112.0f, rootRect[0] + 340.0f, rootRect[1] + 232.0f};
+        // The mod's map drawing (borders, areas, deposits, chests, portals, Find's pins) sorts under the game's hover card:
+        // the overlay's layer (kLayerOrder 0x16, draw key 0x1680) is over the card's ("CrosshairWindow", order 10, key
+        // 0x0a80: FUN_1411bf610 keys a layer (order << 8) | 0x80, the draw list sorts by it), so every mod pin lay over
+        // a name the game drew itself (Night Sanctum, Flame Shrine, a quest's, 2026-11-23). Key 0x0a40: under the card,
+        // over every lower layer as before. The Map Key, the titles the mod draws and its cards keep the overlay's key.
+        MapPinsKey pinsKey(root.raw);
+        const bool drawPass = UiDrawPass(root.raw);
+        SkipDrawsScope skipDraws(!drawPass);
+        ++g_uiPassSerial;
         // The overworld's layers stay off the dungeon map
         const bool overworldLayers = !halls::MapActive();
+        UMM_FN_LAP(PerfMapPrep);
         if (overworldLayers) DrawRegionBorderOnMap(root.raw, rootRect, mapState);
         if (overworldLayers) DrawLevelBordersOnMap(root.raw, rootRect, mapState);
+        UMM_FN_LAP(PerfMapBorders);
         if (overworldLayers) ground::DrawOnMap(root.raw, rootRect, mapState); // under the forests
+        UMM_FN_LAP(PerfMapGround);
         const int treeDraws = overworldLayers ? DrawTreeAreasOnMap(root.raw, rootRect, mapState) : 0;
+        UMM_FN_LAP(PerfMapTrees);
         // Roads and Surface Water: in the map's own layer (DrawUnderRing, next frame) when it's up, under every pin, the
         // key hints and a marker's menu; drawn here over the map they covered them
         if (overworldLayers && MapLayerReady()) {
@@ -10730,56 +11076,27 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         g_toMapLayer = true; // the mod's map words and the check marks on the game's markers: under the game's markers
         if (overworldLayers && g_regionNames) DrawRegionNamesOnMap(root.raw, rootRect, mapState);
         g_toMapLayer = false;
+        UMM_FN_LAP(PerfMapRoadsNames);
         DrawOreDepositsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my,
                              std::max(500, std::min(1500, 2000 - treeDraws)));
         // (the check marks stay over their marker: in the map layer the game's marker covered them; only where the ring,
         // the hints, the legend or a menu are over them do they go under, UnderRing)
         g_markerChecks = true;
+        UMM_FN_LAP(PerfMapDeposits);
         DrawVisitedSanctumsOnMap(root.raw, rootRect, client, mapState);
         DrawRefilledChestsOnMap(root.raw, rootRect, client, mapState);
+        UMM_FN_LAP(PerfMapChecks);
         g_markerChecks = false;
         if ((g_woodChestEnabled || halls::MapActive()) && ChestsOnThisMap()) DrawWoodChestsOnMap(root.raw, rootRect, client, mapState, haveCursor, mx, my);
+        UMM_FN_LAP(PerfMapWood);
         DrawGraveHeightsOnMap(root.raw, rootRect, client, mapState);
         if (g_townPortalsEnabled) DrawTownPortalsOnMap(root.raw, rootRect, mapState, haveCursor, mx, my); // Town Portal's open portals
         DrawFindPinsOnMap(root.raw, rootRect, mapState); // Find's search results
+        UMM_FN_LAP(PerfMapGravesPortalsFind);
+        pinsKey.Restore();
         // a quest's place pin under the cursor: the quest's name on the tooltip panel (its card blanked: HideRumorsInner)
         if (g_questTitleFor && g_questTitleFor == g_hoveredGameMarker && GetTickCount64() - g_questTitleTick < 150ULL && g_questTitle[0])
             DrawMapHoverTitle(g_hoveredIcon[0] + g_hoveredIcon[2] * 0.65f + 26.0f, g_hoveredIcon[1], g_questTitle, true);
-        // Any quest / rumor pin hovered (a real one or a place drawn as one): the game's card hangs off its search circle
-        // (radius at +0x28 / +0x2c in metres), past its right edge, from about the spot's height down two lines; no mod
-        // pins in that area while it shows (the user, 2026-11-14)
-        if (g_hoveredGameMarker && GetTickCount64() - g_hoveredGameMarkerTick < 150ULL &&
-            *reinterpret_cast<const uint32_t*>(g_hoveredGameMarker + 0x30) == 0xafce0c5fu) {
-            const uint8_t* qm = g_hoveredGameMarker;
-            float zq = 0.0f, oxq = 0.0f, oyq = 0.0f, whq = 0.0f;
-            const float r = std::max(*reinterpret_cast<const float*>(qm + 0x28), *reinterpret_cast<const float*>(qm + 0x2c));
-            if (r > 0.5f && r < 5000.0f && LevelMapView(mapState, zq, oxq, oyq, whq) && zq > 0.0f) {
-                const float sx = oxq + static_cast<float>(*reinterpret_cast<const int32_t*>(qm + 0x14)) * zq;
-                const float sy = oyq + (whq - static_cast<float>(*reinterpret_cast<const int32_t*>(qm + 0x24))) * zq;
-                const float cardX = sx + r * zq + 17.0f, titleY = sy - 46.0f + 0.36f * r * zq;
-                // (its first line is the rumor's or quest's, often longer than the pin's own name: the longer of the two)
-                char cardLine[240]{};
-                uint32_t qid = IsSlotSaved(qm) ? *reinterpret_cast<const uint32_t*>(qm + 0x4c) : 0u;
-                if (!qid) qid = *reinterpret_cast<const uint32_t*>(qm + 0x08);
-                if (qid) {
-                    const uint8_t* quest = g_getQuestByMarkerId ? static_cast<const uint8_t*>(g_getQuestByMarkerId(qid)) : nullptr;
-                    if (!(quest && ReadLocaText(*reinterpret_cast<const uint32_t*>(quest + 4), cardLine, sizeof(cardLine))))
-                        LoreRumorLine(GetUiClient(), qid, cardLine, sizeof(cardLine));
-                }
-                const float titleW = std::max({umm_lang::TextWidth(g_hoverTitleText) * 1.9f, umm_lang::TextWidth(cardLine) * 1.9f, 360.0f});
-                // (from above the spot to below the card's second line: seen 21 above to 27 under the spot for its name, the
-                // line ~40 under that)
-                g_gameCardBox = {true, cardX - 12.0f, std::min(titleY, sy) - 45.0f, cardX + titleW + 40.0f, std::max(titleY, sy) + 100.0f};
-                g_gameCardBoxTick = GetTickCount64();
-#ifdef UMM_DEV_BRIDGE
-                static uint64_t lgA = 0;
-                if (g_log && GetTickCount64() - lgA > 700)
-                    lgA = GetTickCount64(), g_log("Map: card area %.0f,%.0f - %.0f,%.0f (pin %p spot %.0f,%.0f r %.0f px, title '%s') kept out %d",
-                                                  g_gameCardBox.x0, g_gameCardBox.y0, g_gameCardBox.x1, g_gameCardBox.y1, qm, sx, sy, r * zq,
-                                                  g_hoverTitleText, g_cardAreaDropped), g_cardAreaDropped = 0;
-#endif
-            }
-        }
         // A place the mod shows as itself that has an unread rumor (the Sunken Ancient City, which a quest also names:
         // its "?" drew nothing): the rumor's line under its name, as the game's own card has it (2026-11-14)
         if (g_hoveredGameMarker && GetTickCount64() - g_hoveredGameMarkerTick < 150ULL && !g_drawExclusion.active &&
@@ -10897,6 +11214,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
         if (overworldLayers) DrawLevelBadgesOnMap(root.raw, rootRect, mapState); // (over the mod's icons)
         DrawStackedPinsCard(root.raw, mapState); // (over every icon)
         FlushMapHoverTitles(); // over every icon
+        UMM_FN_LAP(PerfMapTail);
         g_drawExclusion.active = false; // the Map Key and the rest draw as usual
         // In a Hollow Hall: a button between the dungeon's map and the overworld's (centred on the hall's entrance)
         if (halls::g_mapDungeon >= 0) {
@@ -12060,6 +12378,7 @@ void DrawMapKeyOverlay(void* mapStateVoid) {
             g_endWidget(anchor.raw);
         }
 
+        UMM_FN_LAP(PerfMapPanel);
         g_endWidget(root.raw);
     }
     g_endLayer(layer);
@@ -12736,6 +13055,12 @@ void SafeDrawMapKeyOverlayInner(void* mapState) {
     __try {
         DrawMapKeyOverlay(mapState);
     } __except (info = GetExceptionInformation(), EXCEPTION_EXECUTE_HANDLER) {
+        g_skipDraws = false; // (its scope's destructor may not have run)
+        __try {
+            RestorePinsKey(); // (nor the pins' draw key's)
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            g_pinsKey.set = false;
+        }
         if (info && info->ExceptionRecord)
             LogOverlayFault(info->ExceptionRecord->ExceptionCode, info->ExceptionRecord->ExceptionAddress);
     }
@@ -12763,6 +13088,18 @@ void ReplayLabel(void* widget, const RingDraw& d) {
 }
 // The icons held back from over the ring (UnderRing), drawn into the map layer's widget at the desk's sort key
 void DrawUnderRing(void* widget) {
+    // (each UI pass runs the overlay, then this map layer (logged 2026-11-23: O1 L1 O1 L1 O1 L1 O4 L4): the overlay's
+    // drawing pass fills the queue and this pass of the same frame draws it; a mode 1 pass drawing it threw it away)
+    if (!UiDrawPass(widget)) {
+        g_mapLayerTick = GetTickCount64();
+        // (its labels in every pass, so each pass's UI tree is the same; the rest only where it is drawn)
+        g_ringReplay = g_ringReplayFlag = true;
+        for (const RingDraw& d : g_ringQueue)
+            if (d.kind == 2) ReplayLabel(widget, d);
+        g_ringReplay = g_ringReplayFlag = false;
+        return;
+    }
+    ++g_uiPassSerial; // (the map layer's pass: its own image lookups)
     g_ringDrawing.swap(g_ringQueue);
     g_ringQueue.clear();
     g_ringReplay = g_ringReplayFlag = true;
@@ -12780,7 +13117,12 @@ void DrawUnderRing(void* widget) {
     g_ringDrawing.clear();
 }
 
+void SafeDeskDrawInner(void* mapState);
 void SafeDeskDraw(void* mapState) {
+    UMM_PERF(PerfDesk);
+    SafeDeskDrawInner(mapState);
+}
+void SafeDeskDrawInner(void* mapState) {
     __try {
         desk::DrawUnder(static_cast<uint8_t*>(mapState), g_overlayRootRect);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -13862,28 +14204,25 @@ float MapArtAxis(float v, const uint16_t* zones, int zoneCount, float extraPerZo
     return out;
 }
 
-void DrawArtSprite(void* widgetRaw, const MinimapArtSprite& sprite, float originX, float originY, float scale,
-                   float extraPerZoneX = 0.0f, float extraPerZoneY = 0.0f) {
-    // Scaled sprites get a hair of overlap so neighbouring rects never leave a seam.
-    const float pad = (scale == 1.0f) ? 0.0f : 0.12f;
+// The art's rects in art units from its origin (x, y, w, h, 0xAABBGGRR colour): a sprite with its stretch zones grown
+// by extraPerZoneX / Y, or one zone strip of the design-size frame. DrawArtSprite / DrawArtZoneStrip draw them one solid
+// rect each; ArtImage bakes the same rects into images.
+template <class F>
+void EmitArtSprite(const MinimapArtSprite& sprite, float extraPerZoneX, float extraPerZoneY, F&& emit) {
     for (uint32_t i = 0; i < sprite.count; ++i) {
         const MinimapArtRect& r = sprite.rects[i];
         const float x0 = MapArtAxis(r.x, sprite.zonesX, sprite.nZonesX, extraPerZoneX);
         const float x1 = MapArtAxis(static_cast<float>(r.x + r.w), sprite.zonesX, sprite.nZonesX, extraPerZoneX);
         const float y0 = MapArtAxis(r.y, sprite.zonesY, sprite.nZonesY, extraPerZoneY);
         const float y1 = MapArtAxis(static_cast<float>(r.y + r.h), sprite.zonesY, sprite.nZonesY, extraPerZoneY);
-        DrawSolidRectAbs(widgetRaw, originX + x0 * scale, originY + y0 * scale, (x1 - x0) * scale + pad,
-                         (y1 - y0) * scale + pad, r.color | 0xFF000000u, static_cast<float>(r.color >> 24) / 255.0f);
+        emit(x0, y0, x1 - x0, y1 - y0, r.color);
     }
 }
-
 // Fills stretch zone `zone` of the design-size frame with its strip of aged rail, cut to the
 // zone's stretched length (the frame sprite leaves its zones empty so the grime never smears).
-// scale: the frame drawn smaller than its design size (no stretch then), like DrawArtSprite's.
-void DrawArtZoneStrip(void* widgetRaw, const MinimapArtSprite& frame, const MinimapArtSprite& strip, bool alongX,
-                      int zone, float frameX, float frameY, float extraPerZoneX, float extraPerZoneY,
-                      float scale = 1.0f) {
-    const float pad = (scale == 1.0f) ? 0.0f : 0.12f;
+template <class F>
+void EmitArtZoneStrip(const MinimapArtSprite& frame, const MinimapArtSprite& strip, bool alongX, int zone,
+                      float extraPerZoneX, float extraPerZoneY, F&& emit) {
     const uint16_t* zones = alongX ? frame.zonesX : frame.zonesY;
     const int zoneCount = alongX ? frame.nZonesX : frame.nZonesY;
     const float extra = alongX ? extraPerZoneX : extraPerZoneY;
@@ -13901,11 +14240,192 @@ void DrawArtZoneStrip(void* widgetRaw, const MinimapArtSprite& frame, const Mini
         const float m0 = MapArtAxis(b0, alongX ? frame.zonesY : frame.zonesX, alongX ? frame.nZonesY : frame.nZonesX,
                                     alongX ? extraPerZoneY : extraPerZoneX);
         const float m1 = m0 + (b1 - b0);
-        const float x = frameX + (alongX ? a0 + shift : m0) * scale;
-        const float y = frameY + (alongX ? m0 : a0 + shift) * scale;
-        DrawSolidRectAbs(widgetRaw, x, y, (alongX ? a1 - a0 : m1 - m0) * scale + pad,
-                         (alongX ? m1 - m0 : a1 - a0) * scale + pad, r.color | 0xFF000000u,
-                         static_cast<float>(r.color >> 24) / 255.0f);
+        const float x = alongX ? a0 + shift : m0;
+        const float y = alongX ? m0 : a0 + shift;
+        emit(x, y, alongX ? a1 - a0 : m1 - m0, alongX ? m1 - m0 : a1 - a0, r.color);
+    }
+}
+
+void DrawArtSprite(void* widgetRaw, const MinimapArtSprite& sprite, float originX, float originY, float scale,
+                   float extraPerZoneX = 0.0f, float extraPerZoneY = 0.0f) {
+    // Scaled sprites get a hair of overlap so neighbouring rects never leave a seam.
+    const float pad = (scale == 1.0f) ? 0.0f : 0.12f;
+    EmitArtSprite(sprite, extraPerZoneX, extraPerZoneY, [&](float x, float y, float w, float h, uint32_t c) {
+        DrawSolidRectAbs(widgetRaw, originX + x * scale, originY + y * scale, w * scale + pad, h * scale + pad, c | 0xFF000000u,
+                         static_cast<float>(c >> 24) / 255.0f);
+    });
+}
+
+// scale: the frame drawn smaller than its design size (no stretch then), like DrawArtSprite's.
+void DrawArtZoneStrip(void* widgetRaw, const MinimapArtSprite& frame, const MinimapArtSprite& strip, bool alongX,
+                      int zone, float frameX, float frameY, float extraPerZoneX, float extraPerZoneY,
+                      float scale = 1.0f) {
+    const float pad = (scale == 1.0f) ? 0.0f : 0.12f;
+    EmitArtZoneStrip(frame, strip, alongX, zone, extraPerZoneX, extraPerZoneY, [&](float x, float y, float w, float h, uint32_t c) {
+        DrawSolidRectAbs(widgetRaw, frameX + x * scale, frameY + y * scale, w * scale + pad, h * scale + pad, c | 0xFF000000u,
+                         static_cast<float>(c >> 24) / 255.0f);
+    });
+}
+
+// The minimap's art baked into images: the frame, its rails and the tray were 4,000 to 24,000 one-pixel rects drawn
+// every frame, the minimap's biggest cost (0.45 ms of its 0.67 with only the tray, 2026-11-23). Built once for a size,
+// cut into the GPU pool's 256 px images (hd_pool) and drawn as a few textured quads; until those are on the GPU (the
+// first frames, or the pool off) the rects are drawn as before.
+struct ArtImage {
+    uint64_t sig = 0;
+    float minX = 0.0f, minY = 0.0f;
+    int tilesX = 0, tilesY = 0;
+    std::vector<std::vector<uint32_t>> tiles;
+    bool shown = false; // (dev log: drawn as images once)
+};
+uint64_t ArtSig(uint64_t kind, float a, float b) {
+    uint64_t h = 0xcbf29ce484222325ULL ^ kind;
+    const int32_t qa = static_cast<int32_t>(std::lround(a * 4.0f)), qb = static_cast<int32_t>(std::lround(b * 4.0f));
+    h = (h ^ static_cast<uint32_t>(qa)) * 0x100000001b3ULL;
+    h = (h ^ static_cast<uint32_t>(qb)) * 0x100000001b3ULL;
+    return (h & ~0xffULL) | 0x80ULL; // (low byte: the tile, from 1)
+}
+// emitAll(cb) emits every rect of the piece, in drawing order
+template <class EmitAll>
+void BuildArtImage(ArtImage& img, uint64_t sig, EmitAll&& emitAll) {
+    if (img.sig == sig) return;
+    float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+    emitAll([&](float x, float y, float w, float h, uint32_t) {
+        x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x + w), y1 = std::max(y1, y + h);
+    });
+    img = ArtImage{};
+    img.sig = sig;
+    if (!(x1 > x0 && y1 > y0)) return;
+    img.minX = std::floor(x0), img.minY = std::floor(y0);
+    const int w = static_cast<int>(std::ceil(x1 - img.minX)), h = static_cast<int>(std::ceil(y1 - img.minY));
+    constexpr int kT = static_cast<int>(hdpool::kPixels);
+    img.tilesX = (w + kT - 1) / kT, img.tilesY = (h + kT - 1) / kT;
+    if (img.tilesX * img.tilesY > 9) return; // (over 768 px: left to the rects)
+    img.tiles.assign(static_cast<size_t>(img.tilesX * img.tilesY), std::vector<uint32_t>(static_cast<size_t>(kT) * kT, 0u));
+    // each rect fills the pixels whose centres it holds, over what is there (straight alpha, as the UI blends them)
+    emitAll([&](float x, float y, float rw, float rh, uint32_t c) {
+        const int ix0 = static_cast<int>(std::ceil(x - img.minX - 0.5f)), ix1 = static_cast<int>(std::ceil(x + rw - img.minX - 0.5f));
+        const int iy0 = static_cast<int>(std::ceil(y - img.minY - 0.5f)), iy1 = static_cast<int>(std::ceil(y + rh - img.minY - 0.5f));
+        const float sa = static_cast<float>(c >> 24) / 255.0f;
+        const float sc[3] = {static_cast<float>(c & 0xffu), static_cast<float>((c >> 8) & 0xffu), static_cast<float>((c >> 16) & 0xffu)};
+        for (int py = std::max(0, iy0); py < std::min(h, iy1); ++py)
+            for (int px = std::max(0, ix0); px < std::min(w, ix1); ++px) {
+                uint32_t& d = img.tiles[static_cast<size_t>((py / kT) * img.tilesX + px / kT)][static_cast<size_t>((py % kT) * kT + px % kT)];
+                const float da = static_cast<float>(d >> 24) / 255.0f, oa = sa + da * (1.0f - sa);
+                if (oa <= 0.0f) continue;
+                uint32_t out = static_cast<uint32_t>(std::lround(oa * 255.0f)) << 24;
+                for (int k = 0; k < 3; ++k) {
+                    const float dc = static_cast<float>((d >> (8 * k)) & 0xffu);
+                    out |= (static_cast<uint32_t>(std::lround((sc[k] * sa + dc * da * (1.0f - sa)) / oa)) & 0xffu) << (8 * k);
+                }
+                d = out;
+            }
+    });
+}
+// true: drawn as images; false: not ready, the caller draws the rects
+bool g_devArtRects = false; // dev (map op "artrects" on): the art drawn as rects, to compare
+extern bool g_minimapDraggingResize;
+bool DrawArtImage(void* widgetRaw, ArtImage& img, float originX, float originY, float scale, const char* what) {
+    if (g_skipDraws) return true; // (a UI pass that doesn't draw: nothing, not the rects either)
+    if (g_devArtRects) return false;
+    if (img.tiles.empty() || !g_drawImage || !hdpool::Available()) return false;
+    void* registry = hdpool::Registry(widgetRaw); // (an image is only handed to the registry it was registered in)
+    if (!registry) return false;
+    const uint64_t regKey = (static_cast<uint64_t>(reinterpret_cast<uintptr_t>(registry)) >> 4) << 8;
+    uint32_t ids[9]{};
+    bool all = true;
+    for (size_t t = 0; t < img.tiles.size(); ++t) {
+        ids[t] = hdpool::Request(widgetRaw, img.tiles[t].data(), ((img.sig ^ regKey) & ~0xffULL) | (t + 1), 6);
+        all = all && ids[t];
+    }
+    if (!all) return false;
+    constexpr float kT = static_cast<float>(hdpool::kPixels);
+    const uint64_t white = MakePackedColor(0xffffffffu, 1.0f);
+    for (int ty = 0; ty < img.tilesY; ++ty)
+        for (int tx = 0; tx < img.tilesX; ++tx) {
+            const float rect[4] = {originX + (img.minX + tx * kT) * scale, originY + (img.minY + ty * kT) * scale, kT * scale, kT * scale};
+            g_drawImage(widgetRaw, rect, &ids[ty * img.tilesX + tx], &white);
+        }
+#ifdef UMM_DEV_BRIDGE
+    if (!img.shown && g_log) g_log("Minimap art: %s drawn as %d image(s)", what, img.tilesX * img.tilesY);
+#endif
+    (void)what;
+    img.shown = true;
+    return true;
+}
+ArtImage g_trayArt, g_frameArt, g_bucketArt;
+// The Boss row's icon (kBossIconRuns, 220 runs: as many rects per boss on the map, every frame) baked once, 4x with hard
+// pixel edges, into the corner of one pool image; tinted through the image's colour as the runs were (MultiplyColor)
+bool DrawBossIconImage(void* widget, float x, float y, float w, float h, uint32_t rgba, float alpha, float brightness) {
+    constexpr int kUp = 4, kSide = kBossIconSize * kUp;
+    static std::vector<uint32_t> px;
+    if (px.empty()) {
+        constexpr int kT = static_cast<int>(hdpool::kPixels);
+        px.assign(static_cast<size_t>(kT) * kT, 0u);
+        for (const PixelRun& r : kBossIconRuns)
+            for (int yy = r.y * kUp; yy < (r.y + 1) * kUp; ++yy)
+                for (int xx = r.x * kUp; xx < (r.x + r.w) * kUp; ++xx) px[static_cast<size_t>(yy) * kT + xx] = r.color;
+    }
+    if (!g_drawImageSubUv || !hdpool::Available()) return false;
+    // (one image per UI registry: the pool hands an image only to the registry it was registered in, and the icon is drawn
+    // in the overlay and in the map's own layer)
+    void* registry = hdpool::Registry(widget);
+    if (!registry) return false;
+    const uint64_t key = 0xb055000000000000ULL ^ ((static_cast<uint64_t>(reinterpret_cast<uintptr_t>(registry)) >> 4) << 8) ^ 0x11ULL;
+    const uint32_t id = hdpool::Request(widget, px.data(), key, 7);
+    if (!id) return false;
+    const float rect[4] = {x, y, w, h};
+    const float uv = static_cast<float>(kSide) / static_cast<float>(hdpool::kPixels);
+    g_drawImageSubUv(widget, rect, id, PackXY(0.0f, 0.0f), PackXY(uv, uv), MakePackedColor(rgba, alpha, brightness));
+    return true;
+}
+void DrawTrayArt(void* widgetRaw, float originX, float originY, float scale, float extraX) {
+    if (g_skipDraws) return; // (a UI pass that doesn't draw: no bake, no draw)
+    // (being resized: a new size each frame, so the rects until it is let go)
+    if (g_minimapDraggingResize) return DrawArtSprite(widgetRaw, kArtTray, originX, originY, scale, extraX);
+    BuildArtImage(g_trayArt, ArtSig(0x7472617900000000ULL, extraX, 0.0f),
+                  [&](auto&& cb) { EmitArtSprite(kArtTray, extraX, 0.0f, cb); });
+    if (!DrawArtImage(widgetRaw, g_trayArt, originX, originY, scale, "tray")) DrawArtSprite(widgetRaw, kArtTray, originX, originY, scale, extraX);
+}
+// the design-size frame stretched by grow on each axis, its rails' strips in its zones
+void DrawOrnateFrameArt(void* widgetRaw, float frameX, float frameY, float grow) {
+    if (g_skipDraws) return; // (a UI pass that doesn't draw: no bake, no draw)
+    auto emitAll = [&](auto&& cb) {
+        EmitArtSprite(kArtFrame370, grow, grow, cb);
+        for (int z = 0; z < kArtFrame370.nZonesX; ++z) EmitArtZoneStrip(kArtFrame370, *kArtFrameStripsX[z], true, z, grow, grow, cb);
+        for (int z = 0; z < kArtFrame370.nZonesY; ++z) EmitArtZoneStrip(kArtFrame370, *kArtFrameStripsY[z], false, z, grow, grow, cb);
+    };
+    if (!g_minimapDraggingResize) { // (being resized: the rects until it is let go)
+        BuildArtImage(g_frameArt, ArtSig(0x6672616d00000000ULL, grow, 0.0f), emitAll);
+        if (DrawArtImage(widgetRaw, g_frameArt, frameX, frameY, 1.0f, "frame")) return;
+    }
+    DrawArtSprite(widgetRaw, kArtFrame370, frameX, frameY, 1.0f, grow, grow);
+    for (int z = 0; z < kArtFrame370.nZonesX; ++z)
+        DrawArtZoneStrip(widgetRaw, kArtFrame370, *kArtFrameStripsX[z], true, z, frameX, frameY, grow, grow);
+    for (int z = 0; z < kArtFrame370.nZonesY; ++z)
+        DrawArtZoneStrip(widgetRaw, kArtFrame370, *kArtFrameStripsY[z], false, z, frameX, frameY, grow, grow);
+}
+// a pre-rendered smaller frame, scaled to the size (the design-size one with its strips when it is the bucket)
+void DrawBucketFrameArt(void* widgetRaw, const MinimapArtSprite& bucket, float frameX, float frameY, float scale) {
+    if (g_skipDraws) return; // (a UI pass that doesn't draw: no bake, no draw)
+    const bool design = &bucket == &kArtFrame370;
+    auto emitAll = [&](auto&& cb) {
+        EmitArtSprite(bucket, 0.0f, 0.0f, cb);
+        if (design) {
+            for (int z = 0; z < kArtFrame370.nZonesX; ++z) EmitArtZoneStrip(kArtFrame370, *kArtFrameStripsX[z], true, z, 0.0f, 0.0f, cb);
+            for (int z = 0; z < kArtFrame370.nZonesY; ++z) EmitArtZoneStrip(kArtFrame370, *kArtFrameStripsY[z], false, z, 0.0f, 0.0f, cb);
+        }
+    };
+    if (!g_minimapDraggingResize) { // (being resized: the rects until it is let go)
+        BuildArtImage(g_bucketArt, ArtSig(0x6275636b00000000ULL ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&bucket)), 0.0f, 0.0f), emitAll);
+        if (DrawArtImage(widgetRaw, g_bucketArt, frameX, frameY, scale, "frame (scaled)")) return;
+    }
+    DrawArtSprite(widgetRaw, bucket, frameX, frameY, scale);
+    if (design) {
+        for (int z = 0; z < kArtFrame370.nZonesX; ++z)
+            DrawArtZoneStrip(widgetRaw, kArtFrame370, *kArtFrameStripsX[z], true, z, frameX, frameY, 0.0f, 0.0f, scale);
+        for (int z = 0; z < kArtFrame370.nZonesY; ++z)
+            DrawArtZoneStrip(widgetRaw, kArtFrame370, *kArtFrameStripsY[z], false, z, frameX, frameY, 0.0f, 0.0f, scale);
     }
 }
 
@@ -14381,7 +14901,35 @@ void DrawHudSettingsCardNow(void* widgetRaw, float x, float y, float mouseX, flo
                         padDrives ? pclick : leftPressed, g_minimapSettingsOpen);
     g_settingsOnHud = false;
 }
+// The deposits within reach of (x, z) on both axes (a square), in ascending index: a grid of 64 m cells built once
+void NearDeposits(float x, float z, float reach, std::vector<uint32_t>& out) {
+    constexpr float kCell = 64.0f;
+    constexpr int kCells = 168; // (10,752 m: the world and a little past it)
+    static std::vector<uint32_t> start, items;
+    auto cellOf = [](float v) { return std::max(0, std::min(kCells - 1, static_cast<int>(std::floor(v / kCell)))); };
+    if (start.empty()) {
+        std::vector<uint32_t> counts(static_cast<size_t>(kCells) * kCells + 1, 0u);
+        for (size_t d = 0; d < kOreDepositCount; ++d)
+            ++counts[static_cast<size_t>(cellOf(static_cast<float>(kOreDeposits[d].z))) * kCells + cellOf(static_cast<float>(kOreDeposits[d].x)) + 1];
+        for (size_t c = 1; c < counts.size(); ++c) counts[c] += counts[c - 1];
+        start = counts;
+        items.assign(kOreDepositCount, 0u);
+        for (size_t d = 0; d < kOreDepositCount; ++d) // (ascending d within each cell)
+            items[counts[static_cast<size_t>(cellOf(static_cast<float>(kOreDeposits[d].z))) * kCells + cellOf(static_cast<float>(kOreDeposits[d].x))]++] =
+                static_cast<uint32_t>(d);
+    }
+    out.clear();
+    const int x0 = cellOf(x - reach), x1 = cellOf(x + reach), z0 = cellOf(z - reach), z1 = cellOf(z + reach);
+    for (int cz = z0; cz <= z1; ++cz)
+        for (int cx = x0; cx <= x1; ++cx) {
+            const size_t c = static_cast<size_t>(cz) * kCells + cx;
+            out.insert(out.end(), items.begin() + start[c], items.begin() + start[c + 1]);
+        }
+    std::sort(out.begin(), out.end());
+}
+
 void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, uint8_t screen, float playerX, float playerZ, Widget& anchor) {
+    UMM_FN_LAP_START;
     EndIconSpreadIfStale(); // (the map closed with pins spread: the game's markers back on their spots)
     // OpenSettings ([Keys]): the Settings card opens or closes, as the minimap's cog does (not while typing)
     {
@@ -14689,6 +15237,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
 
         if (g_minimapSettingsOpen) {
             DrawHudSettingsCard(anchor.raw, mmSettingsX, mmSettingsY, mouseX, mouseY, cursorVisible, leftPressed);
+    UMM_FN_LAP(PerfMmTray);
         }
         return;
     }
@@ -14840,7 +15389,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         g_namedWidget(mmCanvas.raw, &kMmCanvasName);
         g_setSize(mmCanvas.Handle(), 0);
         g_endWidget(mmCanvas.raw);
-        DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * UT, trayY - 262.0f * UT, TS, (trayW - trayBaseW) / TS);
+        DrawTrayArt(anchor.raw, trayX - 40.5f * UT, trayY - 262.0f * UT, TS, (trayW - trayBaseW) / TS);
     } else {
         // ------------------------------------------------------------------------
         // 1. Draw Inner Map Viewport Background & Optional Terrain + Shroud + Fog
@@ -14854,6 +15403,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         Widget mmCanvas{};
         g_namedWidget(mmCanvas.raw, &kMmCanvasName);
         g_setSize(mmCanvas.Handle(), 0);
+        UMM_FN_LAP(PerfMmPre);
         UMM_LAP_START;
         // Facing Up: drawn north up over the square round the turned view, then turned (MmTurnWindow)
         const float turnHalf = (MmTurnDebug() & 4) ? std::max(vw, vh) * 0.5f : std::sqrt(vw * vw + vh * vh) * 0.5f + 2.0f;
@@ -14927,8 +15477,9 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
 
         float graveY = 0.0f;
         const bool haveGraveY = LocalPlayerY(client, graveY);
-        // 2a. Non-chest markers from arr0..arr3 (read-only so arrays never flicker!)
-        for (size_t a = 0; a < 4; ++a) {
+        // 2a. Non-chest markers from arr0..arr3 (read-only so arrays never flicker!) (only in the UI pass that draws:
+        // they are only drawn)
+        for (size_t a = 0; a < 4 && !g_skipDraws; ++a) {
             uint8_t* base = *reinterpret_cast<uint8_t**>(client + kMarkerArrays[a]);
             uint64_t count = *reinterpret_cast<uint64_t*>(client + kMarkerArrays[a] + 8);
             if (!base || count == 0 || count > 10000) continue;
@@ -14989,7 +15540,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 const bool rumorHere = origHash != 0xafce0c5fu && origHash != 0x454e24f2u && placeQuestHash == 0u &&
                                        !hideClearedOnBigMap && GameShowsMarker(m[0x35]) &&
                                        IsFilterEnabled(filterEntries, filterCount, 0x8ba7c122u) && g_isLoreRumorMarkerId &&
-                                       savedId08 != 0u && g_isLoreRumorMarkerId(savedId08) && LoreRumorFound(client, savedId08) != 1;
+                                       savedId08 != 0u && IsLoreRumorIdCached(savedId08) && LoreRumorFound(client, savedId08) != 1;
                 // Inside a vault or spire: no fast travel point or spire marker (the spire's top one sits on its one-way
                 // teleport pad, which the dungeon view shows; 2026-11-09)
                 if (mmInVault && (origHash == 0x1095684eu || origHash == kLockedFastTravelTypeHash || origHash == 0xa17072beu ||
@@ -15093,8 +15644,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         }
 
         UMM_LAP(PerfMmMarkers);
-        // 2b. Gold, Silver & Wooden Chests directly from kChestSpawns (100% flicker-free!)
-        if (!vanillaData && AnyChestRowEnabled()) {
+        // 2b. Gold, Silver & Wooden Chests directly from kChestSpawns (100% flicker-free!) (the drawing pass only)
+        if (!vanillaData && AnyChestRowEnabled() && !g_skipDraws) {
             const void* goldIconRef = g_goldChestEnabled ? GetIconRefForType(client, kGoldChestTypeHash) : nullptr;
             const void* silverIconRef = g_silverChestEnabled ? GetIconRefForType(client, kSilverChestTypeHash) : nullptr;
             const void* woodIconRef = g_woodChestEnabled ? GetIconRefForType(client, kWoodChestTypeHash) : nullptr;
@@ -15174,8 +15725,8 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         }
 
         UMM_LAP(PerfMmChests);
-        // 2c. Ore deposits (Mining), under everything else
-        if (!vanillaData && AnyOreEnabled()) {
+        // 2c. Ore deposits (Mining), under everything else (only in the UI pass that draws: they are only drawn)
+        if (!vanillaData && AnyOreEnabled() && !g_skipDraws) {
             // Lore notes, bosses and mining / materials deposits nearby get the chests' height caret (many notes are in
             // cellars, crypts, towers; ores in caves and on cliffs)
             float knowPlayerY = 0.0f;
@@ -15185,11 +15736,18 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                 knowPlayerY = static_cast<float>(static_cast<double>(rawY) * 2.3283064365386963e-10);
                 knowHavePlayerY = rawY != 0 && std::isfinite(knowPlayerY);
             }
-            for (size_t d = 0; d < kOreDepositCount; ++d) {
+            const float preReach = radiusMeters * 1.04f * 1.4143f; // (turned, the square's corners reach this far)
+            // (the deposits in the 64 m cells round you, in the deposits' own order as the walk over all 64,385 had them:
+            // the draw list is stable-sorted by kind, so the order within a kind stays)
+            static std::vector<uint32_t> s_nearDeps;
+            NearDeposits(playerX, playerZ, preReach, s_nearDeps);
+            for (const uint32_t nd : s_nearDeps) {
+                const size_t d = nd;
                 const OreDeposit& dep = kOreDeposits[d];
                 if (!g_oreEnabled[dep.ore] || CreatureSpawnHidden(dep.ore)) continue;
                 float dxMeters = dep.x - playerX;
                 float dzMeters = dep.z - playerZ;
+                if (std::abs(dxMeters) > preReach || std::abs(dzMeters) > preReach) continue;
                 MmRotate(dxMeters, dzMeters);
                 if (std::abs(dxMeters) > radiusMeters * 1.04f || std::abs(dzMeters) > radiusMeters * 1.04f) continue;
                 // in a vault or spire: only your floor's (as its chests)
@@ -15270,6 +15828,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         }
 
         UMM_LAP(PerfMmOres);
+        UMM_FN_LAP(PerfMmOres);
         // Sort so POIs/Chests (cat 3) render below Vaults (cat 2), Fast Travel/Spires (cat 1), Quests (cat 0), Custom Pins (cat 4)
         auto catPriority = [](uint8_t cat) -> int {
             switch (cat) {
@@ -15339,12 +15898,14 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             }
         }
 
+        UMM_FN_LAP(PerfMmPins);
         // Town Portal's open portals (town_portals.inl), under the players
         if (!vanillaData && g_townPortalsEnabled)
             DrawTownPortalsOnMinimap(anchor.raw, vcx, vcy, playerX, playerZ, radiusMeters, pxPerMeterX, pxPerMeterY, btnScale);
         // Find's search results (find_pins.inl)
         if (!vanillaData) DrawFindPinsOnMinimap(anchor.raw, vcx, vcy, playerX, playerZ, radiusMeters, pxPerMeterX, pxPerMeterY, btnScale);
 
+        UMM_FN_LAP(PerfMmPortalsFind);
         // Draw other players in multiplayer from client + 0x4642c0 (count at +0x4642c8, stride 0x240); the game's
         // World Map always shows them
         if (g_otherPlayersEnabled || vanillaData) {
@@ -15485,6 +16046,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             }
         }
 
+        UMM_FN_LAP(PerfMmPlayers);
         // The waypoint (requested by harag, 2026-11-14): the game's waypoint pin where it is, or pinned to the minimap's
         // edge in its direction while it is out of range. The UI state keeps it as a marker slot (kWaypointSlotOffset):
         // a place's copy, or on bare ground uid 0 with the custom pin type; its position 32.32 fixed at +0x10 / +0x20,
@@ -15598,6 +16160,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             }
         }
 
+        UMM_FN_LAP(PerfMmQuest);
         // Draw local Player Marker at exact center (vcx, vcy) as a clean, compact directional triangle (facing read above;
         // with the map turning it points up, give or take the easing)
         MmRotate(faceDirX, faceDirZ);
@@ -15609,7 +16172,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
         if (thinBorder) {
             // Thin border: a dark outline and a fine gold line round the map, and a small N at the top. The bar
             // hangs below it, drawn first so the border's bottom line covers its top edge.
-            if (infoBar) DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * UT, trayY - 262.0f * UT, TS, (trayW - trayBaseW) / TS);
+            if (infoBar) DrawTrayArt(anchor.raw, trayX - 40.5f * UT, trayY - 262.0f * UT, TS, (trayW - trayBaseW) / TS);
             const float x0 = frameX, y0 = frameY, sz = frameSize;
             DrawSolidRectAbs(anchor.raw, x0, y0, sz, 3.0f, 0xFF0A0E10u, 0.9f);
             DrawSolidRectAbs(anchor.raw, x0, y0 + sz - 3.0f, sz, 3.0f, 0xFF0A0E10u, 0.9f);
@@ -15631,14 +16194,10 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
             // 3. Frame art: the tray first (it tucks behind the bottom rail), then the frame and the N
             //    medallion set into the compass rose
             // ------------------------------------------------------------------------
-            if (infoBar) DrawArtSprite(anchor.raw, kArtTray, trayX - 40.5f * UT, trayY - 262.0f * UT, TS, (trayW - trayBaseW) / TS);
+            if (infoBar) DrawTrayArt(anchor.raw, trayX - 40.5f * UT, trayY - 262.0f * UT, TS, (trayW - trayBaseW) / TS);
             if (frameSize >= kMinimapArtDesign) {
                 const float grow = (frameSize - kMinimapArtDesign) * 0.5f;
-                DrawArtSprite(anchor.raw, kArtFrame370, frameX, frameY, 1.0f, grow, grow);
-                for (int z = 0; z < kArtFrame370.nZonesX; ++z)
-                    DrawArtZoneStrip(anchor.raw, kArtFrame370, *kArtFrameStripsX[z], true, z, frameX, frameY, grow, grow);
-                for (int z = 0; z < kArtFrame370.nZonesY; ++z)
-                    DrawArtZoneStrip(anchor.raw, kArtFrame370, *kArtFrameStripsY[z], false, z, frameX, frameY, grow, grow);
+                DrawOrnateFrameArt(anchor.raw, frameX, frameY, grow);
             } else {
                 // The smallest pre-rendered size at or above this one, scaled down a little
                 const MinimapArtSprite* bucket = &kArtFrame370;
@@ -15650,18 +16209,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
                         break;
                     }
                 }
-                DrawArtSprite(anchor.raw, *bucket, frameX, frameY, frameSize / bucketSize);
-                // The design-size frame leaves its rails' middles to the strips (between the largest bucket and
-                // the design size, 341 - 369 px, the rails had gaps there)
-                if (bucket == &kArtFrame370) {
-                    const float scale = frameSize / bucketSize;
-                    for (int z = 0; z < kArtFrame370.nZonesX; ++z)
-                        DrawArtZoneStrip(anchor.raw, kArtFrame370, *kArtFrameStripsX[z], true, z, frameX, frameY, 0.0f,
-                                         0.0f, scale);
-                    for (int z = 0; z < kArtFrame370.nZonesY; ++z)
-                        DrawArtZoneStrip(anchor.raw, kArtFrame370, *kArtFrameStripsY[z], false, z, frameX, frameY, 0.0f,
-                                         0.0f, scale);
-                }
+                DrawBucketFrameArt(anchor.raw, *bucket, frameX, frameY, frameSize / bucketSize);
             }
             DrawArtSprite(anchor.raw, kArtMedallion, frameCx - 150.0f * U, compassCy - 30.5f * U, 1.0f);
             if (!turnMap)
@@ -15698,6 +16246,7 @@ void DrawHudMinimapLayerBody(uint8_t* client, HWND foreground, bool appFocused, 
     }
 
     // Highlight resize grip when hovered or actively resizing
+    UMM_FN_LAP(PerfMmFrame);
     if (!barOnly && (hoverResize || g_minimapDraggingResize || shiftAltHeld)) {
         const uint32_t gripCol = (hoverResize || g_minimapDraggingResize) ? 0xFFA2EBEFu : 0xFF7EBEC2u;
         DrawSolidRectAbs(anchor.raw, resizeGripX0 + 6.0f, resizeGripY1 - 4.0f, 12.0f, 2.0f, gripCol, 0.92f);
@@ -15843,7 +16392,7 @@ void DrawHudMinimapOverlay() {
     // Update chest loot detection and 30-game-minute respawn timer (even while inventory/loot UI is open)
     {
         UMM_PERF(PerfLoot);
-        UpdateChestLootTracking(client, appFocused);
+        if (UiDrawPassNow()) UpdateChestLootTracking(client, appFocused); // (once a frame: the UI pass that draws)
     }
     {
         UMM_PERF(PerfGlowDraw);
@@ -15883,6 +16432,8 @@ void DrawHudMinimapOverlay() {
     g_opaque(anchor.raw); // Required so the root widget receives the layer's full-screen rect at +0x114!
 
     g_hudCardReq.want = false;
+    SkipDrawsScope skipDraws(!UiDrawPass(anchor.raw));
+    ++g_uiPassSerial;
     {
         UMM_PERF(PerfMinimap);
         SafeRunHudMinimapLayerBody(client, foreground, appFocused, screen, playerX, playerZ, anchor);
@@ -15914,6 +16465,7 @@ void SafeDrawHudMinimapOverlay() {
     __try {
         DrawHudMinimapOverlay();
     } __except (EXCEPTION_EXECUTE_HANDLER) {
+        g_skipDraws = false; // (its scope's destructor may not have run)
     }
 }
 
@@ -16038,6 +16590,9 @@ void PollModOffKey() {
 void LogPerf(); // below
 #endif
 
+#ifdef UMM_DEV_BRIDGE
+bool g_devSkipHud = false; // dev (map op "skiphud" on / off): the HUD overlay left out, the mod on
+#endif
 void PlayStateUiHook() {
     if (g_origPlayStateUi) {
         g_origPlayStateUi();
@@ -16055,7 +16610,11 @@ void PlayStateUiHook() {
             g_padVanillaOffPending = false;
             g_padEnterPending = true;
         }
+#ifdef UMM_DEV_BRIDGE
+        if (!g_modOff && !g_devSkipHud) {
+#else
         if (!g_modOff) {
+#endif
             UMM_PERF(PerfHud);
             SafeDrawHudMinimapOverlay();
         }
@@ -16075,15 +16634,26 @@ void LogPerf() {
     const uint64_t now = GetTickCount64();
     if (!since) since = now;
     if (now - since < 5000) return;
-    char line[2048];
+    char line[4096];
     int len = std::snprintf(line, sizeof(line), "Perf (%llu frames, %.1f fps):", static_cast<unsigned long long>(frames),
                             frames * 1000.0 / static_cast<double>(now - since));
     for (int i = 0; i < PerfCount && len > 0 && len < static_cast<int>(sizeof(line)); ++i) {
         const uint64_t t = g_perfTicks[i].exchange(0), c = g_perfCalls[i].exchange(0), mx = g_perfMax[i].exchange(0);
         if (!c) continue;
         const double ms = t * 1000.0 / static_cast<double>(freq.QuadPart);
+        const uint64_t dr = g_perfDraws[i].exchange(0);
         len += std::snprintf(line + len, sizeof(line) - len, " | %s %.3f ms/frame, worst %.2f ms", kPerfNames[i],
                              ms / static_cast<double>(frames), mx * 1000.0 / static_cast<double>(freq.QuadPart));
+        if (dr && len > 0 && len < static_cast<int>(sizeof(line)))
+            len += std::snprintf(line + len, sizeof(line) - len, ", %.0f draws", dr / static_cast<double>(frames));
+        if (len > 800 && g_log) g_log("%s", line), len = std::snprintf(line, sizeof(line), "Perf (cont.):"); // (the log cuts at ~1 KB)
+    }
+    if (g_log) g_log("%s", line);
+    len = std::snprintf(line, sizeof(line), "Hooks per frame (render %.1f fps):",
+                        g_hookCalls[HcUpscale].n.load() * 1000.0 / static_cast<double>(now - since));
+    for (int i = 0; i < HcCount && len > 0 && len < static_cast<int>(sizeof(line)); ++i) {
+        const uint64_t c = g_hookCalls[i].n.exchange(0);
+        if (c) len += std::snprintf(line + len, sizeof(line) - len, " %s %.1f", kHookNames[i], c / static_cast<double>(frames));
     }
     if (g_log) g_log("%s", line);
     frames = 0;
@@ -16777,8 +17347,10 @@ void QuestPinsOverPlacesInner(uint8_t* mapState) {
     if (g_log) {
         int n = 0;
         for (uint64_t i = 0; i < count; ++i) n += before[i] < count;
-        g_log("Map: %d place(s) moved under an overlapping quest / rumor pin (%llu pins listed, %zu quest-like, reach %.0f m)", n,
-              static_cast<unsigned long long>(count), pins.size(), reach);
+        static int s_lastN = -1;
+        if (n != s_lastN && mapState == g_lastMapState) // (once a change, not every pass)
+            s_lastN = n, g_log("Map: %d place(s) moved under an overlapping quest / rumor pin (%llu pins listed, %zu quest-like, reach %.0f m)", n,
+                               static_cast<unsigned long long>(count), pins.size(), reach);
     }
 #endif
 }
@@ -16789,6 +17361,7 @@ void SafeQuestPinsOverPlaces(uint8_t* mapState) {
     }
 }
 void RebuildPinListsHook(void* mapState) {
+    UMM_COUNT(HcRebuild);
     if (!g_origRebuildPinLists) return;
     g_origRebuildPinLists(mapState);
     greeneye::Lease lease;
@@ -16823,13 +17396,55 @@ bool NudgePin(uint8_t* mapState, uint8_t* pin, float out[2]) {
         return false;
     }
 }
+// The game's place names (Passage to the Albaneve Summits, Howling Peak...) are pins whose type shows only a text label,
+// centred on the pin. The mod lets the World Map zoom out until the whole world is smaller than the screen, and a name
+// near the world's edge then ran out over the frame's art (2026-11-23). Such a pin slides in, for the call, just far
+// enough to keep its name on the map: how far (map pixels, x), or 0.
+float LabelPinInside(uint8_t* mapState, uint8_t* pin) {
+    __try {
+        const uint8_t* type = *reinterpret_cast<uint8_t* const*>(pin + 0x10);
+        const uint8_t* m = *reinterpret_cast<uint8_t* const*>(pin + 8);
+        if (!type || !m || !type[0x41]) return 0.0f; // MapMarkerType.showLabel
+        const uint64_t* icon = reinterpret_cast<const uint64_t*>(type + 0x1c);
+        if (icon[0] | icon[1]) return 0.0f; // (one with an icon stays where its place is)
+        const uint8_t* view = *reinterpret_cast<uint8_t* const*>(mapState + 8);
+        if (!view) return 0.0f;
+        const float right = *reinterpret_cast<const float*>(view + 0x38) * *reinterpret_cast<const float*>(view + 0x10);
+        const float x = *reinterpret_cast<const float*>(pin + 0x1c); // (map pixels from the canvas's left edge)
+        constexpr float kLongestHalf = 420.0f; // (no name's half is wider: most pins are nowhere near an edge)
+        if (!(right > 0.0f) || (x > kLongestHalf && x < right - kLongestHalf)) return 0.0f;
+        UiText t{};
+        if (!g_getMarkerTitleText) return 0.0f;
+        g_getMarkerTitleText(&t, m);
+        if (!t.utf8 || !t.len) return 0.0f;
+        char name[128];
+        std::snprintf(name, sizeof(name), "%.*s", static_cast<int>(std::min<size_t>(t.len, 120)), t.utf8);
+        // the place-name style's spaced capitals run ~0.91x the mod's estimate a side (measured on the Albaneve passage)
+        const float half = umm_lang::TextWidth(name) * 0.95f + 18.0f;
+        if (2.0f * half >= right) return 0.0f; // (wider than the whole map: left centred)
+        if (x + half > right) return right - half - x;
+        if (x - half < 0.0f) return half - x;
+        return 0.0f;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return 0.0f;
+    }
+}
 uint64_t DrawPinHook(void* mapState, uint8_t* pin, void* outBox) {
+    UMM_COUNT(HcPin);
     if (!g_origDrawPin) return 0;
     float moved[2] = {};
     bool nudged = false;
     {
         greeneye::Lease lease;
         nudged = lease && g_worldMapModded && mapState && pin && NudgePin(static_cast<uint8_t*>(mapState), pin, moved);
+        if (lease && g_worldMapModded && mapState && pin) {
+            if (const float dx = LabelPinInside(static_cast<uint8_t*>(mapState), pin)) {
+                reinterpret_cast<float*>(pin + 0x1c)[0] += dx;
+                reinterpret_cast<float*>(pin + 0x24)[0] += dx;
+                moved[0] += dx;
+                nudged = true;
+            }
+        }
     }
     const uint64_t r = g_origDrawPin(mapState, pin, outBox);
     if (nudged) {
@@ -16842,6 +17457,7 @@ uint64_t DrawPinHook(void* mapState, uint8_t* pin, void* outBox) {
 }
 
 void DrawWorldMapMarkerIconHook(void* mapState, uint8_t* m, uint8_t* drawParams) {
+    UMM_COUNT(HcIcon);
     if (!g_origDrawWorldMapMarkerIcon) return;
     greeneye::Lease lease;
     if (lease && g_worldMapModded && MarkerHiddenOnMap(m)) return; // Map Key > Region: Hide, or another Hollow Hall
@@ -16913,7 +17529,7 @@ bool ModHoverTitleShowing() {
     return !mapState || *reinterpret_cast<const uint32_t*>(mapState + 0xf8) != 3;
 }
 
-// The game's hover title's text, for its area (g_titleBox)
+// The game's hover title's text
 void NoteHoverTitle(const UiText* got) {
     __try {
         if (got && got->utf8 && got->len > 0 && got->len < sizeof(g_hoverTitleText)) {
@@ -16975,14 +17591,15 @@ bool HoveredMarkerFilteredOut(const void* m) {
 }
 
 UiText* MarkerTitleTextHook(UiText* outText, const void* uiMarker) {
-    {
-        greeneye::Lease lease;
-        if (lease && g_worldMapModded && outText && TitleHiddenByRegion(uiMarker)) {
-            *outText = MakeUiText("");
-            return outText;
-        }
+    UMM_COUNT(HcTitle);
+    // (one lease for the whole call, the game's title lookup inside it like the icon hook's: ~900 calls a frame)
+    greeneye::Lease lease;
+    if (lease && g_worldMapModded && outText && TitleHiddenByRegion(uiMarker)) {
+        *outText = MakeUiText("");
+        return outText;
     }
     UiText* got = g_getMarkerTitleText(outText, uiMarker);
+    if (!lease) return got;
     if (uiMarker && uiMarker == g_hoveredGameMarker) NoteHoverTitle(got); // the hovered one's text
     // what the game titles: the marker it really hovers (inside a quest's circle the mod took the quest's pin)
     if (uiMarker && *reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(uiMarker) + 0x30) != 0xafce0c5fu)
@@ -16990,7 +17607,6 @@ UiText* MarkerTitleTextHook(UiText* outText, const void* uiMarker) {
     {
         // the mod's own title shows instead (its icon is under the cursor), or the mod draws this one itself, on a
         // tooltip panel (DrawGameHoverTitle): the game's left empty
-        greeneye::Lease lease;
         // (a hidden quest pin named by the mod: the pin the game hovers under it, the Silver Chest beside the Hat Set
         // rumor, gets no plain title over it)
         const bool pinNamed = g_questPinNamed && uiMarker != g_questPinNamed && GetTickCount64() - g_questPinNamedTick < 150ULL &&
@@ -16999,7 +17615,6 @@ UiText* MarkerTitleTextHook(UiText* outText, const void* uiMarker) {
         if (lease && g_worldMapModded && got && HoveredMarkerFilteredOut(uiMarker)) *got = MakeUiText("");
         // (the cursor on an open ring's disc, off its own markers: what lies under it is asleep, no title)
         if (lease && g_worldMapModded && got && (SpreadBlocksMapInput() || StackListShowing())) *got = MakeUiText("");
-
     }
     return got;
 }
@@ -17026,6 +17641,7 @@ void LogPlateNear(uint8_t* entry, const float* rect4) {
 #endif
 
 void DrawWorldMapMarkerPlateHook(void* widget, uint8_t* entry, const float* rect4) {
+    UMM_COUNT(HcPlate);
     if (!g_origDrawWorldMapMarkerPlate) return;
 
     greeneye::Lease lease;
@@ -17099,6 +17715,8 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
         sscanf_s(value, "%f,%f", &g_devDot[0], &g_devDot[1]);
     } else if (std::strcmp(action, "zoomset") == 0) {
         g_bridgeZoomSet = static_cast<float>(std::atof(value)); // dev: the World Map's zoom set next frame
+    } else if (std::strcmp(action, "zoomfit") == 0) {
+        g_bridgeZoomFit = static_cast<float>(std::atof(value)); // dev: the World Map zoomed to fit that many metres
     } else if (std::strcmp(action, "meshtest") == 0) {
         desk::g_meshTest = std::atoi(value); // dev: a textured spinning quad (desk.inl MeshTest)
     } else if (std::strcmp(action, "deskband") == 0) {
@@ -17127,6 +17745,10 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
     } else if (std::strcmp(action, "nearcreatures") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
         g_nearCreatures = std::strcmp(value, "on") == 0; // Settings > Advanced > Nearby Creatures Only
         SaveMinimapConfig();
+#ifdef UMM_DEV_BRIDGE
+    } else if (std::strcmp(action, "deskthumb") == 0) {
+        desk::g_deskThumbTest = std::strcmp(value, "on") == 0; // dev: the desk's stand-in drawn everywhere
+#endif
     } else if (std::strcmp(action, "deskdim") == 0) {
         g_deskDim = std::clamp(static_cast<float>(std::atof(value)), 0.05f, 1.0f); // the desk art's brightness (trial)
     } else if (std::strcmp(action, "mapdesk") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
@@ -17358,6 +17980,27 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
     } else if (std::strcmp(action, "hallsmap") == 0 && worldMap && halls::g_mapDungeon >= 0) {
         halls::g_mapOverworld = !halls::g_mapOverworld; // the Dungeon Map / Overworld Map button
         g_worldMapOpenCenterFrames = 2;
+#ifdef UMM_DEV_BRIDGE
+    } else if (std::strcmp(action, "cursor") == 0) {
+        if (std::strcmp(value, "off") == 0) g_devCursor[0] = g_devCursor[1] = -1.0f;
+        else if (std::sscanf(value, "%f,%f", &g_devCursor[0], &g_devCursor[1]) != 2) g_devCursor[0] = g_devCursor[1] = -1.0f;
+        DWORD pid = GetCurrentProcessId();
+        struct Find { DWORD pid; HWND hwnd; LONG area; } f{pid, nullptr, 0};
+        EnumWindows([](HWND h, LPARAM lp) -> BOOL { // (the game's window: this process's biggest visible one)
+            auto* fp = reinterpret_cast<Find*>(lp);
+            DWORD wp = 0;
+            GetWindowThreadProcessId(h, &wp);
+            RECT r{};
+            if (wp == fp->pid && IsWindowVisible(h) && GetClientRect(h, &r) && r.right * r.bottom > fp->area)
+                fp->hwnd = h, fp->area = r.right * r.bottom;
+            return TRUE;
+        }, reinterpret_cast<LPARAM>(&f));
+        g_devCursorHwnd = f.hwnd;
+    } else if (std::strcmp(action, "skiphud") == 0) {
+        g_devSkipHud = std::strcmp(value, "on") == 0;
+    } else if (std::strcmp(action, "artrects") == 0) {
+        g_devArtRects = std::strcmp(value, "on") == 0;
+#endif
     } else if (std::strcmp(action, "modoff") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {
         SetModOff(std::strcmp(value, "on") == 0); // Ctrl+Shift+F12 without the keys ("on": the mod off)
     } else if (std::strcmp(action, "vanilla") == 0 && (std::strcmp(value, "on") == 0 || std::strcmp(value, "off") == 0)) {

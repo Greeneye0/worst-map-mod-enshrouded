@@ -31,6 +31,6 @@ int main() {
         for(const auto& slot:slots)if(slot.valid&&frame-slot.lastUse<=10)assert(!Retired(slot,frame,8));
     }
     assert(replacements>39000);
-    static_assert(kSlots*kBytes==24*1024*1024);
-    std::puts("PASS: bounded 24 MiB pool, 39,900+ reuses, pending and in-flight guards, rollback, LRU and key zero");
+    static_assert(kSlots*kBytes==48*1024*1024);
+    std::puts("PASS: bounded 48 MiB pool, 39,900+ reuses, pending and in-flight guards, rollback, LRU and key zero");
 }

@@ -25,6 +25,12 @@ int g_cols = 0, g_rows = 0, g_hiScale = 3, g_hiCols = 0, g_hiRows = 0;
 float g_frame[4]{};          // the map square in desk.png: L T R B
 std::vector<std::vector<uint32_t>> g_tiles[2]; // the 1x layers in tiles: [row * g_cols + col] (empty: all clear)
 uint64_t g_keyBase = 0;
+// The whole layer shrunk into one pool image (top left, kTile px wide): drawn where a tile isn't on the GPU yet, so a
+// tile that is still loading shows the desk blurred instead of the bare backdrop
+std::vector<uint32_t> g_thumb[2];
+float g_thumbPerPx = 0.0f; // thumbnail UV per desk.png pixel (1 / width)
+uint32_t g_thumbId = 0;
+bool g_deskThumbTest = false;     // this layer's thumbnail in the pool, while it is drawn (0: none yet)
 std::string g_dir;
 std::wstring Wide(const std::string& s);
 std::string g_langDir; // desk\lang\<Steam language>\ (desk_langs.py): the survivor sheets in the mod's language, or empty
@@ -108,6 +114,29 @@ void LoadNow() {
     Premultiply(over);
     uint64_t hash = 0xcbf29ce484222325ull;
     for (size_t i = 0; i < under.size(); i += 97) hash = (hash ^ under[i] ^ over[i]) * 0x100000001b3ull;
+    for (int layer = 0; layer < 2; ++layer) { // box-filtered (the pixels are premultiplied, so a plain average)
+        const std::vector<uint32_t>& src = layer == kUnder ? under : over;
+        std::vector<uint32_t> t(static_cast<size_t>(kTile) * kTile, layer == kUnder ? kBackdrop : 0u);
+        const double k = static_cast<double>(w) / kTile;
+        const int th = std::min(kTile, static_cast<int>(std::ceil(h / k)));
+        for (int ty = 0; ty < th; ++ty)
+            for (int tx = 0; tx < kTile; ++tx) {
+                const int x0 = static_cast<int>(tx * k), x1 = std::max(x0 + 1, std::min(w, static_cast<int>((tx + 1) * k)));
+                const int y0 = static_cast<int>(ty * k), y1 = std::max(y0 + 1, std::min(h, static_cast<int>((ty + 1) * k)));
+                uint64_t sum[4]{}, n = 0;
+                for (int y = y0; y < y1 && y < h; ++y)
+                    for (int x = x0; x < x1; ++x, ++n) {
+                        const uint32_t p = src[static_cast<size_t>(y) * w + x];
+                        for (int c = 0; c < 4; ++c) sum[c] += p >> (8 * c) & 0xff;
+                    }
+                if (!n) continue;
+                uint32_t out = 0;
+                for (int c = 0; c < 4; ++c) out |= static_cast<uint32_t>((sum[c] + n / 2) / n) << (8 * c);
+                t[static_cast<size_t>(ty) * kTile + tx] = out;
+            }
+        g_thumb[layer] = std::move(t);
+    }
+    g_thumbPerPx = 1.0f / static_cast<float>(w);
     g_tiles[kUnder] = Cut(under, w, h, kBackdrop);
     g_tiles[kOver] = Cut(over, w, h, 0);
     g_cols = (w + kTile - 1) / kTile;
@@ -283,14 +312,24 @@ int g_deskBandKey = 0x83; // the frame's sub-layer behind the key hints: over th
 
 // One image (a tile of tilePx desk.png pixels at (px0, py0) of the desk) at its place on screen, clipped
 void DrawTile(void* widget, const uint32_t* px, uint64_t key, float dx, float dy, float s, float px0, float py0, float tilePx,
-              const float* clip) {
+              const float* clip, int owner = 1) {
     const float sx0 = dx + px0 * s, sy0 = dy + py0 * s, ts = tilePx * s;
     const float cx0 = std::max(sx0, clip[0]), cx1 = std::min(sx0 + ts, clip[2]), cy0 = std::max(sy0, clip[1]), cy1 = std::min(sy0 + ts, clip[3]);
     if (cx1 <= cx0 || cy1 <= cy0) return;
-    const uint32_t id = hdpool::Request(widget, px, key);
-    if (!id) return;
+    uint32_t id = hdpool::Request(widget, px, key, owner);
+#ifdef UMM_DEV_BRIDGE
+    if (g_deskThumbTest && owner == 1) id = 0; // dev (map op "deskthumb" on): the stand-in everywhere, to check its fit
+#endif
     const uint64_t colour = MakePackedColor(0xffffffffu, 1.0f, g_deskDim); // (the whole desk at g_deskDim brightness)
     float rect[4] = {cx0, cy0, cx1 - cx0, cy1 - cy0};
+    if (!id) { // not on the GPU yet: that part of the layer's thumbnail (a 1x tile; a fine one has its 1x tile under it)
+        if (g_thumbId && owner == 1 && g_drawImageSubUv) {
+            const float u0 = (cx0 - dx) / s * g_thumbPerPx, u1 = (cx1 - dx) / s * g_thumbPerPx;
+            const float v0 = (cy0 - dy) / s * g_thumbPerPx, v1 = (cy1 - dy) / s * g_thumbPerPx;
+            g_drawImageSubUv(widget, rect, g_thumbId, PackXY(u0, v0), PackXY(u1, v1), colour);
+        }
+        return;
+    }
     const float fu0 = (cx0 - sx0) / ts, fu1 = (cx1 - sx0) / ts, fv0 = (cy0 - sy0) / ts, fv1 = (cy1 - sy0) / ts;
     if (fu0 == 0.0f && fv0 == 0.0f && fu1 == 1.0f && fv1 == 1.0f) g_drawImage(widget, rect, &id, &colour);
     else if (g_drawImageSubUv) g_drawImageSubUv(widget, rect, id, PackXY(fu0, fv0), PackXY(fu1, fv1), colour);
@@ -373,6 +412,11 @@ void DrawUnder(uint8_t* mapState, const float* screen) {
     Widget w;
     g_namedWidget(w.raw, &kName);
     g_setSize(w.Handle(), 0);
+    if (!UiDrawPass(w.raw)) { // (a UI pass that doesn't draw: the widget kept, the tiles and props left out)
+        DrawUnderRing(w.raw);
+        g_endWidget(w.raw);
+        return;
+    }
     void* uiCtx = *reinterpret_cast<void**>(w.raw);
     void* drawList = uiCtx ? g_getUiDrawList(uiCtx) : nullptr;
     const uint16_t saved = uiCtx ? *reinterpret_cast<uint16_t*>(static_cast<uint8_t*>(uiCtx) + 0x6ce8) : 0;
@@ -395,6 +439,8 @@ void DrawUnder(uint8_t* mapState, const float* screen) {
         const std::vector<uint32_t>* px;
     };
     auto drawLayer = [&](int layer, const float* at, int budget) {
+        g_thumbId = g_thumb[layer].empty() ? 0
+                    : hdpool::Request(w.raw, g_thumb[layer].data(), (g_keyBase ^ (0x7468756d62ull + layer) * 0x9e3779b97f4a7c15ull) | 1, 1);
         std::vector<uint8_t> needLo(static_cast<size_t>(g_cols) * g_rows, 1);
         std::vector<Fine> fine;
         if (zoomedIn) {
@@ -446,13 +492,13 @@ void DrawUnder(uint8_t* mapState, const float* screen) {
             const float tilePx = static_cast<float>(kTile) / kLevelScale[f.level]; // in desk.png pixels
             const uint64_t key = (g_keyBase ^ 0x9e3779b97f4a7c15ull ^
                                   (static_cast<uint64_t>(f.level << 24 | layer << 20 | f.r << 10 | f.c) + 1) * 0xc2b2ae3d27d4eb4full) | 1;
-            DrawTile(w.raw, f.px->data(), key, dx, dy, s, f.c * tilePx, f.r * tilePx, tilePx, at);
+            DrawTile(w.raw, f.px->data(), key, dx, dy, s, f.c * tilePx, f.r * tilePx, tilePx, at, 2);
         }
     };
     // Under the map (sub-layer 0x80, after the game's dark backdrop: under the map and under the key hints, their key
     // caps too, so the desk runs on beneath them)
     SetSubLayer(uiCtx, drawList, saved, 0x80);
-    drawLayer(kUnder, clip, 36); // (the image pool holds 96: the 1x tiles, roads, ground and these share it)
+    drawLayer(kUnder, clip, 36); // (the image pool holds 192: the 1x tiles, roads, ground and these share it)
     DrawProps(w.raw, dx, dy, s, clip); // the lantern and the compass, on the desk (desk_props.inl)
     // Over the map (0x90): the frame along its edges, the corners, the lip; not over the left panel or the key hints
     // (under this sub-layer; the banner is over it). Behind the key hints (up to two rows of them) the frame goes on at

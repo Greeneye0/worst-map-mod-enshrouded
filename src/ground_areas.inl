@@ -218,7 +218,7 @@ void DrawOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapState) {
             }
             // A tile painted for other rows never shows (switching rows would flash the old ones)
             if (t.key != key || t.rgba.empty()) continue;
-            const uint32_t id = hdpool::Request(widgetRaw, t.rgba.data(), t.key);
+            const uint32_t id = hdpool::Request(widgetRaw, t.rgba.data(), t.key, 4);
             if (!id) continue;
             const float fu0 = (cx0 - sx0) / (sx1 - sx0), fu1 = (cx1 - sx0) / (sx1 - sx0);
             const float fv0 = (cy0 - sy0) / (sy1 - sy0), fv1 = (cy1 - sy0) / (sy1 - sy0);

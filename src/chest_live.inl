@@ -39,6 +39,9 @@ long g_devHideChest = -1; // dev (map op "chestgone" <index>): that chest's enti
 #endif
 uint64_t g_settleUntil = 0; // after a teleport (or a world's first read): the new place's entities are still coming
 uint64_t g_lastTick = 0, g_lastDetectTick = 0;
+void* s_posReg[4]{};       // the position type found per registry (DetectInner)
+uint16_t s_posType[4]{};
+int s_posNext = 0;
 
 // The chest's place, across the ground (x, z)
 float ChestDistXZ(size_t c, float px, float pz) {
@@ -114,9 +117,21 @@ size_t LearnClam(uint8_t* rec, const uint8_t* id, uint16_t positionType) {
     return found;
 }
 
+bool DetectEmptyState(uint8_t* reg, Types& out); // below
 // Finds both types in one registry; false while there are not enough chests near the player to be sure.
 bool DetectInner(uint8_t* reg, Types& out) {
-    out = Types{reg, DetectPositionType(reg), 0, 0};
+    // (the position type is the registry's own: found once, not again every 5 s over 3,000 entities and every type;
+    // forgotten with the world, ResetWorld)
+    uint16_t position = 0;
+    for (int k = 0; k < 4; ++k)
+        if (s_posReg[k] == reg) position = s_posType[k];
+    if (!position) {
+        position = DetectPositionType(reg);
+        if (position) {
+            s_posReg[s_posNext] = reg, s_posType[s_posNext] = position, s_posNext = (s_posNext + 1) & 3;
+        }
+    }
+    out = Types{reg, position, 0, 0};
     if (!out.position) return false;
     // SceneLootNodeId: votes per size-4 type holding a chest's id on an entity at that chest's place
     int votes[kEcsTypeBits]{};
@@ -139,6 +154,12 @@ bool DetectInner(uint8_t* reg, Types& out) {
     }
     if (votes[best] < 3) return false;
     out.lootId = static_cast<uint16_t>(best);
+    return DetectEmptyState(reg, out);
+}
+
+// The empty-state type, the position and loot id types known (out): looked for again every 5 s until an emptied chest
+// is near; alone it skips the position and loot id scans over every entity and type (3 - 4 ms each time, 2026-11-23)
+bool DetectEmptyState(uint8_t* reg, Types& out) {
     // InventoryEmptyState: the size-2 types every chest has, reading 01 00 or 01 01 on all of them
     bool ok[kEcsTypeBits];
     bool anyEmpty[kEcsTypeBits]{};
@@ -210,8 +231,92 @@ bool RegistryLearned(void* reg) {
 }
 
 // Once a second in a world: reads the chests near the player and fixes their looted marks.
+// The walk over the client's entities, a slice a frame: done in one frame it took 2.7 - 3 ms once a second, a hitch
+// (2026-11-23). A walk starts every second and reads an eighth of the entity map a frame; what it found is judged
+// when it ends (a chest that moved slots mid-walk is at worst missed for one walk: going needs three in a row).
+struct Walk {
+    bool active = false;
+    uint64_t cursor = 0;
+    Types t{};
+    uint8_t state[kTotalChestCount];  // 0xff not near
+    bool present[kTotalChestCount];   // its entity is there (whatever its empty state reads)
+};
+Walk g_walk;
+void Judge(uint8_t* client); // below
+// the detection's back-off (Update): every 5 s, 10, 20, 40, then a minute; back to 5 s 150 m from where it last failed
+uint64_t s_detectEvery = 5000ULL;
+float s_failedAt[2] = {-1e9f, -1e9f};
+// Another world: nothing of the last one's walk or detection carries over (ResetLootWorld)
+void ResetWorld() {
+    g_walk.active = false;
+    s_detectEvery = 5000ULL;
+    s_failedAt[0] = s_failedAt[1] = -1e9f;
+    g_lastDetectTick = 0;
+    for (int k = 0; k < 4; ++k) s_posReg[k] = nullptr, s_posType[k] = 0;
+}
+// true: the walk is through the whole map
+bool WalkSlice(Walk& w) {
+    uint8_t* reg = static_cast<uint8_t*>(w.t.registry);
+    uint8_t* map = reg + 0x148;
+    const uint64_t capacity = *reinterpret_cast<uint64_t*>(map + 0x10);
+    auto* used = *reinterpret_cast<uint64_t**>(map + 0x08);
+    auto* ids = *reinterpret_cast<uint32_t**>(map + 0x28);
+    auto* records = *reinterpret_cast<uint8_t***>(reg + 0x188);
+    if (!used || !ids || !records || capacity > (1u << 22)) return true;
+    const uint64_t slice = std::max<uint64_t>(2048, capacity / 8 + 1);
+    const uint64_t end = std::min(capacity, w.cursor + slice);
+    for (uint64_t i = w.cursor; i < end; ++i) {
+        if (!(used[i >> 6] >> (i & 63) & 1)) continue;
+        if (ids[i] < 0x400 || !records[i]) continue; // player entities use ids 1..0x3ff
+        uint8_t* rec = records[i];
+        uint16_t size = 0;
+        const uint8_t* id = EcsComponent(rec, w.t.lootId, &size);
+        if (!id || size != 4) continue;
+        size_t c = ChestOf(id);
+        if (c >= kTotalChestCount) c = LearnClam(rec, id, w.t.position);
+        if (c >= kTotalChestCount) continue;
+#ifdef UMM_DEV_BRIDGE
+        if (static_cast<long>(c) == g_devHideChest) continue;
+#endif
+        w.present[c] = true;
+        const uint8_t* e = w.t.empty ? EcsComponent(rec, w.t.empty, &size) : nullptr;
+        if (e && size == 2 && e[0] == 1 && e[1] <= 1) w.state[c] = e[1];
+    }
+    w.cursor = end;
+    return end >= capacity;
+}
+int SafeWalkSlice(Walk& w) { // 1 done, 0 more to go, -1 not readable
+    __try {
+        return WalkSlice(w) ? 1 : 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
 void Update(uint64_t nowTick, uint32_t screen, uint8_t* client) {
-    if (g_lootSection.empty() || nowTick - g_lastTick < 1000ULL) return;
+    if (g_lootSection.empty()) return;
+    if (g_walk.active) {
+        if (screen == 21 || g_walk.t.registry != g_types.registry || !RegistryLearned(g_walk.t.registry)) {
+            g_walk.active = false; // (the chest screen opened: the chest looted is changing; or the registry changed)
+            return;
+        }
+        const int64_t q0 = DevQpc();
+        const int r = SafeWalkSlice(g_walk);
+        DevPerf(PerfLiveSlice, q0);
+        if (r < 0) {
+            g_walk.active = false;
+            if (g_log) g_log("Live chests: registry not readable; finding it again");
+            g_types = Types{};
+            return;
+        }
+        if (r == 0) return;
+        g_walk.active = false;
+        const int64_t q1 = DevQpc();
+        Judge(client);
+        DevPerf(PerfLiveJudge, q1);
+        return;
+    }
+    if (nowTick - g_lastTick < 1000ULL) return;
     g_lastTick = nowTick;
     if (g_chestByLootId.empty()) {
         for (size_t c = 0; c < kTotalChestCount; ++c)
@@ -227,15 +332,32 @@ void Update(uint64_t nowTick, uint32_t screen, uint8_t* client) {
     }
     // Until an emptied chest is near, the empty-state type isn't known; the chests' id type is, and with it which chests
     // are there (a blown-up one gone): read with that while the empty state is looked for again every 5 s
-    if (!g_types.empty && nowTick - g_lastDetectTick >= 5000ULL) {
+    const int64_t detect0 = DevQpc();
+    // (while it fails, less and less often: 5 s, 10, 20, 40, then every minute; back to 5 s 150 m from where it last
+    // failed, where other chests may be near)
+    {
+        float fx = 0.0f, fz = 0.0f;
+        if (GetHudPlayerWorldPos(client, fx, fz)) {
+            const float dx = fx - s_failedAt[0], dz = fz - s_failedAt[1];
+            if (dx * dx + dz * dz > 150.0f * 150.0f) s_detectEvery = 5000ULL;
+        }
+    }
+    if (!g_types.empty && nowTick - g_lastDetectTick >= s_detectEvery) {
         g_lastDetectTick = nowTick;
+        s_detectEvery = std::min<uint64_t>(s_detectEvery * 2, 60000ULL); // (a success leaves it: no more detecting)
+        GetHudPlayerWorldPos(client, s_failedAt[0], s_failedAt[1]);
         for (auto& slot : g_waterRegistries) {
             auto* reg = static_cast<uint8_t*>(slot.load(std::memory_order_relaxed));
             if (!reg) continue;
             Types found;
             bool ok = false;
             __try {
-                ok = DetectInner(reg, found);
+                if (g_types.registry == reg && g_types.lootId && g_types.position) {
+                    found = g_types; // (its position and loot id types already known: the empty state only)
+                    ok = DetectEmptyState(reg, found);
+                } else {
+                    ok = DetectInner(reg, found);
+                }
             } __except (EXCEPTION_EXECUTE_HANDLER) {
                 ok = false;
                 found = Types{};
@@ -250,39 +372,38 @@ void Update(uint64_t nowTick, uint32_t screen, uint8_t* client) {
             }
         }
     }
+    DevPerf(PerfLiveDetect, detect0);
     if (!g_types.lootId || !g_types.position) return;
     // The chest screen open: the chest being looted is changing
     if (screen == 21) return;
-    uint8_t state[kTotalChestCount];
-    std::memset(state, 0xff, sizeof(state)); // 0xff not near
-    bool present[kTotalChestCount]{};        // its entity is there (whatever its empty state reads)
-    float px = 0.0f, pz = 0.0f;
-    const bool havePlayer = GetHudPlayerWorldPos(client, px, pz);
-    bool ok = true;
-    __try {
-        const Types t = g_types;
-        ForEachEcsEntity(static_cast<uint8_t*>(t.registry), [&](uint8_t* rec) {
-            uint16_t size = 0;
-            const uint8_t* id = EcsComponent(rec, t.lootId, &size);
-            if (!id || size != 4) return;
-            size_t c = ChestOf(id);
-            if (c >= kTotalChestCount) c = LearnClam(rec, id, t.position);
-            if (c >= kTotalChestCount) return;
-#ifdef UMM_DEV_BRIDGE
-            if (static_cast<long>(c) == g_devHideChest) return;
-#endif
-            present[c] = true;
-            const uint8_t* e = t.empty ? EcsComponent(rec, t.empty, &size) : nullptr;
-            if (e && size == 2 && e[0] == 1 && e[1] <= 1) state[c] = e[1];
-        });
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        ok = false;
-    }
-    if (!ok) {
+    g_walk.active = true;
+    g_walk.cursor = 0;
+    g_walk.t = g_types;
+    std::memset(g_walk.state, 0xff, sizeof(g_walk.state));
+    std::memset(g_walk.present, 0, sizeof(g_walk.present));
+    // (the first slice now; the rest on the next frames, then Judge)
+    const int64_t q0 = DevQpc();
+    const int r = SafeWalkSlice(g_walk);
+    DevPerf(PerfLiveSlice, q0);
+    if (r < 0) {
+        g_walk.active = false;
         if (g_log) g_log("Live chests: registry not readable; finding it again");
         g_types = Types{};
         return;
     }
+    if (r == 1) {
+        g_walk.active = false;
+        Judge(client);
+    }
+}
+
+// A whole walk read: chests gone, emptied or filled again
+void Judge(uint8_t* client) {
+    const uint64_t nowTick = GetTickCount64();
+    const uint8_t* state = g_walk.state;
+    const bool* present = g_walk.present;
+    float px = 0.0f, pz = 0.0f;
+    const bool havePlayer = GetHudPlayerWorldPos(client, px, pz);
     if (havePlayer) {
         const float mx = px - g_lastPlayerXZ[0], mz = pz - g_lastPlayerXZ[1];
         if (mx * mx + mz * mz > 40.0f * 40.0f) g_settleUntil = nowTick + 10000ULL; // a teleport, not a run or a glide

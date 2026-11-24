@@ -299,6 +299,7 @@ std::mutex g_sourceMutex;
 uint64_t g_markedEpoch = 0;
 
 uint8_t MeshReadHook(RegionSpan* regions, void* source) {
+    UMM_COUNT(HcMeshRead);
     const uint8_t result = g_origMeshRead(regions, source);
     greeneye::Lease lease;
     if (!lease || !result) return result;
@@ -345,6 +346,7 @@ uint8_t MeshReadHook(RegionSpan* regions, void* source) {
 }
 
 void ProcessHook(uint8_t* owner) {
+    UMM_COUNT(HcProcess);
     g_origProcess(owner);
     greeneye::Lease lease;
     if (!lease || g_modOff) return;
@@ -773,6 +775,7 @@ void DrawPass(void* scope, uint8_t* state) {
 }
 
 void UpscaleHook(void* scope, uint8_t* upscalers, uint8_t* inputs) {
+    UMM_COUNT(HcUpscale);
     g_origUpscale(scope, upscalers, inputs);
     greeneye::Lease lease;
     if (!lease || g_modOff || g_failed.load()) return;

@@ -137,6 +137,7 @@ uint64_t DrawMapHintWithBinding(uint8_t* entry, void* params, int index) {
 }
 
 uint64_t MapHintHook(uint8_t* entry, void* params) {
+    UMM_COUNT(HcMapHint);
     greeneye::Lease lease;
     if (lease && g_mapHintEntries) {
         for (int i = 0; i < MapHintCount(); ++i)

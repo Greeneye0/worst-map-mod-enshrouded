@@ -51,6 +51,7 @@ void LearnWaterRegistry(void* iter) {
 }
 
 void WaterViewInitHook(void* iter, void* view, uint32_t size) {
+    UMM_COUNT(HcWaterView);
     {
         greeneye::Lease lease; // an older generation after a hot reload only calls on
         if (lease && !g_modOff && !g_waterRegistries[kMaxWaterRegistries - 1].load(std::memory_order_relaxed)) {

@@ -390,6 +390,9 @@ float ModelSize(const uint8_t* instance) {
 
 // At the end of a render system's iteration, on its own thread.
 void Apply(void* iter, void* view, const System& system) {
+    // (nothing to light and nothing lit: nothing to do, and the lock isn't taken; every render iteration of both
+    // systems came here, 120 a frame on the render jobs. A target added meanwhile is seen on the next iteration.)
+    if (!g_count && !g_appliedCount) return;
     auto* state = Read<uint8_t*>(iter);
     if (!state || Read<uint16_t>(state, 0x4b8) != system.reads || Read<uint16_t>(state, 0x4ba) != system.writes) return;
 
@@ -685,6 +688,7 @@ void DevEyeLog(const char* when) {
 #endif
 
 float* PaletteHook(float* out, uint32_t colour) {
+    UMM_COUNT(HcPalette);
     {
         greeneye::Lease lease; // an older generation after a hot reload only calls on
         if (lease) InterlockedIncrement(&g_frameCount);
@@ -737,6 +741,7 @@ void PlaceProxiesFinal(void* renderer) {
 
 UploadFn g_stageNext = nullptr;
 void StageHook(void* renderer) {
+    UMM_COUNT(HcStage);
     {
         greeneye::Lease lease; // an older generation after a hot reload only calls on
 #ifdef UMM_DEV_BRIDGE
@@ -751,6 +756,7 @@ using ColorFn2 = float* (*)(float* out, uint32_t colour);
 ColorFn2 g_fightNext[2] = {}, g_alertNext[2] = {};
 template <int Site>
 float* FightColourHook(float* out, uint32_t colour) {
+    UMM_COUNT(HcFight);
     {
         greeneye::Lease lease;
         if (lease && g_proxyCount && !g_modOff) colour = kFightColour;
@@ -759,6 +765,7 @@ float* FightColourHook(float* out, uint32_t colour) {
 }
 template <int Site>
 float* AlertColourHook(float* out, uint32_t colour) {
+    UMM_COUNT(HcAlert);
     {
         greeneye::Lease lease;
         if (lease && g_proxyCount && !g_modOff) colour = kAlertColour;
@@ -796,6 +803,7 @@ void RefreshCreatureAggro() {
 // by the return address: Quick Deposit redirects the same calls, and when the loader chains the two detours the second
 // one's return address is the first detour.
 bool NextHook(void* iter, void* view, uint32_t size) {
+    UMM_COUNT(HcNext);
     UMM_PERF(PerfGlowNext);
     greeneye::Lease lease; // an older generation after a hot reload only calls on
     const bool next = g_next(iter, view, size);
@@ -1204,7 +1212,8 @@ void DrawMarkers(uint8_t* client) {
     Widget anchor{};
     g_namedWidget(anchor.raw, &kLayerName);
     g_opaque(anchor.raw);
-    if (!SafeDrawMarkersInner(client, anchor.raw)) g_markers.clear();
+    // (only in the UI pass that draws: the silhouettes, outlines and rings drawn in the other three were thrown away)
+    if (UiDrawPass(anchor.raw) && !SafeDrawMarkersInner(client, anchor.raw)) g_markers.clear();
     g_endWidget(anchor.raw);
     g_endLayer(layer);
 }

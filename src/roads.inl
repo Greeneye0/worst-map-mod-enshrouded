@@ -216,7 +216,7 @@ void Draw(void* widgetRaw, float x0, float yNorth, float ppm, float left, float 
                 t = &s;
             }
             t->lastUse = g_use;
-            const uint32_t id = hdpool::Request(widgetRaw, t->rgba.data(), t->key);
+            const uint32_t id = hdpool::Request(widgetRaw, t->rgba.data(), t->key, 8);
             if (!id) continue;
             const float fu0 = (cx0 - sx0) / tileScreen, fu1 = (cx1 - sx0) / tileScreen;
             const float fv0 = (cy0 - sy0) / tileScreen, fv1 = (cy1 - sy0) / tileScreen;

@@ -178,7 +178,18 @@ void DrawRegionNamesOnMap(void* widgetRaw, const float* rootRect, uint8_t* mapSt
         if (cx < left || cx > right || cy < top || cy > bottom) continue;
         const char* name = RegionName(static_cast<int>(reg));
         const float w = umm_lang::TextWidth(name) * 1.6f * kScale + 32.0f, h = 28.0f * kScale;
-        DrawFaintPlaceName(widgetRaw, cx - w * 0.5f, cy - h * 0.5f, w, h, name, kScale, shown ? 0.28f : 0.1f);
+        // Kept on the map: a name near the world's edge slides in instead of running out over the border art past
+        // it (Baneve Summits at the east edge, 2026-11-23). By the text's own half width (the box has 16 px spare a
+        // side); one wider than the whole map stays centred.
+        float mapWorldW = *reinterpret_cast<float*>(mapView + 0x38); // (the map canvas, +0x38 / +0x3c)
+        if (mapWorldW <= 100.0f) mapWorldW = mapWorldH;
+        const float textHalf = (w - 32.0f) * 0.5f + 6.0f;
+        const float worldL = originX, worldR = originX + mapWorldW * zoom;
+        const float worldT = originY, worldB = originY + mapWorldH * zoom;
+        float tx = cx, ty = cy;
+        if (worldR - worldL > 2.0f * textHalf) tx = std::max(worldL + textHalf, std::min(worldR - textHalf, tx));
+        if (worldB - worldT > h) ty = std::max(worldT + h * 0.5f, std::min(worldB - h * 0.5f, ty));
+        DrawFaintPlaceName(widgetRaw, tx - w * 0.5f, ty - h * 0.5f, w, h, name, kScale, shown ? 0.28f : 0.1f);
     }
 }
 
