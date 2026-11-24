@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.56
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.57
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -409,6 +409,24 @@ decide before you switch it off.
 
 CHANGES
 -------
+1.3.57
+- Much lighter on frame rate. The game builds its interface four times for every frame it shows,
+  and the mod drew its pins, minimap and art in all four; now it draws only in the one that
+  reaches the screen. The minimap's frame and the info bar's art (thousands of tiny rectangles,
+  drawn even with the minimap hidden) and the boss icon are now a few ready-made images. On the
+  test PC the HUD went from about 67 to 86 FPS (about 92 with the mod off), and the World Map
+  with every filter on from about 35 to 48 FPS.
+- The game's own names on the World Map (quests, rumors, spires and places) now always draw over
+  the mod's pins, and pins under a hovered name no longer disappear.
+- Moving the World Map no longer leaves gray squares around it while the desk art loads.
+- Zoomed far out, place names near the edge of the world stay inside the World Map's frame
+  instead of running onto the desk.
+Reported bugs fixed:
+- The mod cost 20 to 30 FPS during normal play, even with the minimap and every filter off. That
+  cost is now much smaller. Reported by LordKeiran.
+- Switching the mod off with Ctrl + Shift + F12 while the World Map was open could crash the
+  game.
+
 1.3.56
 - Quest and rumor pins draw over the places beside them, and a place whose icon would cover a
   quest's "!" or a rumor's "?" moves aside until the two just touch, so both can be read and
