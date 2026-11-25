@@ -1,4 +1,4 @@
-IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.57
+IN GAME MAP MARKERS AND MINI MAP - THE WORST MAP MOD  -  Enshrouded mod, version 1.3.58
 =========================================================================================
 
 Every marker on the world map, every ore deposit, material, plant, bait spot and forest, every
@@ -409,6 +409,24 @@ decide before you switch it off.
 
 CHANGES
 -------
+1.3.58
+- Your waypoint's pin stays on the map when you turn its filter row off, so you can still click
+  it to move or clear the waypoint. The rest of that row still hides.
+- The Conservatory's flooded room, reached by swimming down from the halls above it, is now on
+  the dungeon map and the minimap, and the minimap keeps showing the floor under you while you
+  swim above it. The first Ancient Vault's central pool is mapped too.
+Reported bugs fixed:
+- Turning a filter row on or off could change how other pins looked until the map redrew: a fast
+  travel point flipped between locked and unlocked (Cinder's Cradle - Citadel with Ancient
+  Vault), and quest and rumor pins moved or came and went. Every row affected other pins this
+  way. Reported by Ykses.
+- A place shown as its quest's "!" (Drak'Dal Camp for The Good Old Days) got the place's own
+  menu title, drawn one letter per line.
+- A chest blown up in an earlier session, or before 1.3.56, kept its marker even with you
+  standing beside it. It's now marked looted once you're near its spot. Reported by GillzaSVD.
+- "Fell Summoning Stone" kept the English word "Fell" in Russian and six other languages. It now
+  uses the game's own word for the Fell in each language. Reported by mano1b.
+
 1.3.57
 - Much lighter on frame rate. The game builds its interface four times for every frame it shows,
   and the mod drew its pins, minimap and art in all four; now it draws only in the one that
