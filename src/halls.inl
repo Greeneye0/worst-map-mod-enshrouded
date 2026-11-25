@@ -1761,6 +1761,26 @@ std::shared_ptr<const LevelGrid> BuildMiniGrid(float py) {
     auto g = NewLevelGrid(1, g_gx0, g_gz0 + g_gSize, g_gSize, g_gSize);
     const float cxw = static_cast<float>(g_gx0 + g_gSize / 2), czw = static_cast<float>(g_gz0 + g_gSize / 2);
     const int site = VaultAt(cxw, py, czw);
+    // Swimming over a flooded room's floor (the Conservatory's, 5-10 m under you, 2026-11-24) or in the air: no floor
+    // within 4 m under your feet, so the band round you held none and the minimap went blank; it goes by the highest
+    // floor up to 12 m under you then (as Flood does), as if you stood on it
+    {
+        const int xc = static_cast<int>(std::floor(cxw)), zc = static_cast<int>(std::floor(czw));
+        float nearUnder = -1e9f;
+        bool onFloor = false;
+        for (int z = zc - 2; z <= zc + 2 && !onFloor; ++z) {
+            if (z < static_cast<int>(g_z0) || z >= static_cast<int>(g_z0 + g_rows)) continue;
+            const uint32_t r = static_cast<uint32_t>(z) - g_z0;
+            for (uint32_t i = g_rowStart[r]; i < g_rowStart[r + 1] && !onFloor; ++i) {
+                const Run& run = g_runs[i];
+                if (xc + 2 < run.x0 || xc - 2 >= run.x0 + run.length) continue;
+                const float dy = static_cast<float>(run.Y()) - py;
+                if (dy >= -4.0f && dy <= 5.0f) onFloor = true;
+                else if (dy < -4.0f && dy >= -12.0f) nearUnder = std::max(nearUnder, static_cast<float>(run.Y()));
+            }
+        }
+        if (!onFloor && nearUnder > -1e8f) py = nearUnder + 2.0f;
+    }
     const int myFloor = FloorCount(site) > 1 ? FloorAt(site, py) : -1;
     float lo = -1e9f, hi = 1e9f;
     if (myFloor >= 0) {

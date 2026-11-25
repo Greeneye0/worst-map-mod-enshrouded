@@ -149,6 +149,10 @@ constexpr uint32_t kOtherPlayerTypeHash = 0x26d18a06u;
 constexpr uint32_t kTownPortalTypeHash = 0x7b0e7a11u; // the mod's own row (no game marker type): Town Portal's portals
 constexpr uint32_t kCompletedQuestTypeHash = 0x9c4e7b12u;
 constexpr uint32_t kLockedFastTravelTypeHash = 0x1095684fu;
+// Your waypoint's pin whose row is off: drawn as itself under this stand-in type, which no filter row lists (the
+// game's filter check d64e50 passes a type it can't filter), so it can still be clicked to move or clear the waypoint
+constexpr uint32_t kWaypointKeepTypeHash = 0x7a1f0e27u;
+uint32_t g_waypointKeepLook = 0u; // the type the pin would show as with its row on
 constexpr uint32_t kChestMarkerUidPrefix = 0x70000000u;
 constexpr uint32_t kModIconMarkerUidPrefix = 0x7FFE0000u; // the stand-in marker a mod icon's click menu is opened on
 
@@ -963,12 +967,25 @@ uint8_t* GetMarkerTypeHook(uint32_t typeHash, void* mgr) {
     // (~3,700 calls a frame on the World Map, all but a few for the game's own types: those go straight on, without
     // the lease's two calls into the loader; the hashes are constants, no state of this generation is read)
     if (typeHash != kGoldChestTypeHash && typeHash != kSilverChestTypeHash && typeHash != kWoodChestTypeHash &&
-        typeHash != kLockedFastTravelTypeHash)
+        typeHash != kLockedFastTravelTypeHash && typeHash != kWaypointKeepTypeHash)
         return g_origGetMarkerType ? g_origGetMarkerType(typeHash, mgr) : nullptr;
     UMM_PERF(PerfMarkerType);
     {
         greeneye::Lease lease; // an older generation after a hot reload only calls on
         if (lease) {
+            if (typeHash == kWaypointKeepTypeHash) {
+                // the waypoint's pin type: a copy of the one it shows as, never filtered (static: the game keeps the
+                // pointer in its pin lists until they rebuild)
+                static CustomMapMarkerType s_keep{};
+                const uint32_t look = g_waypointKeepLook;
+                uint8_t* src = (look == 0u || look == kWaypointKeepTypeHash) ? nullptr
+                               : CustomMarkerType(look) ? CustomMarkerType(look)
+                               : (g_origGetMarkerType ? g_origGetMarkerType(look, mgr) : nullptr);
+                if (!src) return reinterpret_cast<uint8_t*>(&g_lockedFastTravelMarkerType); // never null: DrawPin reads it
+                std::memcpy(&s_keep, src, sizeof(s_keep));
+                s_keep.canBeFiltered = 0;
+                return reinterpret_cast<uint8_t*>(&s_keep);
+            }
             if (!g_modOff) {
                 if (uint8_t* custom = CustomMarkerType(typeHash)) return custom;
             } else {
@@ -4985,6 +5002,9 @@ bool IsMarkerShownForExploredPins(uint8_t* client, const uint8_t* m, uint32_t or
     return GameShowsMarker(m[0x35]) || IsMarkerExplored(client, m, origHash);
 }
 
+// The waypoint stand-in's own type: the locked Fast Travel look is still a Fast Travel Point
+uint32_t NormalizeWaypointLook(uint32_t look) { return look == kLockedFastTravelTypeHash ? 0x1095684eu : look; }
+
 uint32_t GetMarkerOrigTypeHash(const uint8_t* m) {
     if (IsSlotSaved(m)) {
         uint32_t savedOrig = *reinterpret_cast<const uint32_t*>(m + 0x3c);
@@ -4993,6 +5013,7 @@ uint32_t GetMarkerOrigTypeHash(const uint8_t* m) {
         }
     }
     uint32_t curHash = *reinterpret_cast<const uint32_t*>(m + 0x30);
+    if (curHash == kWaypointKeepTypeHash) return NormalizeWaypointLook(g_waypointKeepLook);
     if (curHash != 0u && curHash != kLockedFastTravelTypeHash) {
         return curHash;
     }
@@ -5070,6 +5091,7 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
         }
         uint32_t tHash = *reinterpret_cast<uint32_t*>(m + 0x30);
         uint32_t curId08 = *reinterpret_cast<uint32_t*>(m + 0x08);
+        if (tHash == kWaypointKeepTypeHash) tHash = NormalizeWaypointLook(g_waypointKeepLook);
         if ((tHash == 0u || tHash == kLockedFastTravelTypeHash) && m[0x48] != 0u) {
             uint32_t tag38 = *reinterpret_cast<uint32_t*>(m + 0x38);
             if (tag38 == 0xe3a3e3c1u || tag38 == 0xe623c0fbu) {
@@ -5089,10 +5111,20 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
         outSavedId08 = curId08;
     };
 
+    // Your waypoint's pin, about to be hidden by its row (or Pins: Explored): it stays, as itself under the stand-in
+    // type no filter lists. Hidden it couldn't be clicked, and the waypoint left on it couldn't be moved or cleared
+    // (requested by the user, 2026-11-25). Only that one pin: the rest of its row still goes.
+    auto keepWaypointPin = [&](const uint8_t* m, uint32_t look, uint32_t& desiredHash) {
+        if (desiredHash != 0u || look == 0u || g_modOff || !IsWaypointMarker(m)) return false;
+        g_waypointKeepLook = look;
+        desiredHash = kWaypointKeepTypeHash;
+        return true;
+    };
     auto applyMarkerVisibility = [&](uint8_t* m, uint32_t origHash, uint32_t savedId08, bool show,
                                      bool showSubpinAsQuest = false, bool allowSubpinWhenShown = true) {
         uint32_t desiredHash = show ? origHash : (showSubpinAsQuest ? 0xafce0c5fu : 0u);
         uint32_t desiredId08 = (show ? allowSubpinWhenShown : showSubpinAsQuest) ? savedId08 : 0u;
+        if (keepWaypointPin(m, origHash, desiredHash)) desiredId08 = savedId08;
         if (*reinterpret_cast<uint32_t*>(m + 0x30) != desiredHash) {
             *reinterpret_cast<uint32_t*>(m + 0x30) = desiredHash;
             dirty = true;
@@ -5153,6 +5185,8 @@ void SyncSpiresAndCountMarkers(uint8_t* client, uint8_t* mapState, const uint32_
                                                   ? (unlockedForChar ? 0x1095684eu : kLockedFastTravelTypeHash)
                                                   : (subpinQuestOn ? 0xafce0c5fu : 0u));
                 uint32_t desiredId08 = (revealedForPinMode && (fastTravelFilterOn ? allowSubpinId : subpinQuestOn)) ? savedId08 : 0u;
+                if (keepWaypointPin(m, unlockedForChar ? 0x1095684eu : kLockedFastTravelTypeHash, desiredHash))
+                    desiredId08 = savedId08;
                 if (*reinterpret_cast<uint32_t*>(m + 0x30) != desiredHash) {
                     *reinterpret_cast<uint32_t*>(m + 0x30) = desiredHash;
                     dirty = true;
@@ -6455,6 +6489,7 @@ std::string ToLowerAscii(const std::string& s) {
 }
 
 uint32_t NormalizeFilterTypeHash(uint32_t rawHash) {
+    if (rawHash == kWaypointKeepTypeHash) rawHash = NormalizeWaypointLook(g_waypointKeepLook);
     if (rawHash == 0x98b2d65du) return 0xa17072beu;
     if (rawHash == kLockedFastTravelTypeHash || rawHash == 0x813080bcu) return 0x1095684eu;
     if (rawHash == 0x6a56c5b3u) return 0xa447cba3u;
@@ -17037,8 +17072,13 @@ void DropChestRemove(uint8_t* entries, const uint8_t* marker) {
     }
 }
 void MarkerMenuBuildHook(void* entries, void* mapState, void* marker) {
-    g_origMarkerMenuBuild(entries, mapState, marker);
     greeneye::Lease lease;
+    // The menu (c2fb40: this builder, then the header's text d1df80) runs before the map draw's sync each frame, when
+    // the game has just written its own types back into the slots (replicate_map_markers_for_ui): a place shown as its
+    // quest's "!" (Drak'Dal Camp, The Good Old Days, Enemy Encampment off) got its place's menu and header, the quest's
+    // card around it (2026-11-25). Sync first, as the pin lists do.
+    if (lease && g_worldMapModded && !g_modOff) SafePreSyncWorldMapMarkers();
+    g_origMarkerMenuBuild(entries, mapState, marker);
     if (lease && g_worldMapModded) DropChestRemove(static_cast<uint8_t*>(entries), static_cast<const uint8_t*>(marker));
 }
 
@@ -17363,8 +17403,15 @@ void SafeQuestPinsOverPlaces(uint8_t* mapState) {
 void RebuildPinListsHook(void* mapState) {
     UMM_COUNT(HcRebuild);
     if (!g_origRebuildPinLists) return;
-    g_origRebuildPinLists(mapState);
     greeneye::Lease lease;
+    // The rebuild copies each pin's type from its slot (+0x30) into the pin list and drops filtered types (re atlas:
+    // da4770, d64e50); the pin keeps that look until the next rebuild. The game rewrites every slot each frame
+    // (replicate_map_markers_for_ui 3161b0), so a rebuild run before the mod's sync that frame took the game's raw
+    // types: a filter click (any row) flipped locked Fast Travel Points, spire twins, hidden places and quest / rumor
+    // swaps to the game's state until the mod's next rebuild (Cinder's Cradle - Citadel with Ancient Vault, 2026-11-25).
+    // Sync first, every time.
+    if (lease && g_worldMapModded && !g_modOff) SafePreSyncWorldMapMarkers();
+    g_origRebuildPinLists(mapState);
     if (lease && g_worldMapModded && mapState) SafeQuestPinsOverPlaces(static_cast<uint8_t*>(mapState));
     else if (lease && mapState) NudgesFor(mapState).clear();
 }
@@ -17971,6 +18018,10 @@ extern "C" __declspec(dllexport) int MapNativeControl(const char* action, const 
         if (g_log) g_log("Find on the map (dev): %s", on ? "Find's dialog set aside: the map's own on the game's text dialog" : "Find's dialog back");
     } else if (std::strcmp(action, "chestgone") == 0) {
         chest_live::g_devHideChest = std::atol(value); // -1: none
+        // ("<index> unseen": as if blown up in an earlier session, never seen in this one)
+        if (std::strstr(value, "unseen") && chest_live::g_devHideChest >= 0 &&
+            chest_live::g_devHideChest < static_cast<long>(kTotalChestCount))
+            chest_live::g_seenHere[chest_live::g_devHideChest] = false;
         if (g_log) g_log("Live chests (dev): chest %ld read as gone", chest_live::g_devHideChest);
     } else if (std::strcmp(action, "findopen") == 0) {
         g_devFindOpenQuery = value, g_devFindOpenPending = true; // next World Map frame

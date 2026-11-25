@@ -15,7 +15,8 @@
 // A chest blown up (barrels beside it, GillzaSVD 1.3.54) never reads empty: the server's destructible system dissolves
 // the entity and it is gone (re atlas loot.md). So a chest seen this session that is gone while it should still be sent
 // to the player is marked looted too: within 90 m and 10 m closer than a chest of its own kind that is still there,
-// 3 reads in a row, not just after a teleport. The server sends an entity by its 2D distance to the player, 100 m or
+// 3 reads in a row, not just after a teleport. One not seen this session (blown up in an earlier one): within 40 m,
+// 20 m closer than one of its kind still there, 6 reads. The server sends an entity by its 2D distance to the player, 100 m or
 // 200 m by its template, scaled down under load (memory: entity relevance, send radius factor); a chest of the same kind
 // has the same template, so one still there farther away means this one would be sent too. It comes back like an
 // emptied one: read full twice after the area reset.
@@ -425,12 +426,18 @@ void Judge(uint8_t* client) {
         if (present[c]) {
             g_seenHere[c] = true;
             g_goneReads[c] = 0;
-        } else if (g_seenHere[c] && !st.looted && havePlayer && settled && kChestSpawns[c].subtype < kKinds) {
-            // gone: blown up, if it's well inside the distance chests of its kind are still sent at
+        } else if (!st.looted && havePlayer && settled && kChestSpawns[c].subtype < kKinds) {
+            // gone: blown up, if it's well inside the distance chests of its kind are still sent at. One not seen this
+            // session counts too, closer and read gone longer: blown up in an earlier session (or before 1.3.56) it was
+            // never seen again, and its marker stayed with the player beside it (GillzaSVD, 2026-11-24)
             const float d = ChestDistXZ(c, px, pz);
             const float r = reach[kChestSpawns[c].subtype];
-            if (d + 10.0f < r && d < 90.0f) {
-                if (++g_goneReads[c] >= 3) {
+            const bool seen = g_seenHere[c];
+            // (unseen: only a chest whose loot id the mod has, so its entity would be known if it were there; a clam's
+            // id is learned when it is first seen, so an unseen clam always reads gone)
+            const bool known = seen || kChestLootNodeIds[c] != 0u;
+            if (known && (seen ? (d + 10.0f < r && d < 90.0f) : (d + 20.0f < r && d < 40.0f))) {
+                if (++g_goneReads[c] >= (seen ? 3 : 6)) {
                     g_goneReads[c] = 0;
                     g_seenHere[c] = false;
                     g_seenEmpty[c] = true; // read full again after the area reset: unmarked as an emptied one is
@@ -440,8 +447,8 @@ void Judge(uint8_t* client) {
                     g_chestLootDirty = true;
                     g_lootSaveDirty = true;
                     if (g_log)
-                        g_log("Live chests: chest %zu is gone %.0f m away (its kind still sent at %.0f m); destroyed, marked looted",
-                              c, d, r);
+                        g_log("Live chests: chest %zu is gone %.0f m away (its kind still sent at %.0f m%s); destroyed, marked looted",
+                              c, d, r, seen ? "" : ", not seen this session");
                 }
             } else {
                 g_goneReads[c] = 0;
